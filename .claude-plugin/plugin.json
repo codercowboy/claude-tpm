@@ -1,0 +1,8 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "claude-tpm",
+  "version": "0.1.0",
+  "description": "claude-tpm orchestrator + task/session/workflow skills (tpm-*)",
+  "author": { "name": "Jason Baker", "email": "jason@onejasonforsale.com" },
+  "skills": ["./.claude/skills"]
+}

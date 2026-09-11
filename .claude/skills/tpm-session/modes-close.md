@@ -1,0 +1,50 @@
+# `tpm-session close` — wrap-up ritual
+
+Loaded ONLY when `SKILL.md` resolves mode `close`. Parallels `modes-open.md` — the wrap-up
+counterpart. Collapses the old `session-close` skill into five steps + the universal footer.
+
+## Sequence
+
+1. **Run the reap ritual.** Call `/tpm-reap` — already built, live, and matches this design exactly
+   (`.claude/skills/tpm-reap/SKILL.md`). No new logic here: `close` just triggers it. **NEVER
+   auto-kills** — enumerate → explicit user choice → double-confirm for "all" → close only the
+   confirmed, per `tpm-reap`'s own ritual. Silent (no prompt) if `tpm-reap` finds nothing running.
+
+2. **Finalize session notes — delegate to `save`.** Run `SKILL.md`'s `save` body verbatim (same
+   compose-then-write logic: RESUME rewritten in place, any final open items/decisions/log lines).
+   Module-gated: a no-op if `session.notes.enabled` is false. This is the one path — `close` does NOT
+   duplicate the notes-writing logic.
+
+3. **Seal the session.** After `save` finishes, call `node ${TPM_HOME}/tools/session/session-notes.js
+   --sessions-dir <dir> seal` — stamps `SEALED <date>` in the note AND marks the current-session
+   pointer closed (`${TPM_HOME}/tools/session/lib/current-session.js`'s `sealSession`), so the NEXT bare
+   `tpm-session` invocation (this session or a future one) opens fresh instead of reusing this folder.
+
+4. **`/export` nudge.** One-line reminder that `/export` (a Claude Code CLI command) saves a readable
+   transcript — the user types it themselves. Transcripts also persist automatically; this is a
+   convenience, not a data-safety requirement.
+
+5. **Terse sign-off** — NOT the skill menu. Crucial UX rule: at close the user is *stopping*, so do
+   NOT list "here's what else you could do" (the open MOTD invites work; the close message ends it).
+   One paragraph: what shipped, what's pending, any hand-offs to the next session, the notes-saved-to
+   pointer. Then the consumer's `session.additionalCloseMessage` file content, if set, appended AFTER.
+
+6. **Print the session #** — the universal `tpm-session` footer (`SKILL.md`'s `info` block).
+
+## What carries over from the legacy `session-close` skill (unchanged)
+
+- The consumer-extension pointer (a wrapper skill or `additionalCloseMessage`, not the canonical) —
+  now `session.additionalCloseMessage`, already a live config key.
+- "Reap orphaned child sessions" — now delegated wholesale to `/tpm-reap` rather than the old inline
+  `ls tmp/sessions/` + `reap-child.sh` loop (step 1 above).
+
+## What's different from the legacy `session-close` skill
+
+- The old skill **silently killed** stray child sessions. `tpm-reap` NEVER does — every close now
+  goes through the enumerate → choice → double-confirm dialogue for anything found running.
+- The old skill minted a **new** `session-NNN` folder on every close — the "always create a new
+  folder" rule was stated directly in `CLAUDE.md`'s pre-rewrite boot ritual, which pointed at an
+  `orchestrator/session-process.md` that was never actually written (confirmed missing from
+  `${TPM_HOME}/claude-context/methodology/orchestrator/` — not "retired," just never created until this build's
+  staged `out/promote/session-process.md`). `close` now updates the SAME folder
+  `open` established this session (step 2–3 above) — the bug this whole redesign exists to fix.

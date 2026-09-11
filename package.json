@@ -1,0 +1,27 @@
+{
+  "name": "@codercowboy/claude-tpm",
+  "version": "0.1.0",
+  "description": "A project-agnostic Claude Code setup for running Claude as a disciplined multi-agent TPM/SDLC system (orchestrator + researcher/builder/verifier subagents). Ships the tpm-* skills, the methodology library, and the zero-dep tool suites; consumed by downstream projects as a local/npm dependency.",
+  "license": "MIT",
+  "author": "Jason Baker <jason@onejasonforsale.com>",
+  "contributors": [
+    "Claude (Anthropic) — code, docs, and tools"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/codercowboy/claude-tpm"
+  },
+  "homepage": "https://github.com/codercowboy/claude-tpm",
+  "files": [
+    ".claude/skills",
+    "claude-context/methodology",
+    "claude-context/config-guide.md",
+    "tools",
+    "boot.md",
+    "CLAUDE.md"
+  ],
+  "scripts": {
+    "test": "node tools/workflow/tests/mutation-check28.js",
+    "scaffold-consumer": "node tools/consumer/scaffold-consumer.js"
+  }
+}
