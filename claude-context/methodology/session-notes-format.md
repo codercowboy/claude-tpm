@@ -5,12 +5,11 @@
 # Session-notes format — the `tpm-session` tool's contract + a human-editing reference
 
 **What this is.** The canonical shape of `session-NNN/session-notes.md`, written by
-`tools/session/session-notes.js` (task B1) and read by `tools/session/session-review.js` (task B2).
+`tools/session/tpm-session-notes.js` (task B1) and read by `tools/session/tpm-session-review.js` (task B2).
 The tool OWNS this format — headings, tokens, section placement — so the orchestrator never has to
-memorize or hand-emit it; this doc is the format's single source of truth (`tools/session/lib/
-format.js` derives its parse/render logic from exactly what's below — don't hand-edit a second copy
+memorize or hand-emit it; this doc is the format's single source of truth (`tools/session/tpm-session-format.js` derives its parse/render logic from exactly what's below — don't hand-edit a second copy
 of the token list anywhere else). Hand-edits to a note file are still supported and round-tripped
-leniently (same posture as `task.js`), as long as the canonical headings/tokens stay intact.
+leniently (same posture as `tpm-task.js`), as long as the canonical headings/tokens stay intact.
 
 ## Why this exists
 
@@ -60,7 +59,7 @@ SEALED <date>          <- appended by `seal`, only once, at the very end
   line. `## Decisions` is append-only too, for the same reason (a decision, once made, is a fact about
   the past, not a piece of live state to edit).
 
-## Tokens (the SSOT — `lib/format.js` regexes match these exactly)
+## Tokens (the SSOT — `tpm-session-format.js` regexes match these exactly)
 
 | Token | Meaning | Owning verb |
 |---|---|---|
@@ -91,9 +90,9 @@ seal mechanism above.
 
 Those predate this tool: freeform prose, no `# SESSION NNN — …` title, no canonical headings. They are
 **not retroactively reformatted** — sealed notes are write-once, and there's no reader-side cost to
-supporting both shapes. `tpm-session open`'s "load latest notes" step, and `session-review.js`, both
+supporting both shapes. `tpm-session open`'s "load latest notes" step, and `tpm-session-review.js`, both
 check for `session-notes.md` first and fall back to `notes.md` — read the legacy ones as prose, not as
-token-parseable data. `session-notes.js` will refuse (`ENOTCANONICAL`) if ever pointed at one of these
+token-parseable data. `tpm-session-notes.js` will refuse (`ENOTCANONICAL`) if ever pointed at one of these
 via `--edit-sealed`, rather than silently trying to force them into the new structure.
 
 ## Length + tone

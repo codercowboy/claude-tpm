@@ -21,8 +21,8 @@ const SUITES = [
   'lib-format/test.js',
   'lib-config/test.js',
   'lib-current-session/test.js',
-  'session-notes/test.js',
-  'session-review/test.js',
+  'tpm-session-notes/test.js',
+  'tpm-session-review/test.js',
 ];
 
 function main() {

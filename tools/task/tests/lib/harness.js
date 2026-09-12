@@ -30,12 +30,12 @@ const { execFileSync } = require('child_process');
 const TOOL_ROOT = path.resolve(__dirname, '..', '..');
 
 const TOOLS = {
-  task: path.join(TOOL_ROOT, 'task.js'),
-  paths: path.join(TOOL_ROOT, 'lib', 'paths.js'),
-  config: path.join(TOOL_ROOT, 'lib', 'config.js'),
-  format: path.join(TOOL_ROOT, 'lib', 'format.js'),
-  store: path.join(TOOL_ROOT, 'lib', 'store.js'),
-  render: path.join(TOOL_ROOT, 'lib', 'render.js'),
+  task: path.join(TOOL_ROOT, 'tpm-task.js'),
+  paths: path.join(TOOL_ROOT, 'lib', 'tpm-task-paths.js'),
+  config: path.join(TOOL_ROOT, 'lib', 'tpm-task-config.js'),
+  format: path.join(TOOL_ROOT, 'lib', 'tpm-task-format.js'),
+  store: path.join(TOOL_ROOT, 'lib', 'tpm-task-store.js'),
+  render: path.join(TOOL_ROOT, 'lib', 'tpm-task-render.js'),
 };
 
 /** One counter per test file (call once at the top of each test.js). */
@@ -75,12 +75,12 @@ function runNode(scriptPath, args, opts = {}) {
   }
 }
 
-/** task.js with the store bound via --tasks-dir. */
+/** tpm-task.js with the store bound via --tasks-dir. */
 function runTask(store, args, opts = {}) {
   return runNode(TOOLS.task, ['--tasks-dir', store, ...args], opts);
 }
 
-/** task.js with NO --tasks-dir (for --help / --config-driven runs). */
+/** tpm-task.js with NO --tasks-dir (for --help / --config-driven runs). */
 function runTaskRaw(args, opts = {}) {
   return runNode(TOOLS.task, args, opts);
 }

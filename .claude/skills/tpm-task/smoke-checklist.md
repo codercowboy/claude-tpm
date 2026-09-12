@@ -5,8 +5,8 @@ selector interpretation, the confirm-before-destructive dialogue, the import col
 way `/tpm-spawn` was exercised. This is NOT a unit-test suite (that's `${TPM_HOME}/tools/task/tests/`); it's a set
 of cases with expected resolutions a human reads and confirms.
 
-> **Phase note (G11):** while staged, run the tool as `node out/tools/task/task.js --tasks-dir <sandbox>`
-> and read the skill files from `out/skills/tpm-task/`. Post-promotion the paths are `${TPM_HOME}/tools/task/task.js`
+> **Phase note (G11):** while staged, run the tool as `node out/tools/task/tpm-task.js --tasks-dir <sandbox>`
+> and read the skill files from `out/skills/tpm-task/`. Post-promotion the paths are `${TPM_HOME}/tools/task/tpm-task.js`
 > and `.claude/skills/tpm-task/`. Use a throwaway sandbox store, never `claude-context/tasks/`.
 
 ## Routing / alias interpretation

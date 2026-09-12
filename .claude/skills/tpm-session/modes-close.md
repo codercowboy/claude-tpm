@@ -3,6 +3,11 @@
 Loaded ONLY when `SKILL.md` resolves mode `close`. Parallels `modes-open.md` — the wrap-up
 counterpart. Collapses the old `session-close` skill into five steps + the universal footer.
 
+**A subagent must never run this skill.** `close` wraps up the orchestrator's own session (reap,
+session-notes seal, sign-off) — a worker's lifecycle is its spawn prompt + its working folder's
+`plan.md`, not this. If you were spawned as a subagent and somehow reached this file, STOP and
+follow your spawn prompt instead.
+
 ## Sequence
 
 1. **Run the reap ritual.** Call `/tpm-reap` — already built, live, and matches this design exactly
@@ -15,9 +20,9 @@ counterpart. Collapses the old `session-close` skill into five steps + the unive
    Module-gated: a no-op if `session.notes.enabled` is false. This is the one path — `close` does NOT
    duplicate the notes-writing logic.
 
-3. **Seal the session.** After `save` finishes, call `node ${TPM_HOME}/tools/session/session-notes.js
+3. **Seal the session.** After `save` finishes, call `node ${TPM_HOME}/tools/session/tpm-session-notes.js
    --sessions-dir <dir> seal` — stamps `SEALED <date>` in the note AND marks the current-session
-   pointer closed (`${TPM_HOME}/tools/session/lib/current-session.js`'s `sealSession`), so the NEXT bare
+   pointer closed (`${TPM_HOME}/tools/session/tpm-session-current.js`'s `sealSession`), so the NEXT bare
    `tpm-session` invocation (this session or a future one) opens fresh instead of reusing this folder.
 
 4. **`/export` nudge.** One-line reminder that `/export` (a Claude Code CLI command) saves a readable
@@ -36,7 +41,7 @@ counterpart. Collapses the old `session-close` skill into five steps + the unive
 - The consumer-extension pointer (a wrapper skill or `additionalCloseMessage`, not the canonical) —
   now `session.additionalCloseMessage`, already a live config key.
 - "Reap orphaned child sessions" — now delegated wholesale to `/tpm-reap` rather than the old inline
-  `ls tmp/sessions/` + `reap-child.sh` loop (step 1 above).
+  `ls tmp/sessions/` + `tpm-child-reap.sh` loop (step 1 above).
 
 ## What's different from the legacy `session-close` skill
 

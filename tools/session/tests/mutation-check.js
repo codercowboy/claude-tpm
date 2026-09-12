@@ -28,27 +28,27 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const PHASE_ROOT = path.resolve(__dirname, '..', '..');
-const TOOLS_DIR = path.join(PHASE_ROOT, 'tools', 'session');
+const PHASE_ROOT = path.resolve(__dirname, '..');
+const TOOLS_DIR = PHASE_ROOT;
 const T = (rel) => path.join(TOOLS_DIR, rel);
 const TEST = (rel) => path.join(__dirname, rel);
 
-const CONFIG = T('lib/config.js');
-const CURRENT_SESSION = T('lib/current-session.js');
-const FORMAT = T('lib/format.js');
-const SESSION_NOTES = T('session-notes.js');
-const SESSION_REVIEW = T('session-review.js');
+const CONFIG = T('tpm-session-config.js');
+const CURRENT_SESSION = T('tpm-session-current.js');
+const FORMAT = T('tpm-session-format.js');
+const SESSION_NOTES = T('tpm-session-notes.js');
+const SESSION_REVIEW = T('tpm-session-review.js');
 
 const CONFIG_TEST = TEST('lib-config/test.js');
 const CURRENT_SESSION_TEST = TEST('lib-current-session/test.js');
 const FORMAT_TEST = TEST('lib-format/test.js');
-const SESSION_NOTES_TEST = TEST('session-notes/test.js');
-const SESSION_REVIEW_TEST = TEST('session-review/test.js');
+const SESSION_NOTES_TEST = TEST('tpm-session-notes/test.js');
+const SESSION_REVIEW_TEST = TEST('tpm-session-review/test.js');
 
 // Each mutant: id, the tool file it lives in, the suite that must catch it, and a
 // find->replace pair (find must be a UNIQUE substring of the tool source).
 const MUTANTS = [
-  // ── lib/format.js ──────────────────────────────────────────────────────────
+  // ── tpm-session-format.js ──────────────────────────────────────────────────────────
   { id: 'format · nextOpenItemId uses length+1 instead of max(id)+1', file: FORMAT, test: FORMAT_TEST,
     find: 'return Math.max(...openItems.map((it) => it.id)) + 1;',
     replace: 'return openItems.length + 1; /* MUT */' },
@@ -59,7 +59,7 @@ const MUTANTS = [
     find: 'if (sealedAt) {\n    parts.push(\'\', `${SEALED_PREFIX} ${sealedAt}`);\n  }',
     replace: 'if (true) { /* MUT */\n    parts.push(\'\', `${SEALED_PREFIX} ${sealedAt}`);\n  }' },
 
-  // ── lib/current-session.js ─────────────────────────────────────────────────
+  // ── tpm-session-current.js ─────────────────────────────────────────────────
   { id: 'current-session · allocateNextNumber never advances past 0 (highest never updated)', file: CURRENT_SESSION, test: CURRENT_SESSION_TEST,
     find: 'if (m) highest = Math.max(highest, parseInt(m[1], 10));',
     replace: 'if (m) { /* MUT: highest never updated */ }' },
@@ -73,7 +73,7 @@ const MUTANTS = [
     find: "if (current.state !== 'open') {",
     replace: 'if (false) { /* MUT */' },
 
-  // ── lib/config.js ──────────────────────────────────────────────────────────
+  // ── tpm-session-config.js ──────────────────────────────────────────────────────────
   { id: 'config · nested notes.enabled override silently ignored', file: CONFIG, test: CONFIG_TEST,
     find: "if (typeof rawSession.notes.enabled === 'boolean') {\n      resolved.notes.enabled = rawSession.notes.enabled;\n    }",
     replace: "if (false) { /* MUT */\n      resolved.notes.enabled = rawSession.notes.enabled;\n    }" },
@@ -81,7 +81,7 @@ const MUTANTS = [
     find: 'if (!usedDefaultLocation) {',
     replace: 'if (false) { /* MUT */' },
 
-  // ── session-notes.js ───────────────────────────────────────────────────────
+  // ── tpm-session-notes.js ───────────────────────────────────────────────────────
   { id: 'session-notes · no-open-session guard neutered (writes would proceed with nothing open)', file: SESSION_NOTES, test: SESSION_NOTES_TEST,
     find: "if (current.state !== 'open') {",
     replace: 'if (false) { /* MUT */' },
@@ -98,7 +98,7 @@ const MUTANTS = [
     find: 'if (!item) {',
     replace: 'if (false) { /* MUT */' },
 
-  // ── session-review.js ──────────────────────────────────────────────────────
+  // ── tpm-session-review.js ──────────────────────────────────────────────────────
   { id: 'session-review · --grep match filters out every session unconditionally', file: SESSION_REVIEW, test: SESSION_REVIEW_TEST,
     find: 'if (!hitResume && openItems.length === 0 && decisions.length === 0 && log.length === 0) return null;',
     replace: 'return null; /* MUT */' },
@@ -130,11 +130,11 @@ function main() {
   }
 
   const suites = [
-    ['lib/format.js', FORMAT_TEST],
-    ['lib/current-session.js', CURRENT_SESSION_TEST],
-    ['lib/config.js', CONFIG_TEST],
-    ['session-notes.js', SESSION_NOTES_TEST],
-    ['session-review.js', SESSION_REVIEW_TEST],
+    ['tpm-session-format.js', FORMAT_TEST],
+    ['tpm-session-current.js', CURRENT_SESSION_TEST],
+    ['tpm-session-config.js', CONFIG_TEST],
+    ['tpm-session-notes.js', SESSION_NOTES_TEST],
+    ['tpm-session-review.js', SESSION_REVIEW_TEST],
   ];
   let baselineBad = false;
   for (const [name, t] of suites) {

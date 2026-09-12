@@ -56,20 +56,20 @@ spawn; it does not run or reason about the loop.
 
 Reference the tools by their promoted path (`${TPM_HOME}/tools/workflow/…`); a skill never bundles its own copy.
 
-1. **Scaffold the folder** (if not already present) — `node ${TPM_HOME}/tools/workflow/scaffold-subagent.js …`
+1. **Scaffold the folder** (if not already present) — `node ${TPM_HOME}/tools/workflow/tpm-workflow-scaffold-subagent.js …`
    (`add-phase` for a new phase, `add-round --role <role>` to append a kickback round in an existing
    phase — the tool auto-numbers the phase `NN` / round `r<N>` and drops the skeleton: `plan.md`
    stub, `charter-<role>.md` copied from the resolved `charterFile`, `spawn-prompt-<role>-r<N>.md`,
    `findings/ tools/ tests/ tmp/`, and the per-subagent `tmp/<role>-r<N>[-v<M>]/` scratch folder).
-   The role's charter + model come from `config-resolver.js`.
+   The role's charter + model come from `tpm-workflow-config-resolver.js`.
 2. **Fill `plan.md`** — pure structure (DoD triple table · task/method · Tools & MCP · curated
    Context · deliverables · constraints · budget). No posture — that's the charter file.
-3. **Compose the spawn prompt** — `node ${TPM_HOME}/tools/workflow/compose-spawn-prompt.js --role <role>
+3. **Compose the spawn prompt** — `node ${TPM_HOME}/tools/workflow/tpm-workflow-compose-spawn-prompt.js --role <role>
    --phase-dir <dir> --plan plan.md --charter charter-<role>.md [--round N --model <m>
    --project-root "$(pwd)" --out spawn-prompt-<role>-r<N>.md]`. Emits the working-folder line, the
    read-order (charter THEN plan), the env-source ritual, constraints, and return shape — you supply
    only the one `{{TASK_CONTEXT}}` fill.
-4. **Lint BEFORE the Agent call** — `node ${TPM_HOME}/tools/workflow/lint-subagent-prompt.js --file
+4. **Lint BEFORE the Agent call** — `node ${TPM_HOME}/tools/workflow/tpm-workflow-lint-subagent-prompt.js --file
    spawn-prompt-<role>-r<N>.md --manifest ${TPM_HOME}/claude-context/methodology/subagent/reading-list.md
    --require-charter --charter-dir <dir> [--verifier] [--resume]`. Exits 0 = PASS, 1 = FAIL with a
    per-check missing-directive list. Do NOT spawn on a FAIL. The lint enforces the manifest reading

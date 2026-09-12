@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
- * tests/session/lib-format/test.js — genuine tests for tools/session/lib/format.js.
+ * tests/session/lib-format/test.js — genuine tests for tools/session/tpm-session-format.js.
  *
  * PURPOSE
- *   format.js is the write/read token SSOT: buildTitle/parseNote/renderNote/nextOpenItemId.
+ *   tpm-session-format.js is the write/read token SSOT: buildTitle/parseNote/renderNote/nextOpenItemId.
  *   Every one of these is a pure function (no fs, no CLI) so they're tested in-process,
  *   directly against real content strings, asserting on the actual parsed/rendered values —
  *   not "it didn't throw."
  *
  *   Includes a test (see "log status round-trip" below) pinning that a non-canonical
- *   `--status` tag round-trips through parseNote — session-notes.js's docstring promises
- *   `log <TAG>` is free text ("no enforced enum"), and format.js's LOG_ENTRY_RE must honor
+ *   `--status` tag round-trips through parseNote — tpm-session-notes.js's docstring promises
+ *   `log <TAG>` is free text ("no enforced enum"), and tpm-session-format.js's LOG_ENTRY_RE must honor
  *   that, not silently drop any tag outside the 6 STATUS_TAGS. (Bug-fixer r1: this test used
  *   to pin the OPPOSITE — the data-loss bug the verifier's verdict flagged as blocking — see
  *   findings/HANDOFF.md "Bug-fixer r1" for the fix write-up.)
@@ -171,14 +171,14 @@ check('nextOpenItemId returns max(existing ids) + 1, not length + 1', () => {
 
 // ---- log status round-trip: a non-canonical status tag is preserved, not dropped ----
 //
-// session-notes.js's docstring says `log --status <TAG>` takes free text ("no enforced enum").
+// tpm-session-notes.js's docstring says `log --status <TAG>` takes free text ("no enforced enum").
 // LOG_ENTRY_RE must honor that: a bracketed tag outside the 6 STATUS_TAGS must still parse.
 // (Bug-fixer r1: prior to this fix, LOG_ENTRY_RE only recognized the 6 STATUS_TAGS values, so
 // any log line with a different tag failed to match on the NEXT parse — and because
-// session-notes.js always reloads-then-rerenders the whole file (loadOrInitSections ->
+// tpm-session-notes.js always reloads-then-rerenders the whole file (loadOrInitSections ->
 // writeSections), the unrecognized entry silently DISAPPEARED from the file the next time
 // anything was written to that session. See findings/HANDOFF.md "Bug-fixer r1" and the
-// end-to-end CLI regression in tests/session/session-notes/test.js for the full-stack proof.)
+// end-to-end CLI regression in tests/session/tpm-session-notes/test.js for the full-stack proof.)
 
 check('a log line with a non-canonical status tag IS parsed back (no data loss on re-render)', () => {
   const withCustomTag = [

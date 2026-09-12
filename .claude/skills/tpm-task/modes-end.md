@@ -22,7 +22,7 @@ add → [ OPEN #N ] ──start──▶ in-progress   (stays in task-index.md; 
 
 ## Safety rules (enforce BEFORE calling the tool) — §7
 
-1. **Resolve → CONFIRM.** Turn any fuzzy/semantic selector into concrete ids (`task.js resolve …` for
+1. **Resolve → CONFIRM.** Turn any fuzzy/semantic selector into concrete ids (`tpm-task.js resolve …` for
    deterministic selectors; read `list`/`show` for semantic ones). **Echo the exact `#`s + headlines**
    and get a yes before mutating. Never act on a fuzzy selector unconfirmed.
 2. **Multi-target selectors** (`last 5`, a range) are ALWAYS listed before acting.
@@ -34,28 +34,28 @@ add → [ OPEN #N ] ──start──▶ in-progress   (stays in task-index.md; 
 
 ## `finish`
 
-`task.js … finish <id> --action "<what was done>"`. The `--action` text is required (it becomes the
+`tpm-task.js … finish <id> --action "<what was done>"`. The `--action` text is required (it becomes the
 `End action:` line) — draft a one-line "what was actually done / where it shipped" from the user's
 words. Confirm the id + headline first unless `autoConfirm.finish` is true.
 
 ## `drop`
 
-`task.js … drop <id> --reason "<why>"`. Stamps `dropped` + `End action: WON'T DO — <reason>`. Draft the
+`tpm-task.js … drop <id> --reason "<why>"`. Stamps `dropped` + `End action: WON'T DO — <reason>`. Draft the
 reason from the user. Confirm unless `autoConfirm.drop` is true.
 
 ## `remove` — non-destructive by default
 
-- **Default (`task.js … remove <id>`)** moves the task to the removed stash — say *"stashed to removed,
+- **Default (`tpm-task.js … remove <id>`)** moves the task to the removed stash — say *"stashed to removed,
   recoverable via `reopen`."* This is the safe default; prefer it.
 - **Hard delete (`--hard`)** only when the user EXPLICITLY says not to stash / to delete permanently.
   First warn, verbatim intent: *"This permanently deletes #<id> with NO stash — unrecoverable. Confirm?"*
-  Only on an explicit yes call `task.js … remove <id> --hard`. Hard delete is **always** confirmed,
+  Only on an explicit yes call `tpm-task.js … remove <id> --hard`. Hard delete is **always** confirmed,
   regardless of any `autoConfirm`, and is **blocked entirely** when `allowHardDelete: false` (the tool
   refuses — relay that).
 
 ## `reopen`
 
-`task.js … reopen <id>`. Any ended/removed task → back to `open` (keeps its Created date; strips the now
+`tpm-task.js … reopen <id>`. Any ended/removed task → back to `open` (keeps its Created date; strips the now
 -stale `Ended:` / `End action:` lines; stamps `Reopened:` as history — G4). Reopening an already-active
 task is a no-op notice. Use `reopen` before re-`finish`/`start`/`drop` on a task the tool refused as a
 nonsensical transition.

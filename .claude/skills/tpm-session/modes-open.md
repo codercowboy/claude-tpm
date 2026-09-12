@@ -1,26 +1,24 @@
 # `tpm-session open` — boot the TPM engine
 
-Loaded ONLY when `SKILL.md` resolves mode `open` (explicit `tpm-session open` or bare invocation with
-no session currently open). This is the LARGE body — the whole reading-chain sequence — split out of
-the router per progressive disclosure (same shape as `tpm-workflow`'s `modes-plan.md` etc).
-
 ## Purpose
 
 `tpm-session open` boots the TPM engine: it reads config for enabled modules, loads the core reading
 list + project state, surfaces available capabilities, and gates before any load-bearing work.
 
-Booting the engine puts you in orchestrator/TPM mode for your scope. (A plain worker follows its own
+**You are the ORCHESTRATOR for this scope.** Booting the engine adopts the orchestrator/TPM role: you
+drive the multi-agent system — walking the orchestrator reading list, holding project state, and
+directing subagents — rather than doing scoped worker tasks yourself. (A plain worker follows its own
 `plan.md`, not this — but nested orchestration IS allowed; charter secrecy is enforced per-round by
 the workflow module, not by gatekeeping who may boot.)
 
 ## Boot sequence
 
-1. **Allocate/confirm the session.** Call `node ${TPM_HOME}/tools/session/lib/current-session.js --sessions-dir
+1. **Allocate/confirm the session.** Call `node ${TPM_HOME}/tools/session/tpm-session-current.js --sessions-dir
    <dir> --open` (idempotent — if a session is already open this session, it returns the SAME number
    rather than minting a new one). This is what fixes the old "every close mints a new folder" bug:
    the folder is established HERE, once, and `save`/`close` only ever update it.
 
-2. **Read config** — `.claude/claude-tpm/config.json` via `${TPM_HOME}/tools/session/lib/config.js --json`
+2. **Read config** — `.claude/claude-tpm/config.json` via `${TPM_HOME}/tools/session/tpm-session-config.js --json`
    (session section) and the project's other module resolvers as needed → which modules are enabled.
    This decides what else loads below.
 

@@ -31,20 +31,20 @@ const TOOL_ROOT = path.resolve(__dirname, '..');
 const T = (rel) => path.join(TOOL_ROOT, rel);
 const TEST = (rel) => path.join(__dirname, rel);
 
-const FORMAT = T('lib/format.js');
-const RENDER = T('lib/render.js');
-const STORE = T('lib/store.js');
-const TASK = T('task.js');
-const CONFIG = T('lib/config.js');
+const FORMAT = T('lib/tpm-task-format.js');
+const RENDER = T('lib/tpm-task-render.js');
+const STORE = T('lib/tpm-task-store.js');
+const TASK = T('tpm-task.js');
+const CONFIG = T('lib/tpm-task-config.js');
 
 const FORMAT_TEST = TEST('format/test.js');
 const RENDER_TEST = TEST('render/test.js');
-const TASK_TEST = TEST('task/test.js');
+const TASK_TEST = TEST('tpm-task/test.js');
 
 // Each mutant: id, tool file, the suite that must catch it, and a find->replace pair.
 // `find` MUST be a UNIQUE substring of the CURRENT tool source (checked below).
 const MUTANTS = [
-  // ── lib/format.js  (caught by tests/format/test.js) ─────────────────────────
+  // ── lib/tpm-task-format.js  (caught by tests/format/test.js) ─────────────────────────
   { id: 'format · setSubtaskChecked idempotency guard neutered (already-checked re-writes + reports changed)',
     file: FORMAT, test: FORMAT_TEST,
     find: 'if (target.checked === checked) return { raw, existed: true, changed: false };',
@@ -61,7 +61,7 @@ const MUTANTS = [
     file: FORMAT, test: FORMAT_TEST,
     find: 'const done = parsed.subtasks.items.filter((it) => it.checked).length;',
     replace: 'const done = parsed.subtasks.items.filter((it) => it.checked).length + 1;' },
-  // dedupeManagedFields — caught by tests/task/test.js (the C3 + C3-narrowing regression blocks).
+  // dedupeManagedFields — caught by tests/tpm-task/test.js (the C3 + C3-narrowing regression blocks).
   { id: 'format · dedupeManagedFields collapse neutered (a hand-duplicated in-block State: line is NOT dropped — C3)',
     file: FORMAT, test: TASK_TEST,
     find: 'if (seen.has(key)) drop.add(i); else seen.add(key);',
@@ -71,7 +71,7 @@ const MUTANTS = [
     find: 'if (!fm) break; // first blank / non-managed-field line ENDS the contiguous state block',
     replace: 'if (!fm) continue; // MUT: free whole-body scan' },
 
-  // ── lib/render.js  (caught by tests/render/test.js) ─────────────────────────
+  // ── lib/tpm-task-render.js  (caught by tests/render/test.js) ─────────────────────────
   { id: 'render · ladder "today" boundary D<=0 -> D<0 (same-day no longer today)',
     file: RENDER, test: RENDER_TEST,
     find: "if (D <= 0) return 'today';",
@@ -93,7 +93,7 @@ const MUTANTS = [
     find: "case 'id': copy.sort((a, b) => a.num - b.num); break;",
     replace: "case 'id': copy.sort((a, b) => b.num - a.num); break;" },
 
-  // ── task.js  (caught by tests/task/test.js — classifyTransition matrix) ──────
+  // ── tpm-task.js  (caught by tests/tpm-task/test.js — classifyTransition matrix) ──────
   { id: 'task · classifyTransition redundant branch neutered (redundant cells misclassified)',
     file: TASK, test: TASK_TEST,
     find: "if (t.redundantFrom.includes(current)) return { result: 'redundant', target: t.target };",
@@ -103,7 +103,7 @@ const MUTANTS = [
     find: "return { result: 'illegal', target: t.target };",
     replace: "return { result: 'legal', target: t.target };" },
 
-  // ── lib/store.js  (caught by tests/task/test.js — behavioral) ───────────────
+  // ── lib/tpm-task-store.js  (caught by tests/tpm-task/test.js — behavioral) ───────────────
   { id: 'store · peekNextId startId floor off-by-one (first id no longer startId)',
     file: STORE, test: TASK_TEST,
     find: 'const highest = Math.max(highestKnownId(tasksDir), startId - 1);',
@@ -121,7 +121,7 @@ const MUTANTS = [
     find: 'for (const r of idx.rows) highest = Math.max(highest, r.num);',
     replace: 'for (const r of idx.rows) highest = Math.max(highest, 0); /* MUT */' },
 
-  // ── lib/config.js  (caught by tests/task/test.js — allowHardDelete gate) ────
+  // ── lib/tpm-task-config.js  (caught by tests/tpm-task/test.js — allowHardDelete gate) ────
   { id: 'config · allowHardDelete override ignored (hard-delete cannot be disabled)',
     file: CONFIG, test: TASK_TEST,
     find: "if (typeof rawTasks.allowHardDelete === 'boolean') resolved.allowHardDelete = rawTasks.allowHardDelete;",
@@ -147,7 +147,7 @@ function main() {
   const suites = [
     ['format/test.js', FORMAT_TEST],
     ['render/test.js', RENDER_TEST],
-    ['task/test.js', TASK_TEST],
+    ['tpm-task/test.js', TASK_TEST],
   ];
   let baselineBad = false;
   for (const [name, t] of suites) {

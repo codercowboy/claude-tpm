@@ -12,7 +12,7 @@ what happens, not as instructions to execute by hand.
 ## On start (boot)
 
 `tpm-session open` (see `.claude/skills/tpm-session/modes-open.md`):
-1. Allocates or confirms the current session via `tools/session/lib/current-session.js --open`
+1. Allocates or confirms the current session via `tools/session/tpm-session-current.js --open`
    (idempotent — reuses the current session's number if one is already open this session).
 2. Loads the notes from the HIGHEST-numbered `claude-context/sessions/session-NNN/` folder — checking
    `session-notes.md` first, falling back to `notes.md` for the legacy pre-tool sessions (001–007).
@@ -37,7 +37,7 @@ rule: state is rewritten in place, the log is append-only).
 2. A genuinely NEW session (no session currently open — e.g. a fresh `tpm-session open`, or the prior
    session's pointer was closed by `seal`) allocates the NEXT number: highest existing `session-NNN` +
    1, zero-padded to three digits. This still holds the old numbering invariant — sequential, no gaps,
-   highest = most recent — it's just allocated automatically by `tools/session/lib/current-session.js`
+   highest = most recent — it's just allocated automatically by `tools/session/tpm-session-current.js`
    instead of by hand.
 3. A prior session's notes are **never** overwritten by a later one — `close`'s `seal` step marks the
    pointer closed and stamps `SEALED <date>` in the note, after which the write API refuses further

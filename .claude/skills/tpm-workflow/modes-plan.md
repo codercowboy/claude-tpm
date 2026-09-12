@@ -7,7 +7,7 @@ BEFORE any spawn.** Present the plan for review, then hand off to `run` mode.
 ## 1. Resolve config first (the raw defaults)
 
 ```
-node ${TPM_HOME}/tools/workflow/config-resolver.js --json
+node ${TPM_HOME}/tools/workflow/tpm-workflow-config-resolver.js --json
 ```
 
 This hands you the RESOLVED picture — the **7 personas** (`subagentConfigs[]`: `planning` · `builder`
@@ -80,10 +80,10 @@ Advanced — all defaulted ("-v" expands):
      time 2h · scope task-folder · retries builder 5 / verify-loop 5 / everyone-else 1
 ```
 
-**Sample B — a `docs` round (document the already-delivered `cost-ledger.js`):**
+**Sample B — a `docs` round (document the already-delivered `tpm-workflow-cost-ledger.js`):**
 
 ```
-Pre-task — docs round: document cost-ledger.js
+Pre-task — docs round: document tpm-workflow-cost-ledger.js
 Defaults run the team AS CONFIGURED. Reply "all defaults" to accept; name only what you want changed.
 
 ① Roster + sequencing — serial:
@@ -93,13 +93,13 @@ Defaults run the team AS CONFIGURED. Reply "all defaults" to accept; name only w
      (no builder → no charter choice)
 
 ② Definition of "done" — [draft, confirm/edit]:
-     • cost-ledger.md covers every subcommand + flag
+     • tpm-workflow-cost-ledger.md covers every subcommand + flag
      • each claim run-verified against --help
      • a doc-accuracy check the verifier can reproduce
 
 ③ Paths:
-     in:   tools/workflow/cost-ledger.js   (read-only)
-     out:  tools/workflow/cost-ledger.md
+     in:   tools/workflow/tpm-workflow-cost-ledger.js   (read-only)
+     out:  tools/workflow/tpm-workflow-cost-ledger.md
 
 Advanced — all defaulted ("-v" expands):
      time 1h · scope task-folder · retries documentarian 1 / verify-loop 5 / verifier 1
@@ -154,15 +154,15 @@ harm is not "knowing another role exists," it's *adopting the weaker definition 
 > **Gate A — questions answered (gates SCAFFOLDING).** Present the §2 roster, then STOP. When the user
 > answers (`all defaults` or explicit deltas): (1) capture it to **`dev/<epic>/00-epic-plan/pretask-<NN>.md`**
 > — the roster shown, the user's response **quoted**, an **`**Accepted:** <their phrase>`** line; (2) record
-> it: **`node ${TPM_HOME}/tools/workflow/signoff.js questions --roster "<one-line>"`**; then scaffold. EVERY `add-phase`
+> it: **`node ${TPM_HOME}/tools/workflow/tpm-workflow-signoff.js questions --roster "<one-line>"`**; then scaffold. EVERY `add-phase`
 > passes **`--pretask-ack <that receipt>`** and **the scaffolder REFUSES without it** (exit 1). *(This got
 > silently skipped in session-007. No bypass flag: if you want one, you haven't run §2.)*
 >
 > **Gate B — spawn confirmed (gates the SPAWN itself — the critical gate).** After scaffolding + composing +
 > linting, ask an **explicit** "kick it off now?" and STOP. A rambly / discussion / "process-what-I'm-saying"
-> turn is **NOT** a kickoff. Only on an explicit "yes": **`node ${TPM_HOME}/tools/workflow/signoff.js spawn --round
+> turn is **NOT** a kickoff. Only on an explicit "yes": **`node ${TPM_HOME}/tools/workflow/tpm-workflow-signoff.js spawn --round
 > "<phase-dir>" --roster "<one-line>"`** (`--round` = the phase-folder path), then spawn. A **`PreToolUse` hook**
-> (`hooks/gate-spawn.js`) BLOCKS any workflow spawn whose `compose`-stamped marker (`<!-- tpm-workflow-spawn
+> (`hooks/tpm-workflow-gate-spawn.js`) BLOCKS any workflow spawn whose `compose`-stamped marker (`<!-- tpm-workflow-spawn
 > phase=… -->`) has no **fresh, same-round, same-session** `spawn` token — so a missed/faked Gate B, or a
 > token for a different round, fails loudly at spawn time. **Only ever write the token from an explicit user
 > confirmation — never from your own inference.**
@@ -176,8 +176,8 @@ harm is not "knowing another role exists," it's *adopting the weaker definition 
 than one delivery agent shares the deliverable** — `full` (planner → builder → test-writer →
 documentarian), or multiple builders. Below that, no epic overhead.
 
-- **Epic:** `node ${TPM_HOME}/tools/workflow/scaffold-subagent.js epic-init dev/<epic>` then
-  `node ${TPM_HOME}/tools/workflow/scaffold-subagent.js add-phase dev/<epic> --slug <slug> --team <team> --pretask-ack dev/<epic>/00-epic-plan/pretask-<NN>.md`.
+- **Epic:** `node ${TPM_HOME}/tools/workflow/tpm-workflow-scaffold-subagent.js epic-init dev/<epic>` then
+  `node ${TPM_HOME}/tools/workflow/tpm-workflow-scaffold-subagent.js add-phase dev/<epic> --slug <slug> --team <team> --pretask-ack dev/<epic>/00-epic-plan/pretask-<NN>.md`.
   `add-phase` auto-computes the next `NN` (append-only; never renumber), drops the phase skeleton:
   `plan.md` (**seeded from the config's `planTemplateFile` when one resolves on disk — the scaffolder
   consumes it, phase 24 fix #9; the built-in sentinel stub is only the fallback**), per-role
@@ -209,7 +209,7 @@ marks as wrong/stale so the worker doesn't trust it.
 ## 6. Compose + lint the spawn prompt — BEFORE the spawn
 
 ```
-node ${TPM_HOME}/tools/workflow/compose-spawn-prompt.js --role builder \
+node ${TPM_HOME}/tools/workflow/tpm-workflow-compose-spawn-prompt.js --role builder \
   --phase-dir 'dev/<epic>/NN-<slug>' --plan plan.md --charter charter-builder.md \
   [--round 1 --model <model> --project-root "$(pwd)" --out spawn-prompt-builder-r1.md]
 ```
@@ -218,7 +218,7 @@ Then **lint** the finalized plan/charter/prompt (the poka-yoke that makes token-
 safe — you grep the template, the lint catches the gaps):
 
 ```
-node ${TPM_HOME}/tools/workflow/lint-subagent-prompt.js --file spawn-prompt-builder-r1.md \
+node ${TPM_HOME}/tools/workflow/tpm-workflow-lint-subagent-prompt.js --file spawn-prompt-builder-r1.md \
   --manifest ${TPM_HOME}/claude-context/methodology/subagent/reading-list.md \
   --require-charter --charter-dir 'dev/<epic>/NN-<slug>' [--verifier] [--resume]
 ```

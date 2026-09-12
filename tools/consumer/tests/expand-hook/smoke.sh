@@ -20,7 +20,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../../../.." && pwd)"
 HOOK="$REPO/tools/consumer/hooks/expand-tpm-home.js"
-CHECK="$REPO/tools/consumer/check-json.js"
+CHECK="$REPO/tools/consumer/tpm-consumer-check-json.js"
 command -v claude >/dev/null 2>&1 || { echo "smoke: 'claude' not on PATH"; exit 2; }
 command -v node   >/dev/null 2>&1 || { echo "smoke: 'node' not on PATH"; exit 2; }
 [ -f "$HOOK" ]  || { echo "smoke: missing hook $HOOK"; exit 2; }

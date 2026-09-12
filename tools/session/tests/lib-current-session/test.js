@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * tests/session/lib-current-session/test.js — genuine tests for tools/session/lib/current-session.js.
+ * tests/session/lib-current-session/test.js — genuine tests for tools/session/tpm-session-current.js.
  *
  * PURPOSE
  *   The state-resolver + NNN allocator (build-plan.md task A2) — the single riskiest piece of
@@ -134,7 +134,7 @@ check('after seal (with a real session-NNN folder on disk, as a note write would
   const dir = mkSandbox('seal-then-reopen');
   const first = cs.openSession({ sessionsDir: dir });
   // allocateNextNumber scans actual session-NNN FOLDERS on disk, not the pointer — openSession
-  // itself never creates one (that's session-notes.js's job on the first real note write). To
+  // itself never creates one (that's tpm-session-notes.js's job on the first real note write). To
   // exercise the realistic "a note was written, then sealed, then reopened" path, create the
   // folder the write API would have created before sealing.
   fs.mkdirSync(path.join(dir, `session-${first.number}`), { recursive: true });

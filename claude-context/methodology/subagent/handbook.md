@@ -8,7 +8,7 @@
 
 **Shared workflow conventions** — findings-doc format, resumption protocol, reading heuristics, onboarding ritual — live in [`../shared-conventions.md`](../shared-conventions.md). Verification conventions live in [`../verification.md`](../verification.md). Tools conventions live in [`../tool-conventions.md`](../tool-conventions.md). This manual cross-references rather than duplicates. **What your round must produce is defined by the Charter section of your `plan.md`** — these docs describe how, the charter defines what.
 
-> **Your reading chain is [`reading-list.md`](./reading-list.md)** — the single source of truth for what a subagent reads, including the conditional blocks for resume / shipping / live-system / verifier spawns. It is complete; you need nothing outside it. `tools/workflow/lint-subagent-prompt.js` derives its checks from that same file, so the documented chain and the enforced chain cannot drift.
+> **Your reading chain is [`reading-list.md`](./reading-list.md)** — the single source of truth for what a subagent reads, including the conditional blocks for resume / shipping / live-system / verifier spawns. It is complete; you need nothing outside it. `tools/workflow/tpm-workflow-lint-subagent-prompt.js` derives its checks from that same file, so the documented chain and the enforced chain cannot drift.
 
 ---
 

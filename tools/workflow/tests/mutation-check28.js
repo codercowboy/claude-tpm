@@ -39,20 +39,20 @@ const TASK = __dirname;
 const T = rel => path.join(TASK, rel);
 
 // Tool + suite locations (grouped by tool).
-const SCAFFOLD      = T('scaffold-config/tools/scaffold-subagent.js');
-const CONFIG        = T('scaffold-config/tools/config-resolver.js');
-const CHECKFILENAME = T('scaffold-config/tools/check-filename.js');
-const LINT          = T('lint/tools/lint-subagent-prompt.js');
-const COMPOSE       = T('compose/tools/compose-spawn-prompt.js');
-const AUDIT         = T('audit-cost/tools/audit.js');
-const COSTLEDGER    = T('audit-cost/tools/cost-ledger.js');
+const SCAFFOLD      = T('tpm-workflow-scaffold-config/tools/scaffold-subagent.js');
+const CONFIG        = T('tpm-workflow-scaffold-config/tools/config-resolver.js');
+const CHECKFILENAME = T('tpm-workflow-scaffold-config/tools/check-filename.js');
+const LINT          = T('tpm-workflow-lint/tools/lint-subagent-prompt.js');
+const COMPOSE       = T('tpm-workflow-compose/tools/compose-spawn-prompt.js');
+const AUDIT         = T('tpm-workflow-audit-cost/tools/audit.js');
+const COSTLEDGER    = T('tpm-workflow-audit-cost/tools/cost-ledger.js');
 
-const SCAFFOLD_TEST = T('scaffold-config/tests/scaffold-subagent/test.js');
-const CONFIG_TEST   = T('scaffold-config/tests/config-resolver/test.js');
-const LINT_TEST     = T('lint/tests/lint-subagent-prompt/test.js');
-const COMPOSE_TEST  = T('compose/tests/compose.test.js');
-const AUDIT_TEST    = T('audit-cost/tests/audit.test.js');
-const COST_TEST     = T('audit-cost/tests/cost-ledger.test.js');
+const SCAFFOLD_TEST = T('tpm-workflow-scaffold-config/tests/scaffold-subagent/test.js');
+const CONFIG_TEST   = T('tpm-workflow-scaffold-config/tests/config-resolver/test.js');
+const LINT_TEST     = T('tpm-workflow-lint/tests/lint-subagent-prompt/test.js');
+const COMPOSE_TEST  = T('tpm-workflow-compose/tests/compose.test.js');
+const AUDIT_TEST    = T('tpm-workflow-audit-cost/tests/audit.test.js');
+const COST_TEST     = T('tpm-workflow-audit-cost/tests/cost-ledger.test.js');
 
 // Each mutant: id, the tool file it lives in, the suite that must catch it, and a
 // find→replace pair (find must be a UNIQUE substring of the tool source).

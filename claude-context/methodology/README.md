@@ -11,7 +11,7 @@ Which docs you read depends on which actor you are. Two lists own that:
   session-open order. Includes the orchestrator-only docs.
 - **[`subagent/reading-list.md`](./subagent/reading-list.md)** — the subagent's set: a base chain
   plus conditional blocks per spawn flavor (resume / shipping / live-system / verifier). This is the
-  single source of truth for the step-zero reading chain, and `tools/workflow/lint-subagent-prompt.js`
+  single source of truth for the step-zero reading chain, and `tools/workflow/tpm-workflow-lint-subagent-prompt.js`
   parses it directly, so the two cannot drift.
 
 > ⚠️ **Subagents read only the subagent list.** The orchestrator list carries project-management

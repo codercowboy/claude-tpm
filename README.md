@@ -113,7 +113,7 @@ Being ported and generalized in phases:
    automation, hygiene routines, and an adoption path for child projects).
 
 Provenance of every ported file (source, original hash, what was stripped) is
-tracked so the port stays auditable — see `claude-context/dev/port-ledger.md`.
+tracked so the port stays auditable.
 
 ## Repository layout
 

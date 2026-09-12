@@ -4,9 +4,9 @@
 #
 # Runs headless `claude -p` probes INSIDE a claude-tpm CONSUMER project and asserts on them
 # DETERMINISTICALLY: each probe asks the consumer-claude to answer in a STRICT JSON schema, then
-# check-json.js parses that JSON and checks fields (instead of fuzzy-grepping prose). This is the
-# LLM-in-the-loop complement to the zero-dep node unit tests — it proves the lived integration (does the
-# CLAUDE.md -> boot.md -> skill-discovery flow actually work when consumed).
+# tpm-consumer-check-json.js parses that JSON and checks fields (instead of fuzzy-grepping prose). This is the
+# LLM-in-the-loop complement to the zero-dep node unit tests — it proves the lived integration (do the
+# plugin-loaded tpm-* skills actually surface + resolve their ${TPM_HOME} refs when consumed).
 #
 # Repeatable + growing: run it after scaffolding a consumer (the scaffolder offers to), and re-run it as
 # we build skills — each new behavior gets one more `probe` below.
@@ -28,13 +28,13 @@ command -v node   >/dev/null 2>&1 || { echo "smoke: 'node' not on PATH"; exit 2;
 
 PASS=0; FAIL=0
 
-# probe <name> <prompt-asking-for-JSON> <check-json.js args…>
+# probe <name> <prompt-asking-for-JSON> <tpm-consumer-check-json.js args…>
 probe() {
   local name="$1"; shift
   local prompt="$1"; shift
   printf '── probe: %s\n' "$name"
   if ( cd "$DIR" && claude -p "$prompt" --permission-mode auto ) </dev/null 2>&1 \
-       | node "$HERE/check-json.js" "$@"; then
+       | node "$HERE/tpm-consumer-check-json.js" "$@"; then
     printf '   ⇒ PASS\n'; PASS=$((PASS + 1))
   else
     printf '   ⇒ FAIL\n'; FAIL=$((FAIL + 1))
@@ -45,15 +45,14 @@ echo "=== claude-tpm consumer smoke tests → $DIR ==="
 
 # ── PROBES (add one per skill/behavior as the toolset grows) ─────────────────
 
-# 1. Boot -> discovery: the vendored tpm-* skills surface, self-reported in strict JSON.
-probe "boot-and-skills" \
-'Follow the boot instructions in your CLAUDE.md, then reply with ONLY this JSON object (no prose, no code fences):
-{"boot_ran": <true|false: did you read boot.md?>,
- "tpm_skills": [<exact names of every tpm-* skill available to you>],
+# 1. Skills present at boot: under the plugin route the tpm-* skills eager-load, so they're live from
+#    message #1 with NO boot preamble (no CLAUDE.md boot block, no boot.md). Ask COLD, assert the JSON.
+probe "skills-present" \
+'Without reading any "boot" file or special setup instructions, reply with ONLY this JSON object (no prose, no code fences), describing the skills / slash-commands available to you right now:
+{"tpm_skills": [<exact names of every tpm-* skill available to you, e.g. tpm-session>],
  "tpm_session_present": <true|false>,
  "tpm_workflow_present": <true|false>,
- "notes": "<any missing-file or path errors you hit while booting, else empty string>"}' \
-  --truthy boot_ran \
+ "notes": "<any errors, else empty string>"}' \
   --eq tpm_session_present=true \
   --eq tpm_workflow_present=true \
   --includes tpm_skills=tpm-session \

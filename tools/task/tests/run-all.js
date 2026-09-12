@@ -8,9 +8,9 @@
  *   PASS/FAIL line, and exits non-zero if anything failed. This is the GREEN baseline the
  *   mutation-check depends on and the verifier re-runs.
  *
- *   NOTE: tests/task/bug-repros.test.js is DELIBERATELY not listed here — it documents
+ *   NOTE: tests/tpm-task/bug-repros.test.js is DELIBERATELY not listed here — it documents
  *   confirmed defects as failing repros (expected RED) for the bug-fixer loop, and would (by
- *   design) fail this runner. Run it directly: `node tests/task/bug-repros.test.js`.
+ *   design) fail this runner. Run it directly: `node tests/tpm-task/bug-repros.test.js`.
  *
  * HOW TO RUN
  *   node tests/run-all.js
@@ -25,7 +25,7 @@ const { execFileSync } = require('child_process');
 const SUITES = [
   'format/test.js',
   'render/test.js',
-  'task/test.js',
+  'tpm-task/test.js',
 ];
 
 function main() {

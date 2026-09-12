@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * tests/render/test.js — unit suite for lib/render.js (age ladder G2, sort orders, selector grammar G5).
+ * tests/render/test.js — unit suite for lib/tpm-task-render.js (age ladder G2, sort orders, selector grammar G5).
  *
  * WHAT IT GUARDS
  *   - The G2 age ladder at EVERY Q3 boundary (today / Xh / Xd 1-13 / Xw 14-69 / Xmo >=70), incl.
@@ -97,4 +97,4 @@ const sinceRes = render.resolveSelector('all', {
 });
 eq('selector --since filters out older rows', sinceRes.ids, [2]);
 
-process.stdout.write(`\nPASS — ${count()}/${count()} lib/render.js assertions green\n`);
+process.stdout.write(`\nPASS — ${count()}/${count()} lib/tpm-task-render.js assertions green\n`);

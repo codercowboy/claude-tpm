@@ -12,6 +12,9 @@
     "url": "https://github.com/codercowboy/claude-tpm"
   },
   "homepage": "https://github.com/codercowboy/claude-tpm",
+  "bin": {
+    "tpm": "tools/tpm.js"
+  },
   "files": [
     ".claude/skills",
     "claude-context/methodology",
@@ -22,6 +25,6 @@
   ],
   "scripts": {
     "test": "node tools/workflow/tests/mutation-check28.js",
-    "scaffold-consumer": "node tools/consumer/scaffold-consumer.js"
+    "scaffold-consumer": "node tools/consumer/tpm-consumer-scaffold.js"
   }
 }

@@ -29,19 +29,18 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-// tests/session/lib/harness.js -> ../../.. = the phase folder root
-// (dev/session-notes-build/02-build-session-subsystem/)
-const PHASE_ROOT = path.resolve(__dirname, '..', '..', '..');
-const TOOLS_DIR = path.join(PHASE_ROOT, 'tools', 'session');
+// tools/session/tests/lib/harness.js -> ../.. = the tools/session suite root
+const PHASE_ROOT = path.resolve(__dirname, '..', '..');
+const TOOLS_DIR = PHASE_ROOT;
 const SANDBOX_ROOT = path.join(PHASE_ROOT, 'tmp', 'test-writer-r1', 'sandbox');
 
 const TOOLS = {
-  paths: path.join(TOOLS_DIR, 'lib', 'paths.js'),
-  config: path.join(TOOLS_DIR, 'lib', 'config.js'),
-  currentSession: path.join(TOOLS_DIR, 'lib', 'current-session.js'),
-  format: path.join(TOOLS_DIR, 'lib', 'format.js'),
-  sessionNotes: path.join(TOOLS_DIR, 'session-notes.js'),
-  sessionReview: path.join(TOOLS_DIR, 'session-review.js'),
+  paths: path.join(TOOLS_DIR, 'tpm-session-paths.js'),
+  config: path.join(TOOLS_DIR, 'tpm-session-config.js'),
+  currentSession: path.join(TOOLS_DIR, 'tpm-session-current.js'),
+  format: path.join(TOOLS_DIR, 'tpm-session-format.js'),
+  sessionNotes: path.join(TOOLS_DIR, 'tpm-session-notes.js'),
+  sessionReview: path.join(TOOLS_DIR, 'tpm-session-review.js'),
 };
 
 /** One counter per test file (call once at the top of each test.js). */

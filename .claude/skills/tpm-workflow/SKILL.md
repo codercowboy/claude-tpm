@@ -31,11 +31,11 @@ roster AND spawning in one breath defeats the gate. Present → stop → the use
 Use `AskUserQuestion` for each gate so the answer is genuinely the user's, not your inference.
 
 **Mechanical backstops (poka-yoke — they hold even if the prose above is rationalized):**
-- Scaffolding is blocked without a pre-task-ack receipt (`scaffold-subagent --pretask-ack`) — Gate A.
-- **Spawning is blocked by a `PreToolUse` hook** (`${TPM_HOME}/tools/workflow/hooks/gate-spawn.js`) unless a **fresh**
+- Scaffolding is blocked without a pre-task-ack receipt (`tpm-workflow-scaffold-subagent --pretask-ack`) — Gate A.
+- **Spawning is blocked by a `PreToolUse` hook** (`${TPM_HOME}/tools/workflow/hooks/tpm-workflow-gate-spawn.js`) unless a **fresh**
   `spawn` sign-off token exists — Gate B. On each gate, record the user's actual confirmation:
-  `node ${TPM_HOME}/tools/workflow/signoff.js questions --roster "<one-line>"` (Gate A) and
-  `node ${TPM_HOME}/tools/workflow/signoff.js spawn --round "<phase-dir>" --roster "<one-line>"` (Gate B — `--round`
+  `node ${TPM_HOME}/tools/workflow/tpm-workflow-signoff.js questions --roster "<one-line>"` (Gate A) and
+  `node ${TPM_HOME}/tools/workflow/tpm-workflow-signoff.js spawn --round "<phase-dir>" --roster "<one-line>"` (Gate B — `--round`
   is the phase-folder path, which the spawn-gate hook matches against the marker `compose` stamps into the
   prompt). **Only ever write these from an
   explicit user confirmation — never from your own reading of an ambiguous turn.**
@@ -51,7 +51,7 @@ The **mode is the first token**; the rest of the line is freeform, interpreted b
 | **`verify`** | Spawn verifier(s) + the verify↔bug-fixer loop (on FAIL only). A per-round DECISION, not a reflex | `modes-verify.md` |
 | **`reconcile`** | Judge the verdict + log the call → reconcile delivery+verifier output → update `00-epic-plan/` → epic-close (promotion + cost rollup) | `modes-reconcile.md` |
 | **`reap`** | Stray subagent/subshell cleanup | **delegates to `tpm-reap`** |
-| **`status`** | Report round/epic state — read `00-epic-plan/` (phase map · punchlist · decisions), phase `findings/HANDOFF.md`, and `audit.js` output; summarize. No spawn | (inline, below) |
+| **`status`** | Report round/epic state — read `00-epic-plan/` (phase map · punchlist · decisions), phase `findings/HANDOFF.md`, and `tpm-workflow-audit.js` output; summarize. No spawn | (inline, below) |
 | **`doctor`** | Fail-loud PREFLIGHT before a round: checks charters resolve, both hooks are wired, signoff is writable, compose emits a marker + `${TPM_HOME}` paths. No spawn | (inline, below) |
 
 ## Interpreting the mode token (forgiving)
@@ -89,20 +89,20 @@ just operating, there is nothing to gate.
   `plan-template`, spawn-mechanics, verify-and-reconcile, `prompt-templates/`, the pre-task
   questions, the self-quiz.
 - **Tools** (mechanics — reference by their promoted path, all under `${TPM_HOME}/tools/workflow/`):
-  `config-resolver.js` · `scaffold-subagent.js` · `compose-spawn-prompt.js` ·
-  `lint-subagent-prompt.js` · `audit.js` · `cost-ledger.js` · `check-filename.js`.
+  `tpm-workflow-config-resolver.js` · `tpm-workflow-scaffold-subagent.js` · `tpm-workflow-compose-spawn-prompt.js` ·
+  `tpm-workflow-lint-subagent-prompt.js` · `tpm-workflow-audit.js` · `tpm-workflow-cost-ledger.js` · `tpm-workflow-check-filename.js`.
   A skill never bundles its own tool copy — tools are shared project infra.
 
 ## `status` mode (inline)
 
 No spawn. Report the current picture:
-1. `node ${TPM_HOME}/tools/workflow/audit.js --out <tmp>/audit.md` — epic-vs-flat classification, numbering
+1. `node ${TPM_HOME}/tools/workflow/tpm-workflow-audit.js --out <tmp>/audit.md` — epic-vs-flat classification, numbering
    integrity, one-plan-one-charter per phase; relay violations.
 2. Read `00-epic-plan/{epic-plan,punchlist,decisions}.md` for the phase map, open items, and the
    raise-to-user decision queue.
 3. Read each active phase's `findings/HANDOFF.md` for current state (the single rolling doc).
 4. Summarize: phases done / in-flight / pending, open punchlist items, decisions awaiting the
-   user, and cost-to-date (`cost-ledger.js --rollup <epic>` if a ledger exists). Surface, don't act.
+   user, and cost-to-date (`tpm-workflow-cost-ledger.js --rollup <epic>` if a ledger exists). Surface, don't act.
 
 ## `doctor` mode (inline)
 
@@ -110,7 +110,7 @@ No spawn. A **fail-loud preflight** for the install seams a real fan-out silentl
 placeholders, gate hook not wired, compose bare paths, signoff unwritable). Run it before spawning a
 round — especially the FIRST round in a fresh consumer:
 
-1. `node ${TPM_HOME}/tools/workflow/doctor.js` (add `--json` for machine output; `--project-root <dir>`
+1. `node ${TPM_HOME}/tools/workflow/tpm-workflow-doctor.js` (add `--json` for machine output; `--project-root <dir>`
    to check another install). It self-locates the bundle and reads the project's `.claude/settings.json`.
 2. Checks: charters resolve · spawn-gate hook wired · `${TPM_HOME}` expand hook wired · signoff store
    writable · compose emits a quoted marker + `${TPM_HOME}/…` methodology paths.

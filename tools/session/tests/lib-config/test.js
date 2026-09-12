@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * tests/session/lib-config/test.js — genuine tests for tools/session/lib/config.js.
+ * tests/session/lib-config/test.js — genuine tests for tools/session/tpm-session-config.js.
  *
  * PURPOSE
  *   The `session` config-section resolver (build-plan.md task A1): defaults, merge-over-
@@ -8,8 +8,8 @@
  *   default-location-missing-is-not-an-error rule vs. an EXPLICIT --config that's missing
  *   (which IS an error), bad-JSON handling, and the CLI surface.
  *
- *   config.js resolves the project root by walking UP from a start directory looking for a
- *   CLAUDE.md marker (lib/paths.js#findRoot). Because this phase folder's sandbox lives INSIDE
+ *   tpm-session-config.js resolves the project root by walking UP from a start directory looking for a
+ *   CLAUDE.md marker (tpm-session-paths.js#findRoot). Because this phase folder's sandbox lives INSIDE
  *   the real repo (which has its own real CLAUDE.md far above), every sandbox this file builds
  *   plants its OWN fake CLAUDE.md at the sandbox root so findRoot stops there — never at the
  *   real repo root — keeping every test fully isolated from any real config.json.

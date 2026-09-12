@@ -27,7 +27,7 @@ minus the bits the tool stamps (number, State, dates), which it fills in:
   re-`import` (so a finished/dropped task round-trips its state).
 - Multiple blocks in one file = a batch (`import`).
 
-Always pass the file with `--from`: `task.js --tasks-dir <dir> add --from ./tmp/tpm-task/add-rename.md`.
+Always pass the file with `--from`: `tpm-task.js --tasks-dir <dir> add --from ./tmp/tpm-task/add-rename.md`.
 
 ## `add`
 
@@ -37,17 +37,17 @@ Always pass the file with `--from`: `task.js --tasks-dir <dir> add --from ./tmp/
    YOUR drafting hint, not a tool gate).
 2. **Detect an epic.** If the work is clearly several discrete steps, propose lettered subtasks and show
    them for a nod before writing. Don't force subtasks onto a simple task.
-3. Stage the payload → `task.js … add --from <payload>` → relay the `added #N …` line.
+3. Stage the payload → `tpm-task.js … add --from <payload>` → relay the `added #N …` line.
 
 ## `edit`
 
 `edit` changes **content fields only** (headline / summary / context / subtasks) — NEVER state (Q9).
 State changes go through `start`/`finish`/`drop`/`remove`/`reopen`.
 
-1. `task.js … show <id>` to see the current body.
+1. `tpm-task.js … show <id>` to see the current body.
 2. Draft a payload block with ONLY the fields you're changing (omit the rest — the tool leaves an
    omitted field untouched; supplying `**Subtasks:**` REPLACES the whole subtask list).
-3. `task.js … edit <id> --from <payload>` → relay.
+3. `tpm-task.js … edit <id> --from <payload>` → relay.
 
 To flip a single checkbox, use `check`, not `edit`. To re-word or re-order subtasks, `edit` with a new
 `**Subtasks:**` block (letters are re-derived A, B, C…).
@@ -66,9 +66,9 @@ nothing is written until the user confirms.
      shown so the user can correct), and epic detection. Walk keep / edit / skip.
    - **Best-effort** — convert ALL candidates with best judgment, present the full batch for one
      review, confirm, write.
-3. **Write via the tool** — accepted candidates → one `task.js … import --from <payload>` (contiguous
+3. **Write via the tool** — accepted candidates → one `tpm-task.js … import --from <payload>` (contiguous
    id block, single index update). Each accepted block gets its `- **Created:** <date>` line if you
-   inferred one. **Dedup** against existing tasks (`task.js list`) and warn on likely duplicates before
+   inferred one. **Dedup** against existing tasks (`tpm-task.js list`) and warn on likely duplicates before
    writing.
 4. **Source file left untouched** by default (it's the user's). Offer to annotate/clear only if asked.
 
@@ -76,7 +76,7 @@ Candidate numbers (1, 2, 3) are throwaway — never conflate them with real ids.
 
 ## `export` — serialize tasks to a file
 
-`/tpm-task export <selector> [--out <path>]` → `task.js … export <selector> [--out <path>] [--state <s>]`.
+`/tpm-task export <selector> [--out <path>]` → `tpm-task.js … export <selector> [--out <path>] [--state <s>]`.
 Writes selected tasks to ONE markdown file in canonical body format, so **export round-trips back
 through `import`** (the tool reassigns fresh ids on re-import; content is preserved). Default out is
 config-derived (`<exportDir>/tasks-export-<date>.md`, Q4) — the user may name a path with `--out`.

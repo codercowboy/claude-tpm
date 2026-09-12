@@ -1,6 +1,6 @@
 ---
 name: tpm-session
-description: Use at the start of a session to boot (open), to checkpoint / write session notes mid-session (save), to wrap up (close), or to check current session status (info). Bare "tpm-session" is state-aware — not yet opened this session -> open; already open -> save. Supersedes the retired session-open / session-close skills. Auto-invoke on the first substantive turn if `tpm-session open` hasn't run yet this session.
+description: Use at the start of a session to boot (open), to checkpoint / write session notes mid-session (save), to wrap up (close), or to check current session status (info). Bare "tpm-session" is state-aware — not yet opened this session -> open; already open -> save. Supersedes the retired session-open / session-close skills. Invoke ONLY when the user explicitly runs it (this is the orchestrator's boot) — never auto-invoke it, because a subagent must never adopt the orchestrator role by tripping this on its own.
 ---
 
 `tpm-session` is the unified session-lifecycle skill — `open` (boot), `close` (wrap-up), `save`
@@ -19,14 +19,14 @@ progressive-disclosure shape as `tpm-workflow`'s `modes-*.md` split):
 
 ## Tools this skill calls (promoted paths)
 
-- `node ${TPM_HOME}/tools/session/lib/config.js --sessions-dir` — resolves the configured sessions directory
+- `node ${TPM_HOME}/tools/session/tpm-session-config.js --sessions-dir` — resolves the configured sessions directory
   (`.claude/claude-tpm/config.json` → `session.notes.sessionsDir`, defaulting to
   `claude-context/sessions` for this library).
-- `node ${TPM_HOME}/tools/session/lib/current-session.js --sessions-dir <dir> [--state|--open|--seal|--next-number]`
+- `node ${TPM_HOME}/tools/session/tpm-session-current.js --sessions-dir <dir> [--state|--open|--seal|--next-number]`
   — the current-session pointer (open-vs-not-opened; allocates the next `session-NNN`).
-- `node ${TPM_HOME}/tools/session/session-notes.js --sessions-dir <dir> <verb> [args]` — the notes WRITE API
+- `node ${TPM_HOME}/tools/session/tpm-session-notes.js --sessions-dir <dir> <verb> [args]` — the notes WRITE API
   (`resume`/`open add|done`/`log`/`decide`/`seal`). See its header docstring / `<tool>.md`.
-- `node ${TPM_HOME}/tools/session/session-review.js --sessions-dir <dir> --last N [...]` — the notes READ API.
+- `node ${TPM_HOME}/tools/session/tpm-session-review.js --sessions-dir <dir> --last N [...]` — the notes READ API.
 
 All four are self-contained (`${TPM_HOME}/tools/session/`, zero shared imports with `${TPM_HOME}/tools/workflow/` or
 `${TPM_HOME}/tools/child-session/`, per `tool-conventions.md` Part I §2). Run every invocation from the project
@@ -35,10 +35,10 @@ root — every flag above is a real CLI flag, not a placeholder.
 ## Config gate
 
 Read `session.enabled` (the whole skill) and `session.notes.enabled` (just the notes-writing
-behavior) via `lib/config.js --json`. `session.enabled: false` ⇒ this skill short-circuits with a
+behavior) via `tpm-session-config.js --json`. `session.enabled: false` ⇒ this skill short-circuits with a
 one-line "session lifecycle disabled by config" message and does nothing else. `notes.enabled:
 false` ⇒ `open`/`close`/`save` still run their non-notes steps (reading chain, reap, MOTD, sign-off)
-but skip every notes write — no `session-notes.js` call happens at all.
+but skip every notes write — no `tpm-session-notes.js` call happens at all.
 
 ## Interpreting the mode token (forgiving)
 
@@ -55,7 +55,7 @@ but skip every notes write — no `session-notes.js` call happens at all.
 ## Bare invocation — state-aware default
 
 **Bare `tpm-session` (no argument) is NOT an error and does NOT show the mode table.** Resolve it by
-calling `current-session.js --state` (after config confirms `session.enabled`):
+calling `tpm-session-current.js --state` (after config confirms `session.enabled`):
 
 - `state: "not-opened"` → run **`open`**.
 - `state: "open"` → run **`save`**.
@@ -75,8 +75,8 @@ there directly.
 
 ## `save` (inline)
 
-1. Resolve `sessionsDir` (`lib/config.js --sessions-dir`) and confirm a session is open
-   (`current-session.js --state`). **If not open, say so and run `open` instead** — `save` never
+1. Resolve `sessionsDir` (`tpm-session-config.js --sessions-dir`) and confirm a session is open
+   (`tpm-session-current.js --state`). **If not open, say so and run `open` instead** — `save` never
    silently opens a session on its own; that's bare invocation's job, not an explicit `save`'s.
 2. If `session.notes.enabled` is false: skip to step 4 with a one-line "notes disabled by config"
    note instead of a save summary.
@@ -95,13 +95,13 @@ number. Only `open` allocates a new number.
 ## `info` (inline, writes nothing)
 
 Resolve and print, in order:
-1. Current session number + folder path (via `current-session.js --state`; "no session open yet" if
+1. Current session number + folder path (via `tpm-session-current.js --state`; "no session open yet" if
    `state: not-opened`).
 2. Whether `session-notes.md` exists for it yet, and roughly when it was last modified.
 3. Total session count (`ls claude-context/sessions/session-*/ | wc -l`-shaped — or read
-   `session-review.js`'s session listing).
+   `tpm-session-review.js`'s session listing).
 4. The real Claude Code sessionId if `$CLAUDE_CODE_SESSION_ID` is readable (best-effort — see
-   `${TPM_HOME}/tools/session/lib/current-session.js`'s docstring on why this is diagnostic-only, not load-bearing).
+   `${TPM_HOME}/tools/session/tpm-session-current.js`'s docstring on why this is diagnostic-only, not load-bearing).
 
 This IS the universal footer every other mode ends with — `open`/`close`/`save` all call this same
 rendering as their last step, they just have more state to report first.

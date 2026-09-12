@@ -172,7 +172,7 @@ the defaults," and the system is ON.
 
 ```jsonc
 "tasks": {
-  "enabled": true,                              // false ⇒ /tpm-task + task.js short-circuit, no store ops
+  "enabled": true,                              // false ⇒ /tpm-task + tpm-task.js short-circuit, no store ops
   "tasksDir": ".claude/claude-tpm/tasks",        // store location; a project may repoint it (e.g. "claude-context/tasks")
   "startId": 1000,                              // first task number (monotonic, never reused)
   "bucketSize": 1000,                           // body-folder bucketing (bodies/1000-1999/, …)
@@ -187,13 +187,13 @@ the defaults," and the system is ON.
   "subtaskStyle": "letters"                     // "letters" (1245.A) at launch; "numbers" deferred
 }
 ```
-- **`tasks.enabled`** is the master off-switch — both the skill and `task.js` bail with a clear message
+- **`tasks.enabled`** is the master off-switch — both the skill and `tpm-task.js` bail with a clear message
   pointing at the key, and do no store ops. Missing config ⇒ defaults (system ON); malformed config ⇒
   defaults + a stderr warning (never a crash — the lenient philosophy the ledger is built on).
 - **The store is plain markdown a human can open and hand-edit.** `tasksDir` holds three index files
   (`task-index.md` = open + in-progress and the `**Next ID:**` marker · `finished-tasks-index.md` ·
   `removed-tasks-index.md`) plus `bodies/<bucket>/task-<N>.md`. Bodies are canonical; the indexes are a
-  regenerable cache — if one drifts (a hand edit, a crash), `task.js reindex` rebuilds them from the
+  regenerable cache — if one drifts (a hand edit, a crash), `tpm-task.js reindex` rebuilds them from the
   bodies. A hand edit is never treated as corruption.
 - **`autoConfirm`** only tunes *which* of `finish`/`drop` skip the skill's confirm dialogue; the
   confirm-before-destructive *rule itself* is not configurable, and **`remove --hard` is never
@@ -203,7 +203,7 @@ the defaults," and the system is ON.
 - **Deliberately NOT configurable** (to avoid knob-explosion): mode names/aliases, the field schema, the
   index filenames, the age ladder, and the confirm-before-destructive rule. A `storageMode: flat`
   backend was considered and rejected (the index files already give a catable flat view).
-- Full reference: `tools/task/task.md` (tool + all 14 subcommands), `tools/task/lib/config.md` (this
+- Full reference: `tools/task/tpm-task.md` (tool + all 14 subcommands), `tools/task/lib/config.md` (this
   resolver), and `tools/task/README.md` (the suite). Design rationale: `tmp/tasks-redesign/`.
 
 ---

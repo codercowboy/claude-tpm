@@ -6,7 +6,7 @@ has no reason to open it.
 This file is the **single source of truth** for the step-zero reading chain. Two things consume it:
 
 - **The orchestrator**, when writing a spawn prompt (via the `spawn-subagent` skill).
-- **`tools/workflow/lint-subagent-prompt.js`**, which parses the marked blocks below and derives its
+- **`tools/workflow/tpm-workflow-lint-subagent-prompt.js`**, which parses the marked blocks below and derives its
   checks from them. Add a doc here and the lint starts requiring it; remove one and it stops. They
   cannot drift.
 
@@ -101,6 +101,6 @@ Your spawn prompt names which of these apply. Read them after the base list, bef
 A consumer project extends this list rather than replacing it — see
 [`docs/CONSUMER-QUICKSTART.md`](../../docs/CONSUMER-QUICKSTART.md).
 
-<!-- PORT-NOTE: INVARIANT 2 — block names are now: base, working-folder, resume, shipping, live-system, verifier, consumer-optional. The `emulator` block was renamed to `live-system` and the `--emulator` flag to `--live-system`. Worker C's lint-subagent-prompt.js BLOCK_SPEC / CANONICAL_IDS and the `--emulator`→`--live-system` flag MUST be aligned to these exact names in the same change, and its working-folder regex changed from `research/topics/` to `dev/`. -->
+<!-- PORT-NOTE: INVARIANT 2 — block names are now: base, working-folder, resume, shipping, live-system, verifier, consumer-optional. The `emulator` block was renamed to `live-system` and the `--emulator` flag to `--live-system`. Worker C's tpm-workflow-lint-subagent-prompt.js BLOCK_SPEC / CANONICAL_IDS and the `--emulator`→`--live-system` flag MUST be aligned to these exact names in the same change, and its working-folder regex changed from `research/topics/` to `dev/`. -->
 <!-- PORT-NOTE: `docs/CONSUMER-QUICKSTART.md` link kept verbatim (consumer-adoption doc, out of scope this pass); left for orchestrator judgment. -->
 </content>

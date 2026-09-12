@@ -62,7 +62,7 @@ Root **`package.json`** is a convenience wrapper (script registry), NOT a depend
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "task":  "node tools/task/task.js",
+    "task":  "node tools/task/tpm-task.js",
     "tools": "node tools/list-tools.js"   // prints every tool + its one-liner (discovery command)
     // …one script per tool…
   }
@@ -83,7 +83,7 @@ via `node`. `npm run tools` lists all tools + one-liners (from the README index,
 
 - **Standard flag vocabulary:** `--in`, `--out`, `--force`, `--help`.
 - **No silent defaults for REQUIRED inputs** — a required flag with no value fails loudly with usage
-  (e.g. `audit.js --out`). No guessing a path/target. (Full rationale in Part II §"No hardcoded paths.")
+  (e.g. `tpm-workflow-audit.js --out`). No guessing a path/target. (Full rationale in Part II §"No hardcoded paths.")
 - **Every tool supports `--help`** and carries a header docstring (purpose, usage, flags, what it guards).
 - **`npm run <alias>` per tool** (§3).
 - **Genericity:** tools stay project-agnostic; project-specific data comes via flags/env, never

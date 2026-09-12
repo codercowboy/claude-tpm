@@ -5,7 +5,7 @@ description: Use to capture, track, and manage a project's lightweight task ledg
 
 `tpm-task` is the task-ledger skill. It is a **thin router**: it interprets a fuzzy mode token,
 does the small amount of JUDGMENT each mode needs (draft content, detect an epic, resolve + echo a
-selector, confirm destructive ops), then forwards the MECHANICS to `${TPM_HOME}/tools/task/task.js` and relays
+selector, confirm destructive ops), then forwards the MECHANICS to `${TPM_HOME}/tools/task/tpm-task.js` and relays
 its compact output. **The skill never hand-reads or hand-writes the store** — one clean write path,
 the tool.
 
@@ -27,22 +27,22 @@ the tool.
 
 ## Tools this skill calls (promoted paths)
 
-- `node ${TPM_HOME}/tools/task/lib/config.js --tasks-dir` — resolves the configured store dir (absolute path).
+- `node ${TPM_HOME}/tools/task/lib/tpm-task-config.js --tasks-dir` — resolves the configured store dir (absolute path).
   Also `--json` / `--get enabled` to read the config. (The resolver returns the `tasks` SECTION,
   so keys are bare — `--get enabled`, `--get startId` — NOT `--get tasks.enabled`.)
-- `node ${TPM_HOME}/tools/task/task.js --tasks-dir <dir> <subcommand> [args]` — ALL mechanics. Its header
-  docstring / [`task.md`](../../tools/task/task.md) is the full reference.
+- `node ${TPM_HOME}/tools/task/tpm-task.js --tasks-dir <dir> <subcommand> [args]` — ALL mechanics. Its header
+  docstring / [`tpm-task.md`](../../tools/task/tpm-task.md) is the full reference.
 
 All of `${TPM_HOME}/tools/task/` is self-contained (zero shared imports, per `tool-conventions.md` Part I §2).
 Run every invocation from the project root; `--tasks-dir` is the resolved absolute store path.
 
 > **Path note (staged phase only):** while this module is staged under a phase's `out/`, run the
-> `out/`-prefixed copies (`out/tools/task/task.js`, `--tasks-dir <sandbox>`). The text above names the
+> `out/`-prefixed copies (`out/tools/task/tpm-task.js`, `--tasks-dir <sandbox>`). The text above names the
 > PROMOTED paths (like `tpm-session`'s SKILL.md) because that is what's correct once promoted (G11).
 
 ## Config gate
 
-Read `tasks.enabled` via `node ${TPM_HOME}/tools/task/lib/config.js --get enabled` (or `--json`).
+Read `tasks.enabled` via `node ${TPM_HOME}/tools/task/lib/tpm-task-config.js --get enabled` (or `--json`).
 `enabled: false` ⇒ reply one line — "task ledger disabled by config (tasks.enabled: false)" — and stop.
 The tool ALSO gates itself, so this is a courtesy short-circuit, not the only guard. Missing config ⇒
 defaults (system ON).
@@ -71,25 +71,25 @@ Every task-referring mode takes the same selector language:
   skip). Natural-language time windows ("finished last week") are **lowered by YOU** to
   `resolve --state <pool> --since <Nd>` (G6) — the tool does not parse prose.
 - **Semantic** (`the auth ones`, `anything about the rename`): read candidate headlines via
-  `task.js list`/`show`, pick the matching ids yourself, **echo the resolved concrete id set for
+  `tpm-task.js list`/`show`, pick the matching ids yourself, **echo the resolved concrete id set for
   confirmation**, then call the tool with that explicit id-list. The tool never guesses semantics.
 
 ## Inline modes — "call the tool, relay"
 
 These need no drafting; interpret args, call the tool, relay its output verbatim (compact).
 
-- **`list`** → `task.js --tasks-dir <dir> list [--order newest|oldest|id|state] [--state <s>]`.
+- **`list`** → `tpm-task.js --tasks-dir <dir> list [--order newest|oldest|id|state] [--state <s>]`.
   Default pool is open + in-progress. `--order` aliases: recent/new→newest, stale/old→oldest,
   num→id, status→state. `--state` widens to finished/dropped/removed/all.
-- **`show`** → resolve the selector, then `task.js … show <selector> [--state <s>]`. For a semantic
+- **`show`** → resolve the selector, then `tpm-task.js … show <selector> [--state <s>]`. For a semantic
   ask, echo the resolved ids first.
-- **`add-subtask`** → `task.js … add-subtask <id> "<text>"`. Appends ONE lettered subtask, PRESERVING
+- **`add-subtask`** → `tpm-task.js … add-subtask <id> "<text>"`. Appends ONE lettered subtask, PRESERVING
   the existing items and their check state (unlike `edit`, whose `setSubtasks` REPLACES the block and
   resets progress). Use this to grow an epic's checklist without clobbering a `(3/8)`.
-- **`check`** → `task.js … check <id.LETTER>` (e.g. `1245.A`; `1245a`/`#1245.A` also accepted). Ticks
+- **`check`** → `tpm-task.js … check <id.LETTER>` (e.g. `1245.A`; `1245a`/`#1245.A` also accepted). Ticks
   one subtask and refreshes the epic's `(done/total)`. No `uncheck` mode — un-ticking is a hand-edit
   (G5). Already-checked ⇒ the tool reports a no-op.
-- **`start`** → `task.js … start <id>` (→ in-progress). Redundant/illegal transitions are the tool's
+- **`start`** → `tpm-task.js … start <id>` (→ in-progress). Redundant/illegal transitions are the tool's
   job to report (G3) — relay its message.
 
 Everything with real judgment (drafting content, detecting epics, the import collaboration flow, the
