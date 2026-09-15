@@ -1,5 +1,5 @@
 /**
- * lib/tpm-task-paths.js — suite-local root resolution for tools/task/*.
+ * tpm-task-paths.js — suite-local root resolution for tools/task/*.
  *
  *   (Byte-identical logic to tools/session/tpm-session-paths.js — copied per the portability rule
  *   in tool-conventions.md Part I §2: each suite carries its OWN copy, no shared paths lib.)

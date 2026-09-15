@@ -18,12 +18,12 @@ Decisions, append-only) and refuses casual edits to a sealed (past) session.
 ## Requirements / invocation shape
 
 ```
-node tpm-session-notes.js --sessions-dir <dir> [--edit-sealed <NNN> --confirm] <verb> [args]
+npx tpm session notes --sessions-dir <dir> [--edit-sealed <NNN> --confirm] <verb> [args]
 ```
 
 - `--sessions-dir <dir>` — **required on every invocation.** No default (per
   `tool-conventions.md`'s no-hardcoded-paths rule) — resolve it yourself, e.g. via
-  `node tpm-session-config.js --sessions-dir`.
+  `npx tpm session config --sessions-dir`.
 - With no args, or `--help`/`-h`: prints usage. **No args → exit 1. `--help` → exit 0.** Verified:
   bare invocation and `--help` both print the identical usage block; only the exit code differs.
 
@@ -84,33 +84,33 @@ case exercised above.
 ## Worked example — a full session lifecycle (run against the sandbox)
 
 ```
-$ node tools/session/tpm-session-current.js --sessions-dir "$SDIR" --open
+$ npx tpm session current --sessions-dir "$SDIR" --open
 { "number": "001", "sessionId": "...", "isNew": true, "pointerPath": "...sessions/.current-session.json" }
 
-$ node tools/session/tpm-session-notes.js --sessions-dir "$SDIR" init --theme "Documentarian sandbox verification"
+$ npx tpm session notes --sessions-dir "$SDIR" init --theme "Documentarian sandbox verification"
 session-notes: created .../session-001/session-notes.md
 
-$ node tools/session/tpm-session-notes.js --sessions-dir "$SDIR" resume \
+$ npx tpm session notes --sessions-dir "$SDIR" resume \
     --where "Verifying tpm-session-notes.js" --next "write tpm-session-review.js checks"
 session-notes: RESUME updated in .../session-001/session-notes.md
 
-$ node tools/session/tpm-session-notes.js --sessions-dir "$SDIR" open add --owner jason "review the config-guide patch"
+$ npx tpm session notes --sessions-dir "$SDIR" open add --owner jason "review the config-guide patch"
 session-notes: added open item #1 in .../session-001/session-notes.md
 
-$ node tools/session/tpm-session-notes.js --sessions-dir "$SDIR" open add --owner claude "write the tool docs"
+$ npx tpm session notes --sessions-dir "$SDIR" open add --owner claude "write the tool docs"
 session-notes: added open item #2 in .../session-001/session-notes.md
 
-$ node tools/session/tpm-session-notes.js --sessions-dir "$SDIR" open done 1
+$ npx tpm session notes --sessions-dir "$SDIR" open done 1
 session-notes: marked open item #1 done in .../session-001/session-notes.md
 
-$ node tools/session/tpm-session-notes.js --sessions-dir "$SDIR" log --status WIP "wrote tpm-session-format.js"
+$ npx tpm session notes --sessions-dir "$SDIR" log --status WIP "wrote tpm-session-format.js"
 session-notes: appended [WIP] log entry in .../session-001/session-notes.md
 
-$ node tools/session/tpm-session-notes.js --sessions-dir "$SDIR" decide \
+$ npx tpm session notes --sessions-dir "$SDIR" decide \
     "single pointer, not a sessionId map" --why "env var unreliable outside subagents"
 session-notes: appended decision in .../session-001/session-notes.md
 
-$ node tools/session/tpm-session-notes.js --sessions-dir "$SDIR" seal
+$ npx tpm session notes --sessions-dir "$SDIR" seal
 session-notes: sealed .../session-001/session-notes.md (2026-08-30)
 ```
 

@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 /**
  * tpm-consumer-lint-skill-refs.js — keep the tpm-* skills RELOCATABLE. A consumer runs the skills from a project
- * where claude-tpm lives under `node_modules/@codercowboy/claude-tpm/`, so every reference the skill
- * makes to the SHARED BUNDLE (its methodology docs + its tool suite) must carry the `${TPM_HOME}/`
- * placeholder — which the expand hook (reads) or the shell (`$TPM_HOME` in Bash) resolves. A bare
- * `node tools/…` or `claude-context/methodology/…` would dead-end at the consumer root.
+ * where claude-tpm lives under `node_modules/@codercowboy/claude-tpm/`, so a skill must never reach the
+ * SHARED BUNDLE by a bare path that dead-ends at the consumer root. Two relocatable forms are correct:
+ *   - tool INVOCATIONS route through the bin — `npx tpm <suite> <verb>` (self-locating; env.TPM_HOME retired).
+ *   - methodology doc READS carry the `${TPM_HOME}/` placeholder — the expand hook rewrites it at read time.
+ * (The old Bash `$TPM_HOME` shell-resolution path is gone: nothing shell-expands $TPM_HOME anymore.)
+ * A bare `node tools/…` or `claude-context/methodology/…` would dead-end at the consumer root.
  *
- * This lint flags the two BUNDLE-REF shapes that must be tokenized:
- *   1. tool INVOCATIONS / references:  `node tools/…`  and  `` `tools/… ``
- *   2. methodology doc READS:          `claude-context/methodology/…`  and  `` `methodology/… `` (shorthand)
+ * This lint flags the bundle-ref shapes that are NOT relocatable:
+ *   1. bare tool INVOCATIONS / references:  `node tools/…`  and  `` `tools/… ``  (→ `npx tpm <suite> <verb>`)
+ *   2. bare methodology doc READS:          `claude-context/methodology/…`  and  `` `methodology/… `` (→ `${TPM_HOME}/…`)
  *
  * It deliberately does NOT flag:
  *   • already-tokenized refs (`${TPM_HOME}/…`),
@@ -28,8 +30,8 @@ const path = require('path');
 // A violation = a bundle ref MISSING the ${TPM_HOME}/ prefix. Each rule: {re, why}. The negative
 // lookbehind on the methodology rules lets an already-tokenized `${TPM_HOME}/claude-context/…` pass.
 const RULES = [
-  { re: /\bnode\s+tools\//, why: 'bare tool invocation — use `node ${TPM_HOME}/tools/…`' },
-  { re: /`tools\//, why: 'bare bundle tool ref — use `${TPM_HOME}/tools/…`' },
+  { re: /\bnode\s+tools\//, why: 'bare tool invocation — route through the bin: `npx tpm <suite> <verb>`' },
+  { re: /`tools\//, why: 'bare bundle tool ref — invoke via `npx tpm <suite> <verb>` (or cite the file as `${TPM_HOME}/tools/…`)' },
   { re: /(?<!\$\{TPM_HOME\}\/)claude-context\/methodology\//, why: 'bare methodology read — use `${TPM_HOME}/claude-context/methodology/…`' },
   { re: /`methodology\//, why: 'bare methodology shorthand — use `${TPM_HOME}/claude-context/methodology/…`' },
 ];

@@ -44,11 +44,11 @@
  *   readEnvSessionId()                                 -> string|null ($CLAUDE_CODE_SESSION_ID, best-effort)
  *
  * CLI
- *   node tpm-session-current.js --sessions-dir <dir> --state         # print resolved state as JSON
- *   node tpm-session-current.js --sessions-dir <dir> --open          # ensure open, print result
- *   node tpm-session-current.js --sessions-dir <dir> --seal          # close the current session
- *   node tpm-session-current.js --sessions-dir <dir> --next-number   # print the next allocation (no side effect)
- *   node tpm-session-current.js --help
+ *   npx tpm session current --sessions-dir <dir> --state         # print resolved state as JSON
+ *   npx tpm session current --sessions-dir <dir> --open          # ensure open, print result
+ *   npx tpm session current --sessions-dir <dir> --seal          # close the current session
+ *   npx tpm session current --sessions-dir <dir> --next-number   # print the next allocation (no side effect)
+ *   npx tpm session current --help
  */
 
 'use strict';
@@ -161,7 +161,7 @@ function sealSession({ sessionsDir }) {
 function printHelp() {
   process.stdout.write(
     [
-      'Usage: node tpm-session-current.js --sessions-dir <dir> (--state | --open | --seal | --next-number) [--help]',
+      'Usage: npx tpm session current --sessions-dir <dir> (--state | --open | --seal | --next-number) [--help]',
       '',
       'Resolves / mutates the current-session pointer under <dir>/.current-session.json.',
       '',
@@ -174,8 +174,8 @@ function printHelp() {
       '  --help                Show this message.',
       '',
       'Examples:',
-      '  node tpm-session-current.js --sessions-dir claude-context/sessions --state',
-      '  node tpm-session-current.js --sessions-dir claude-context/sessions --open',
+      '  npx tpm session current --sessions-dir claude-context/sessions --state',
+      '  npx tpm session current --sessions-dir claude-context/sessions --open',
       '',
     ].join('\n'),
   );

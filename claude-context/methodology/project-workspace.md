@@ -70,4 +70,3 @@ audit trail is honest.
 - [`./tool-conventions.md`](./tool-conventions.md) — how tools are used, copied, modified, built.
 - [`./troubleshooting.md`](./troubleshooting.md) — when "stuck" turns out to be "I tried to write where I'm not allowed."
 - [`./overview.md`](./overview.md) — the claude-tpm activation model + the module-opacity principle behind this carve.
-- `CLAUDE.md` — session-orientation north star; reading chain + project conventions.

@@ -17,12 +17,16 @@
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { mkScratch } = require('../../../../tests/lib/scratch'); // shared: <bundle>/tmp/scratch/<run-slug>/
 
 const ROOT = path.resolve(__dirname, '..');
-const COMPOSE = path.join(ROOT, 'tools', 'compose-spawn-prompt.js');
-const LINT = path.join(ROOT, 'tools', 'lint-subagent-prompt.js');
-const SCRATCH = path.join(ROOT, 'tmp', 'builder-r1', 'compose-fixtures');
-fs.mkdirSync(SCRATCH, { recursive: true });
+// Canonical promoted tools live at tools/workflow/ (two levels up from this phase dir) — this suite
+// runs against the SHIPPED tools, not checked-in copies (which used to drift). The inline mutation
+// check below reads COMPOSE and writes its mutant to a tmp scratch file, so it too now exercises canonical.
+const CANON = path.resolve(ROOT, '..', '..');
+const COMPOSE = path.join(CANON, 'tpm-workflow-compose-spawn-prompt.js');
+const LINT = path.join(CANON, 'tpm-workflow-lint-subagent-prompt.js');
+const SCRATCH = mkScratch('compose'); // <bundle>/tmp/scratch/<run-slug>/compose-XXXXXX (created)
 
 let passed = 0, failed = 0;
 function check(desc, cond, extra) {
@@ -144,8 +148,9 @@ check('verifier: emits an explicit HARD RULE independence line', /HARD RULE/.tes
 check('verifier: return-shape is the verdict file (not artifact)', /verdict to `findings\/verifier-r1-v1-verdict\.md`/.test(verOut) && !/built artifact \+ its passing checks/.test(verOut), verOut);
 // TEST-HARDENING (28) — the verifier return-shape carries an explicit
 // "Do NOT modify the tool or tests" independence clause. fable-3 #5 found this
-// clause could be deleted with the suite staying green; pin it. Mutation-proved
-// in tests/mutation-check28.js.
+// clause could be deleted with the suite staying green; the assertion below pins it.
+// (The external mutation-check28 harness was retired; this suite carries its own
+// inline mutation check further down.)
 check('verifier: return-shape carries the "Do NOT modify the tool or tests" independence clause',
   /Do NOT modify the tool or tests\./.test(verOut), verOut);
 check('verifier: a non-verifier role (builder) does NOT carry the tool/tests independence clause (control)',

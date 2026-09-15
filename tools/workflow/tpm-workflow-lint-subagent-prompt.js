@@ -38,15 +38,15 @@
  *
  * USAGE.
  *   # Full spawn-prompt lint (manifest chain + structural + sentinels):
- *   node tpm-workflow-lint-subagent-prompt.js --file draft-prompt.md
- *   node tpm-workflow-lint-subagent-prompt.js --file draft.md --manifest path/to/reading-list.md
- *   node tpm-workflow-lint-subagent-prompt.js --file draft.md --verifier --verbose
+ *   npx tpm workflow lint --file draft-prompt.md
+ *   npx tpm workflow lint --file draft.md --manifest path/to/reading-list.md
+ *   npx tpm workflow lint --file draft.md --verifier --verbose
  *
  *   # Sentinel-only scan of a finalized plan / charter (no env ritual, no chain):
- *   node tpm-workflow-lint-subagent-prompt.js --file plan.md --sentinels-only --require charter
+ *   npx tpm workflow lint --file plan.md --sentinels-only --require charter
  *
  *   # Standalone blocked-filename guard (no body needed):
- *   node tpm-workflow-lint-subagent-prompt.js --sentinels-only --filename my-findings.md
+ *   npx tpm workflow lint --sentinels-only --filename my-findings.md
  *
  * FLAGS.
  *   --file <path>          Read the prompt/plan/charter from a file (default: stdin,
@@ -56,12 +56,16 @@
  *                          the manifest doc-chain and the env/working-folder
  *                          structural checks - use it to lint a finalized plan or
  *                          charter that is not itself a spawn prompt.
- *   --manifest <path>      Explicit path to the subagent reading-list manifest
- *                          (overrides discovery). An EXPLICIT --manifest that does
- *                          not exist is a usage error -> exit 2 (fail loud, never a
- *                          silent skip). If NO --manifest is given and none is
- *                          discovered, the doc-chain checks are SKIPPED with a NOTE
- *                          (v2 no longer hard-exits) so the sentinel checks still run.
+ *   --manifest <path>      OPTIONAL override of the subagent reading-list manifest.
+ *                          The DEFAULT is the canonical manifest SELF-LOCATED from
+ *                          this tool's own bundle (claude-context/methodology/subagent/
+ *                          reading-list.md), so a caller normally passes nothing; a
+ *                          consumer / future caller may point elsewhere with --manifest.
+ *                          An EXPLICIT --manifest that does not exist is a usage error
+ *                          -> exit 2. If the manifest is found NOWHERE (no --manifest,
+ *                          no consumer copy, and the bundle's own copy missing = a
+ *                          broken install) the lint FAILS LOUD -> exit 2 — never a
+ *                          silent skip that could pass a chain-less prompt.
  *   --require <name[,..]>  A `<!-- required: <name> -->` marker that MUST be present.
  *                          Repeatable; comma-lists accepted. Absent -> fail.
  *   --filename <name[,..]> A deliverable filename to run through the blocked-filename
@@ -196,7 +200,8 @@ function libraryManifest() {
 /**
  * Locate the manifest to lint against: an explicit --manifest wins, then the
  * invoking project's copy, then the library's own. Returns null if none found
- * (v2: the caller SKIPS doc-chain checks rather than hard-exiting).
+ * --manifest is an optional OVERRIDE; with none given this self-locates the bundle's canonical
+ * manifest. The caller (buildManifestChecks) FAILS LOUD if none is found anywhere.
  */
 function findManifest(opts) {
   if (opts && opts.manifest) {
@@ -210,7 +215,7 @@ function findManifest(opts) {
       console.error(
         'lint-subagent-prompt: --manifest "' + opts.manifest + '" does not exist ' +
         '(resolved: ' + p + '). An explicit manifest path must exist; ' +
-        'omit --manifest to fall back to discovery + the SKIP-with-NOTE behavior.',
+        'omit --manifest to use the self-located canonical manifest (discovery).',
       );
       process.exit(2);
     }
@@ -293,16 +298,22 @@ function docMatcher(basename) {
   return new RegExp(parts.join('[\\s_-]*') + '(\\.md)?', 'i');
 }
 
-/** Build the manifest-driven doc-read checks. Returns [] if no manifest found. */
+/** Build the manifest-driven doc-read checks. FAILS LOUD (exit 2) if no manifest is found anywhere. */
 function buildManifestChecks(opts) {
   const manifestPath = findManifest(opts);
   if (!manifestPath) {
+    // Option A (2026-09-13): the subagent reading-list is REQUIRED for the doc-chain checks and is
+    // normally SELF-LOCATED from this tool's own bundle (findManifest -> libraryManifest), so
+    // `--manifest` is an optional OVERRIDE, not something a caller must pass. Reaching here means it
+    // was found NOWHERE — no --manifest, no consumer copy, and the bundle's own canonical copy is
+    // missing — a broken install, never a normal state. FAIL LOUD rather than silently skipping the
+    // whole doc-chain family (a silent skip could pass a spawn prompt missing its entire reading chain).
     console.error(
-      'NOTE: no subagent reading-list manifest found (looked for ' + MANIFEST_REL + ', ' +
-      'and --manifest was not given) - SKIPPING doc-chain checks. ' +
-      'Structural + sentinel checks still run.',
+      'lint-subagent-prompt: no subagent reading-list manifest found — checked --manifest (none given), ' +
+      'a consumer copy at ' + MANIFEST_REL + ', and the bundle\'s own canonical copy (self-located from ' +
+      'this tool). This indicates a broken bundle. Pass --manifest <path> to point at one explicitly.',
     );
-    return [];
+    process.exit(2);
   }
   const blocks = parseManifest(fs.readFileSync(manifestPath, 'utf8'), manifestPath);
   const checks = [];

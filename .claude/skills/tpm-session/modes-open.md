@@ -13,14 +13,20 @@ the workflow module, not by gatekeeping who may boot.)
 
 ## Boot sequence
 
-1. **Allocate/confirm the session.** Call `node ${TPM_HOME}/tools/session/tpm-session-current.js --sessions-dir
+1. **Allocate/confirm the session.** Call `npx tpm session current --sessions-dir
    <dir> --open` (idempotent — if a session is already open this session, it returns the SAME number
    rather than minting a new one). This is what fixes the old "every close mints a new folder" bug:
    the folder is established HERE, once, and `save`/`close` only ever update it.
 
-2. **Read config** — `.claude/claude-tpm/config.json` via `${TPM_HOME}/tools/session/tpm-session-config.js --json`
-   (session section) and the project's other module resolvers as needed → which modules are enabled.
-   This decides what else loads below.
+2. **Read config** — get the module-enablement map with `npx tpm session config --modules`. It
+   returns a JSON object of every module's ENABLED state, e.g.
+   `{ "session": true, "workflow": true, "tasks": true, "hygiene": false }` (every module is ON by
+   default; a section is disabled only when its `enabled` is explicitly `false`). This one call
+   decides what loads below (step 4) and what the MOTD lists (step 5) — you no longer hand-read raw
+   `config.json` for enablement. For the resolved *session* section specifically (notes dir, MOTD
+   flags), use `npx tpm session config --json`. The reader is lenient: a malformed config never
+   crashes boot (it degrades to all-enabled + a warning) — surfacing a malformed config is the
+   doctor's job (`npx tpm install --check`), not boot's.
 
 3. **Walk the core reading list** — the orchestrator reading-list manifest
    (`${TPM_HOME}/claude-context/methodology/orchestrator/reading-list.md`) is the single source of truth. Read it
@@ -38,8 +44,11 @@ the workflow module, not by gatekeeping who may boot.)
 5. **Surface capabilities — the open MOTD** (gated by `session.showTPMOpenMessage`): list the
    **ENABLED** `tpm-*` skills with one-liners — the "here's what you can reach for" menu, e.g.
    `tpm-session → save session notes` · `tpm-task → task management` · `tpm-workflow → run a
-   workflow` · `tpm-reap → clean up strays`. Only enabled modules appear. Then the consumer's
-   `session.additionalOpenMessage` file content, if set, appended AFTER.
+   workflow` · `tpm-reap → clean up strays`. Only enabled modules (from step 2's `--modules` map)
+   appear. The `workflow` module fronts several skills (`tpm-workflow`, `tpm-spawn`,
+   `tpm-spawn-team`, `tpm-reap`) — list the ones relevant to the menu. **`hygiene` is ON by default
+   in config but ships no `tpm-hygiene` skill yet — do NOT list it** until the module is built.
+   Then the consumer's `session.additionalOpenMessage` file content, if set, appended AFTER.
 
 6. **Print the session #** — the universal `tpm-session` footer (`SKILL.md`'s `info` block:
    "you are in session NNN").
@@ -58,10 +67,6 @@ model. If the wiring is unclear, **ASK** — don't invent a resolution mechanism
   in play) still apply before anything load-bearing in that module.
 - **Don't skip the reading chain silently.** If you're mid-turn and realize you skipped a step, say so
   and read it before proceeding.
-- **A subagent must never run this skill.** A worker is spawned with a tight prompt pointed at the
-  SUBAGENT reading list (`${TPM_HOME}/claude-context/methodology/subagent/reading-list.md`) — a different, smaller
-  chain that withholds orchestrator-only material. If you were spawned as a subagent and somehow
-  reached this file, STOP and follow your spawn prompt instead.
 
 ## What this step does NOT do (moved elsewhere, not silently dropped)
 

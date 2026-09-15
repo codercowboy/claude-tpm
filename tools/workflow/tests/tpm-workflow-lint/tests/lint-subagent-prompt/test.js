@@ -34,7 +34,7 @@
  *
  * HOW TO RUN:  node tests/lint-subagent-prompt/test.js   (exit 0 = all pass)
  *              node tests/lint-subagent-prompt/mutation-check.js  (the mutation proofs)
- * Scratch fixtures are written under tmp/builder-r1/ (never findings/).
+ * Scratch fixtures are written under <bundle>/tmp/scratch/<run-slug>/ (shared helper; never findings/).
  */
 
 'use strict';
@@ -42,13 +42,16 @@
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { mkScratch } = require('../../../../../tests/lib/scratch'); // shared: <bundle>/tmp/scratch/<run-slug>/
 
 // This test lives at <phase-root>/tests/lint-subagent-prompt/test.js, so the
 // phase root is two levels up (per the per-suite tests/<tool>/test.js layout).
 const ROOT = path.resolve(__dirname, '..', '..');
-const LINT = path.join(ROOT, 'tools', 'lint-subagent-prompt.js');
-const SCRATCH = path.join(ROOT, 'tmp', 'builder-r1', 'lint-fixtures');
-fs.mkdirSync(SCRATCH, { recursive: true });
+// Canonical promoted tool at tools/workflow/ (two levels up from this phase dir) — run against the
+// SHIPPED tool, not a checked-in copy.
+const CANON = path.resolve(ROOT, '..', '..');
+const LINT = path.join(CANON, 'tpm-workflow-lint-subagent-prompt.js');
+const SCRATCH = mkScratch('lint'); // <bundle>/tmp/scratch/<run-slug>/lint-XXXXXX (created)
 
 let passed = 0;
 let failed = 0;
@@ -434,8 +437,8 @@ check('FIX#8 a VALID explicit --manifest still lints (exit 0, not 2)', r.code ==
 // left GREEN (fable-2 #4). Each guard was confirmed to RUN, but never to FAIL:
 //   L1 empty-charter (st.size > 0)   L2 env-source-ritual   L3 working-folder
 //   L4 FILL-marker regex catching a LOWERCASE {{fill}} (uppercase-only survivor)
-// One killing negative-path assertion each; each is mutation-proved in
-// tests/lint-subagent-prompt/mutation-check28.js.
+// One killing negative-path assertion each. (The external mutation-check28
+// harness that proved these was retired; the assertions remain.)
 // ===========================================================================
 
 // ── L1: empty-charter — a 0-byte charter FAILs charter-file-present ──────────

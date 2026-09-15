@@ -1,0 +1,8 @@
+# NOTE: this file is intentionally (almost) empty.
+#
+# Because package.json declares a `files[]` allowlist, npm IGNORES .npmignore for anything files[]
+# includes — so test exclusion CANNOT live here. It lives in package.json `files[]` instead, via
+# negation patterns:  "!**/tests/**"  and  "!**/*.test.js"  (verified with `npm pack --dry-run`).
+#
+# Add real ignore rules here only for paths NOT covered by files[]. Keeping this file as a signpost
+# so nobody re-adds "tests/" here expecting it to work.

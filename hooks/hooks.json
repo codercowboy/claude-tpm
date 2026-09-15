@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          { "type": "command", "command": "npx tpm hooks gate-spawn" }
+        ]
+      },
+      {
+        "matcher": "Read|Glob|Grep|NotebookRead",
+        "hooks": [
+          { "type": "command", "command": "npx tpm hooks expand-tpm-home" }
+        ]
+      }
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-# `lib/tpm-task-config.js` — the `tasks` config-section resolver
+# `tpm-task-config.js` — the `tasks` config-section resolver
 
 Resolves the `tasks` section of a project's `.claude/claude-tpm/config.json` — merged over
 built-in defaults — so `tpm-task.js` (every subcommand) and the `tpm-task` skill read the SAME 12 keys
@@ -38,15 +38,15 @@ its config; it just reads the resolved shape.
 ## Requirements / invocation shape
 
 ```
-node lib/tpm-task-config.js [--config <path>] (--json | --get <dotted.key> | --tasks-dir) [--help]
+npx tpm task config [--config <path>] (--json | --get <dotted.key> | --tasks-dir) [--help]
 ```
 
 - Exactly one of `--json` / `--get <key>` / `--tasks-dir` must be passed (with `--help`, none of the
-  above). **Verified:** calling with none of them prints `lib/tpm-task-config.js: nothing to do — pass one of
+  above). **Verified:** calling with none of them prints `tpm-task-config.js: nothing to do — pass one of
   --json / --get / --tasks-dir.`, then the usage block, and exits 1.
 - `--config <path>` is **optional.** Default:
   `<projectRoot>/.claude/claude-tpm/config.json`, where `<projectRoot>` is found by walking up from
-  `cwd` for a `CLAUDE.md` marker (via `lib/tpm-task-paths.js`'s `findRoot`).
+  `cwd` for a `CLAUDE.md` marker (via `tpm-task-paths.js`'s `findRoot`).
   - **Default location that doesn't exist → resolves to defaults, no error.**
   - **An EXPLICIT `--config <path>` that doesn't exist → a friendly error, exit 1.** Verified:
     `--config /no/such/config.json --json` prints `config: --config path does not exist:
@@ -81,7 +81,7 @@ malformed is ignored in favor of the default rather than erroring.
 |---|---|
 | `--json` | Prints the fully resolved `tasks` config as pretty JSON. Exit 0. |
 | `--get <dotted.key>` | Prints one resolved value as JSON (`--get startId` → `1000`; `--get autoConfirm.finish` → `false`). **Because the resolver returns the `tasks` SECTION, keys are bare** — `--get enabled`, NOT `--get tasks.enabled`. A key not in the resolved shape (e.g. `--get nope.nope`) errors `config: no such key "nope.nope" in resolved config.` and exits 1. |
-| `--tasks-dir` | Shortcut printing the resolved `tasksDir` as a **bare absolute path** (no JSON quoting), resolved relative to `projectRoot` if not already absolute. Convenient for the skill/other scripts (`--tasks-dir "$(node lib/tpm-task-config.js --tasks-dir)"`). |
+| `--tasks-dir` | Shortcut printing the resolved `tasksDir` as a **bare absolute path** (no JSON quoting), resolved relative to `projectRoot` if not already absolute. Convenient for the skill/other scripts (`--tasks-dir "$(npx tpm task config --tasks-dir)"`). |
 | `--config <path>` | Explicit config file path (see the default-vs-explicit-missing asymmetry above). |
 | `--help` | Usage. Exits 0. |
 
@@ -107,7 +107,7 @@ malformed is ignored in favor of the default rather than erroring.
 ## Worked example (run against a sandbox)
 
 ```
-$ node tools/task/lib/tpm-task-config.js --json
+$ npx tpm task config --json
 {
   "enabled": true,
   "tasksDir": ".claude/claude-tpm/tasks",
@@ -116,16 +116,16 @@ $ node tools/task/lib/tpm-task-config.js --json
   "subtaskStyle": "letters"
 }
 
-$ node tools/task/lib/tpm-task-config.js --get startId
+$ npx tpm task config --get startId
 1000
 
-$ node tools/task/lib/tpm-task-config.js --get autoConfirm.finish
+$ npx tpm task config --get autoConfirm.finish
 false
 
-$ node tools/task/lib/tpm-task-config.js --tasks-dir
+$ npx tpm task config --tasks-dir
 /abs/project/root/.claude/claude-tpm/tasks
 
-$ node tools/task/lib/tpm-task-config.js --config /no/such.json --json
+$ npx tpm task config --config /no/such.json --json
 config: --config path does not exist: /no/such.json          # exit 1
 ```
 

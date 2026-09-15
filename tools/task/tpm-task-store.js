@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * lib/tpm-task-store.js — the tpm-task on-disk STORE engine (build-plan Wave 3).
+ * tpm-task-store.js — the tpm-task on-disk STORE engine (build-plan Wave 3).
  *
  * PURPOSE
  *   All filesystem mechanics over a `<tasksDir>/` store: body-file read/write with

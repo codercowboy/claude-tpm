@@ -10,6 +10,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { mkScratch } = require('../../../tests/lib/scratch'); // shared: <bundle>/tmp/scratch/<run-slug>/
 
 const signoff = require('../../tpm-workflow-signoff.js');
 const HOOK = path.resolve(__dirname, '..', '..', 'hooks', 'tpm-workflow-gate-spawn.js');
@@ -30,7 +31,7 @@ const wfInput = { prompt: `You are a BUILDER subagent.\n<!-- tpm-workflow-spawn 
 const nonWfInput = { prompt: 'Go read charter-builder.md under dev/foo and summarize it.' };
 const wfPayload = (cwd) => ({ tool_name: 'Agent', cwd, tool_input: wfInput });
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'signoff-test-'));
+const root = mkScratch('signoff-test');
 try {
   // ── signoff: spawn REQUIRES a fresh questions token first ──────────────────
   let threw = false;

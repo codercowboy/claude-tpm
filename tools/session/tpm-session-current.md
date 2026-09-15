@@ -20,10 +20,10 @@ for the full rationale.
 ## Requirements / invocation shape
 
 ```
-node tpm-session-current.js --sessions-dir <dir> (--state | --open | --seal | --next-number) [--help]
+npx tpm session current --sessions-dir <dir> (--state | --open | --seal | --next-number) [--help]
 ```
 
-- `--sessions-dir <dir>` — **required.** No default — resolve it via `node tpm-session-config.js
+- `--sessions-dir <dir>` — **required.** No default — resolve it via `npx tpm session config
   --sessions-dir` (see `config.md`).
 - Exactly one of `--state` / `--open` / `--seal` / `--next-number` must be passed. **Verified:**
   passing none of them (with `--sessions-dir` present) prints `nothing to do — pass one of --state
@@ -50,25 +50,25 @@ node tpm-session-current.js --sessions-dir <dir> (--state | --open | --seal | --
 ## Worked example (run against the sandbox)
 
 ```
-$ node tools/session/tpm-session-current.js --sessions-dir "$SDIR" --state
+$ npx tpm session current --sessions-dir "$SDIR" --state
 { "state": "not-opened", "number": null, "sessionId": "...", "pointerPath": "...", "pointer": null }
 
-$ node tools/session/tpm-session-current.js --sessions-dir "$SDIR" --open
+$ npx tpm session current --sessions-dir "$SDIR" --open
 { "number": "001", "sessionId": "...", "isNew": true, "pointerPath": "..." }
 
-$ node tools/session/tpm-session-current.js --sessions-dir "$SDIR" --open   # idempotent
+$ npx tpm session current --sessions-dir "$SDIR" --open   # idempotent
 { "number": "001", "sessionId": "...", "isNew": false, "pointerPath": "..." }
 
-$ node tools/session/tpm-session-current.js --sessions-dir "$SDIR" --next-number
+$ npx tpm session current --sessions-dir "$SDIR" --next-number
 001
 
-$ node tools/session/tpm-session-current.js --sessions-dir "$SDIR" --seal
+$ npx tpm session current --sessions-dir "$SDIR" --seal
 { "number": "001", "closedAt": "2026-08-30T09:16:42.622Z" }
 
-$ node tools/session/tpm-session-current.js --sessions-dir "$SDIR" --seal   # nothing open now
+$ npx tpm session current --sessions-dir "$SDIR" --seal   # nothing open now
 current-session: current-session: nothing is currently open to seal.
 
-$ node tools/session/tpm-session-current.js --sessions-dir "$SDIR" --state
+$ npx tpm session current --sessions-dir "$SDIR" --state
 { "state": "not-opened", "number": null, "sessionId": "...", "pointerPath": "...",
   "pointer": { "sessionId": "...", "number": "001", "openedAt": "...", "closedAt": "..." } }
 ```

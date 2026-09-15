@@ -91,13 +91,13 @@
  *   so the test can drive the pure helpers directly.
  *
  * EXAMPLES
- *   node tpm-workflow-scaffold-subagent.js epic-init dev/my-epic
- *   node tpm-workflow-scaffold-subagent.js add-phase dev/my-epic --slug build-parser --team ship \
+ *   npx tpm workflow scaffold epic-init dev/my-epic
+ *   npx tpm workflow scaffold add-phase dev/my-epic --slug build-parser --team ship \
  *         --pretask-ack dev/my-epic/00-epic-plan/pretask-01.md
- *   node tpm-workflow-scaffold-subagent.js add-phase dev/my-epic --slug plan-it --team full \
+ *   npx tpm workflow scaffold add-phase dev/my-epic --slug plan-it --team full \
  *         --pretask-ack dev/my-epic/00-epic-plan/pretask-02.md --config ./cfg.json
- *   node tpm-workflow-scaffold-subagent.js add-round dev/my-epic/01-build-parser --role builder
- *   node tpm-workflow-scaffold-subagent.js --help
+ *   npx tpm workflow scaffold add-round dev/my-epic/01-build-parser --role builder
+ *   npx tpm workflow scaffold --help
  */
 
 'use strict';
@@ -268,8 +268,8 @@ function epicPlanStub(epicSlug) {
     `# Epic — ${epicSlug}`,
     '',
     '> The ONE mutable cross-phase home. ORCHESTRATOR-WRITE-ONLY; all subagents are',
-    '> READ-ONLY here. Keep it CHARTER-CLEAN — nothing that reveals a phase\'s posture',
-    '> or that a second charter exists (subagents read this file).',
+    '> READ-ONLY here. Keep it CHARTER-CLEAN (subagents read this file) — describe WHAT',
+    '> each phase delivers, never its internal approach.',
     '',
     '## Goal / deliverable',
     '{{EPIC_GOAL}}',
@@ -310,7 +310,7 @@ function decisionsStub() {
     '# Decisions',
     '',
     '> Human + orchestrator decisions across phases. Doubles as the raise-to-user',
-    '> queue. CHARTER-CLEAN: record WHAT was decided, not per-phase postures.',
+    '> queue. CHARTER-CLEAN (subagents read this file): record WHAT was decided, not how a phase is approached.',
     '',
     '## Log',
     '- {{DECISION}} — {{DATE}}',

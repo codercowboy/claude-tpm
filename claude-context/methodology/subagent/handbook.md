@@ -1,8 +1,8 @@
 # Subagents Manual
 
-**Subagent-specific operating rules** — what subagents are (and aren't) for, the live-system-access policy summary. Read this when you ARE a subagent, or when you (the orchestrator) want to remember what subagents do and don't apply to.
+**Subagent-specific operating rules** — what subagents are (and aren't) for, and the live-system-access policy summary. This is your manual: you are reading it because you were spawned as a subagent.
 
-**The orchestrator-side mechanics of spawning and managing subagents** — picking model + working folder, writing the spawn prompt, picking templates, reconciling results, promoting tools, tracking cost — live in [`../orchestrator/handbook.md`](../orchestrator/handbook.md). Subagents do NOT read that doc.
+**The orchestrator-side mechanics of spawning and managing subagents are not a subagent's concern** — they live in the orchestrator's own handbook, which subagents do not read.
 
 **Project layout, working folder, write boundary, scaffolder, and naming conventions** — folder-per-task, output-discipline, `questions.md`, naming — live in [`../project-workspace.md`](../project-workspace.md). Read it once and apply.
 
@@ -151,6 +151,5 @@ The following sections used to live in this manual but are now spread across the
 - [`../shared-conventions.md`](../shared-conventions.md) — verification, tooling conventions, reading heuristics, onboarding ritual.
 - [`../troubleshooting.md`](../troubleshooting.md) — what to try when stuck, disaster recovery.
 - Agent tool documentation (model, isolation, background, prompts) — see the `Agent` tool description surfaced in each session's system context.
-- `CLAUDE.md` — project-wide instructions; the "Document findings as you go" section applies to subagents too.
 - `tools/README.md` — existing scripts subagents may reuse.
 </content>

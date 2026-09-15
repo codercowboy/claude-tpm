@@ -31,11 +31,11 @@ const TOOL_ROOT = path.resolve(__dirname, '..');
 const T = (rel) => path.join(TOOL_ROOT, rel);
 const TEST = (rel) => path.join(__dirname, rel);
 
-const FORMAT = T('lib/tpm-task-format.js');
-const RENDER = T('lib/tpm-task-render.js');
-const STORE = T('lib/tpm-task-store.js');
+const FORMAT = T('tpm-task-format.js');
+const RENDER = T('tpm-task-render.js');
+const STORE = T('tpm-task-store.js');
 const TASK = T('tpm-task.js');
-const CONFIG = T('lib/tpm-task-config.js');
+const CONFIG = T('tpm-task-config.js');
 
 const FORMAT_TEST = TEST('format/test.js');
 const RENDER_TEST = TEST('render/test.js');
@@ -44,7 +44,7 @@ const TASK_TEST = TEST('tpm-task/test.js');
 // Each mutant: id, tool file, the suite that must catch it, and a find->replace pair.
 // `find` MUST be a UNIQUE substring of the CURRENT tool source (checked below).
 const MUTANTS = [
-  // ── lib/tpm-task-format.js  (caught by tests/format/test.js) ─────────────────────────
+  // ── tpm-task-format.js  (caught by tests/format/test.js) ─────────────────────────
   { id: 'format · setSubtaskChecked idempotency guard neutered (already-checked re-writes + reports changed)',
     file: FORMAT, test: FORMAT_TEST,
     find: 'if (target.checked === checked) return { raw, existed: true, changed: false };',
@@ -71,7 +71,7 @@ const MUTANTS = [
     find: 'if (!fm) break; // first blank / non-managed-field line ENDS the contiguous state block',
     replace: 'if (!fm) continue; // MUT: free whole-body scan' },
 
-  // ── lib/tpm-task-render.js  (caught by tests/render/test.js) ─────────────────────────
+  // ── tpm-task-render.js  (caught by tests/render/test.js) ─────────────────────────
   { id: 'render · ladder "today" boundary D<=0 -> D<0 (same-day no longer today)',
     file: RENDER, test: RENDER_TEST,
     find: "if (D <= 0) return 'today';",
@@ -103,7 +103,7 @@ const MUTANTS = [
     find: "return { result: 'illegal', target: t.target };",
     replace: "return { result: 'legal', target: t.target };" },
 
-  // ── lib/tpm-task-store.js  (caught by tests/tpm-task/test.js — behavioral) ───────────────
+  // ── tpm-task-store.js  (caught by tests/tpm-task/test.js — behavioral) ───────────────
   { id: 'store · peekNextId startId floor off-by-one (first id no longer startId)',
     file: STORE, test: TASK_TEST,
     find: 'const highest = Math.max(highestKnownId(tasksDir), startId - 1);',
@@ -121,7 +121,7 @@ const MUTANTS = [
     find: 'for (const r of idx.rows) highest = Math.max(highest, r.num);',
     replace: 'for (const r of idx.rows) highest = Math.max(highest, 0); /* MUT */' },
 
-  // ── lib/tpm-task-config.js  (caught by tests/tpm-task/test.js — allowHardDelete gate) ────
+  // ── tpm-task-config.js  (caught by tests/tpm-task/test.js — allowHardDelete gate) ────
   { id: 'config · allowHardDelete override ignored (hard-delete cannot be disabled)',
     file: CONFIG, test: TASK_TEST,
     find: "if (typeof rawTasks.allowHardDelete === 'boolean') resolved.allowHardDelete = rawTasks.allowHardDelete;",

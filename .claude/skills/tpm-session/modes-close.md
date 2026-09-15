@@ -20,7 +20,7 @@ follow your spawn prompt instead.
    Module-gated: a no-op if `session.notes.enabled` is false. This is the one path — `close` does NOT
    duplicate the notes-writing logic.
 
-3. **Seal the session.** After `save` finishes, call `node ${TPM_HOME}/tools/session/tpm-session-notes.js
+3. **Seal the session.** After `save` finishes, call `npx tpm session notes
    --sessions-dir <dir> seal` — stamps `SEALED <date>` in the note AND marks the current-session
    pointer closed (`${TPM_HOME}/tools/session/tpm-session-current.js`'s `sealSession`), so the NEXT bare
    `tpm-session` invocation (this session or a future one) opens fresh instead of reusing this folder.

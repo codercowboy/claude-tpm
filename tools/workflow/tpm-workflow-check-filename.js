@@ -33,10 +33,10 @@
  *   DEFAULT_PATTERNS                      -> string[]
  *
  * EXAMPLES
- *   node tpm-workflow-check-filename.js my-findings.md                       # exit 1 (matches "findings")
- *   node tpm-workflow-check-filename.js plan.md                               # exit 0
- *   node tpm-workflow-check-filename.js notes.md --patterns notes,scratch      # exit 1 (matches "notes")
- *   node tpm-workflow-check-filename.js out.md --config .claude/claude-tpm/config.json
+ *   npx tpm workflow check-filename my-findings.md                       # exit 1 (matches "findings")
+ *   npx tpm workflow check-filename plan.md                               # exit 0
+ *   npx tpm workflow check-filename notes.md --patterns notes,scratch      # exit 1 (matches "notes")
+ *   npx tpm workflow check-filename out.md --config .claude/claude-tpm/config.json
  */
 
 'use strict';
@@ -85,7 +85,7 @@ function loadPatternsFromConfig(configPath) {
 function printHelp() {
   process.stdout.write(
     [
-      'Usage: node tpm-workflow-check-filename.js <filename> [--patterns a,b,c] [--config <path>] [--help]',
+      'Usage: npx tpm workflow check-filename <filename> [--patterns a,b,c] [--config <path>] [--help]',
       '',
       'Exits 1 with a message if the basename (case-insensitive) contains a blocked pattern,',
       'else exits 0.',
@@ -98,9 +98,9 @@ function printHelp() {
       `Default patterns: ${DEFAULT_PATTERNS.join(', ')}`,
       '',
       'Examples:',
-      '  node tpm-workflow-check-filename.js my-findings.md',
-      '  node tpm-workflow-check-filename.js plan.md',
-      '  node tpm-workflow-check-filename.js out.md --config .claude/claude-tpm/config.json',
+      '  npx tpm workflow check-filename my-findings.md',
+      '  npx tpm workflow check-filename plan.md',
+      '  npx tpm workflow check-filename out.md --config .claude/claude-tpm/config.json',
       '',
     ].join('\n'),
   );

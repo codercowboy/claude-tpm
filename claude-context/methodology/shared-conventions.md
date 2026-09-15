@@ -58,7 +58,7 @@ read only those in full.
 **Force full-read** in these cases:
 - **First-encounter docs** — when reading something for the first time, read all of it so caveats and
   open-questions don't get missed. Subsequent visits can grep.
-- **CLAUDE.md and the methodology docs themselves** — read fully at session open / first spawn. They're the
+- **The methodology docs themselves** (and your project's `CLAUDE.md`, if it has one) — read fully at session open / first spawn. They're the
   rules of the road; missing a section means missing a rule.
 - **Any doc you're about to cite as authoritative** in a finding or report. Don't claim it says X without
   confirming it.

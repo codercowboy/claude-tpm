@@ -18,11 +18,10 @@ verify↔bug-fixer loop (on FAIL only), and routes each stop with judgment.
   FAIL is an INPUT the orchestrator judges, and any kickback goes to a **bug-fixer**, never to the
   verifier and never to a fresh builder.
 - Scaffold/compose/lint the verifier the same way `plan` mode does a builder:
-  `tpm-workflow-scaffold-subagent.js add-round <phase> --role verifier` → `tpm-workflow-compose-spawn-prompt.js --role verifier
-  --round <N> --variant <M>` → `tpm-workflow-lint-subagent-prompt.js --file … --manifest
-  ${TPM_HOME}/claude-context/methodology/subagent/reading-list.md --verifier`. The `--verifier` flag enables the
-  manifest's `verifier` block plus the HARD-RULE reminder; pass `--manifest` explicitly here too (the
-  ONE canonical manifest — see `modes-plan.md` §6; never rely on discovery). Spawn via `tpm-spawn`
+  `npx tpm workflow scaffold add-round <phase> --role verifier` → `npx tpm workflow compose --role verifier
+  --round <N> --variant <M>` → `npx tpm workflow lint --file … --verifier`. The `--verifier` flag enables the
+  manifest's `verifier` block plus the HARD-RULE reminder; no `--manifest` needed (it self-locates the
+  ONE canonical manifest — see `modes-plan.md` §6; `--manifest` stays an optional override). Spawn via `tpm-spawn`
   (single) or `tpm-spawn-team` (roster).
 - **Verdict lands at `findings/verifier-r<N>-v<M>-verdict.md`** ("verdict" avoids the blocked
   "findings" filename pattern). Scratch/captures → the verifier's own `tmp/verifier-r<N>-v<M>/`.

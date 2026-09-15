@@ -30,17 +30,17 @@
  * loop working as intended.
  *
  * USAGE.
- *   node tpm-workflow-compose-spawn-prompt.js --role builder \
+ *   npx tpm workflow compose --role builder \
  *     --phase-dir 'dev/epic/02b-lint-compose' \
  *     --plan plan.md --charter charter-builder.md
  *
  *   # bug-fixer: --verdict is REQUIRED and becomes read-order item 1:
- *   node tpm-workflow-compose-spawn-prompt.js --role bug-fixer --phase-dir <p> \
+ *   npx tpm workflow compose --role bug-fixer --phase-dir <p> \
  *     --plan plan.md --charter charter-bug-fixer.md \
  *     --verdict findings/verifier-r1-v1-verdict.md
  *
  *   # with optional round/model/env-ritual + write to a file:
- *   node tpm-workflow-compose-spawn-prompt.js --role verifier --phase-dir <p> \
+ *   npx tpm workflow compose --role verifier --phase-dir <p> \
  *     --plan plan.md --charter charter-verifier.md --round 1 --variant 1 \
  *     --model opus --project-root '/abs/repo/root' --out spawn-prompt-verifier-r1-v1.md
  *

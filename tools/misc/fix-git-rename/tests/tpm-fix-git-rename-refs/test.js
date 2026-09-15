@@ -18,6 +18,7 @@ const os = require('os');
 const path = require('path');
 const assert = require('assert');
 const { spawnSync } = require('child_process');
+const { mkScratch } = require('../../../../tests/lib/scratch'); // shared: <bundle>/tmp/scratch/<run-slug>/ (removed per-tree in finally)
 
 const TOOL = path.join(__dirname, '..', '..', 'tpm-fix-git-rename-refs.js');
 const mod = require(TOOL);
@@ -33,7 +34,7 @@ function test(name, fn) {
 // ── fixture helpers ─────────────────────────────────────────────────────────
 // makeTree(spec): spec maps rel-path -> string | Buffer | {symlink: target}. Returns the temp root.
 function makeTree(spec) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tpm-fixrefs-'));
+  const root = mkScratch('tpm-fixrefs');
   for (const [rel, val] of Object.entries(spec)) {
     const abs = path.join(root, rel);
     if (val && typeof val === 'object' && !Buffer.isBuffer(val) && val.symlink) {
@@ -505,7 +506,7 @@ test('§9 missing positional -> exit 2', () => {
 });
 
 test('§9 unreadable status file -> exit 1', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tpm-fixrefs-'));
+  const dir = mkScratch('tpm-fixrefs');
   try {
     const r = runCli(['identify', 'does-not-exist.txt', '--scan-root', dir], dir);
     assert.strictEqual(r.status, 1);
@@ -1434,7 +1435,7 @@ test('§10 exit matrix: identify=0, fix clean=0, fix failed=4, gate=5, apply-pla
 // Probe whether this environment actually enforces a read-only bit (root ignores
 // permission bits, so we branch the assertions to stay deterministic everywhere).
 function canEnforceReadonly() {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'tpm-ro-'));
+  const d = mkScratch('tpm-ro');
   const f = path.join(d, 'probe');
   try {
     fs.writeFileSync(f, 'x');

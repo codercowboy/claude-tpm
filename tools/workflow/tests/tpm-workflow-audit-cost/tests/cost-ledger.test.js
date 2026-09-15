@@ -20,14 +20,16 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { mkScratch } = require('../../../../tests/lib/scratch'); // shared: <bundle>/tmp/scratch/<run-slug>/
 
-const TOOL = path.join(__dirname, '..', 'tools', 'cost-ledger.js');
+// The CANONICAL promoted tool — this suite runs against the shipped tool, not a checked-in copy.
+const TOOL = path.join(__dirname, '..', '..', '..', 'tpm-workflow-cost-ledger.js');
 let PASS = 0, FAIL = 0;
 const fails = [];
 function ok(cond, msg) {
   if (cond) { PASS++; } else { FAIL++; fails.push(msg); console.error('  ✗ ' + msg); }
 }
-function mkscratch() { return fs.mkdtempSync(path.join(os.tmpdir(), 'ledger-test-')); }
+function mkscratch() { return mkScratch('ledger-test'); }
 
 /** Run the tool; return {status, stdout, stderr}. Never throws on non-zero. */
 function run(args) {
@@ -130,8 +132,8 @@ function run(args) {
 // ===========================================================================
 // TEST-HARDENING ROUND (28) — cell() pipe-escape (fable-3 #5). A --note / --agent
 // carrying a literal `|` must be backslash-escaped so it can't inject an extra
-// markdown-table column and corrupt the ledger. Nothing pinned this; mutation-
-// proved in tests/mutation-check28.js.
+// markdown-table column and corrupt the ledger. Nothing pinned this before; the
+// assertion below is the pin. (The external mutation-check28 harness was retired.)
 // ===========================================================================
 (function testPipeEscape() {
   console.log('TEST 5: cell() pipe-escape');

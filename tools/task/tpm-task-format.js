@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * lib/tpm-task-format.js — the tpm-task format token SSOT (checklist B4 / build-plan Wave 2).
+ * tpm-task-format.js — the tpm-task format token SSOT (checklist B4 / build-plan Wave 2).
  *
  * PURPOSE
  *   ONE module that owns the canonical body + index tokens (headings, `- **Label:**` field

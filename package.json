@@ -16,15 +16,16 @@
     "tpm": "tools/tpm.js"
   },
   "files": [
+    ".claude-plugin",
     ".claude/skills",
+    "hooks",
     "claude-context/methodology",
     "claude-context/config-guide.md",
     "tools",
-    "boot.md",
-    "CLAUDE.md"
+    "!**/tests/**",
+    "!**/*.test.js"
   ],
   "scripts": {
-    "test": "node tools/workflow/tests/mutation-check28.js",
-    "scaffold-consumer": "node tools/consumer/tpm-consumer-scaffold.js"
+    "test": "node tools/tests/run-all.js"
   }
 }

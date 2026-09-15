@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * lib/tpm-task-render.js — the tpm-task VIEW layer (build-plan Waves 5): age ladder, list/show
+ * tpm-task-render.js — the tpm-task VIEW layer (build-plan Waves 5): age ladder, list/show
  * rendering, and the shared selector grammar (`resolve`).
  *
  * AGE LADDER (G2 — ONE pinned algorithm; the resolved decision Q3 wins over spec §4's

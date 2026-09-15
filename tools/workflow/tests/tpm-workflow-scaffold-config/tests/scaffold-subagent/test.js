@@ -31,9 +31,11 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { mkScratch } = require('../../../../../tests/lib/scratch'); // shared: <bundle>/tmp/scratch/<run-slug>/
 
-const scaffold = require('../../tools/scaffold-subagent.js');
-const SCAFFOLD_JS = path.resolve(__dirname, '..', '..', 'tools', 'scaffold-subagent.js');
+// The CANONICAL promoted tool at tools/workflow/ (four levels up) — run against the SHIPPED tool.
+const scaffold = require('../../../../tpm-workflow-scaffold-subagent.js');
+const SCAFFOLD_JS = path.resolve(__dirname, '..', '..', '..', '..', 'tpm-workflow-scaffold-subagent.js');
 
 // ── tiny assert harness ────────────────────────────────────────────────────
 let passed = 0;
@@ -46,8 +48,8 @@ function check(cond, msg) {
 function isDir(p) { return fs.existsSync(p) && fs.statSync(p).isDirectory(); }
 function isFile(p) { return fs.existsSync(p) && fs.statSync(p).isFile(); }
 
-// ── scratch workspace under os.tmpdir() ────────────────────────────────────
-const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'scaffold-v2-test-'));
+// ── scratch workspace under <bundle>/tmp/scratch/<run-slug>/ (shared helper) ────────────────────────
+const workspace = mkScratch('scaffold-v2-test');
 let keepOnExit = false;
 
 function main() {

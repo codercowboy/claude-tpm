@@ -235,7 +235,7 @@ check('CLI: an empty (nonexistent) sessionsDir reports "No sessions found." rath
 check('CLI: --help exits 0', () => {
   const r = runNode(TOOLS.sessionReview, ['--help']);
   assert.strictEqual(r.code, 0);
-  assert.ok(/Usage: node tpm-session-review\.js/.test(r.stdout));
+  assert.ok(/Usage: npx tpm session review/.test(r.stdout));
 });
 
 process.stdout.write(`\nALL PASS (${count()} checks) — tests/session/session-review/test.js\n`);

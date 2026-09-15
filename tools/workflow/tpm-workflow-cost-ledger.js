@@ -26,20 +26,20 @@
  *
  * USAGE.
  *   # append a row to a flat round's ledger (<dir>/tmp/cost-ledger.md)
- *   node tools/workflow/tpm-workflow-cost-ledger.js --dir "<working folder>" \
+ *   npx tpm workflow cost --dir "<working folder>" \
  *     --agent round-w-8b3e --role worker --model opus \
  *     --tokens 715k --calls 198 --verdict ACCEPT --round "phase B" --note "ok"
  *
  *   # append a row to the EPIC ledger (<epic>/00-epic-plan/cost-ledger.md)
- *   node tools/workflow/tpm-workflow-cost-ledger.js --epic-path "<epic folder>" \
+ *   npx tpm workflow cost --epic-path "<epic folder>" \
  *     --agent orch --role orchestrator --tokens 40k --round "epic bookkeeping"
  *
  *   # print the running total for a ledger (flat or epic)
- *   node tools/workflow/tpm-workflow-cost-ledger.js --dir "<working folder>" --summary
- *   node tools/workflow/tpm-workflow-cost-ledger.js --epic-path "<epic folder>" --summary
+ *   npx tpm workflow cost --dir "<working folder>" --summary
+ *   npx tpm workflow cost --epic-path "<epic folder>" --summary
  *
  *   # roll the WHOLE epic up (per-phase breakdown + epic totals)
- *   node tools/workflow/tpm-workflow-cost-ledger.js --rollup "<epic folder>"
+ *   npx tpm workflow cost --rollup "<epic folder>"
  *
  * FLAGS.
  *   --dir <path>        The round's working folder (its tmp/ gets the ledger).

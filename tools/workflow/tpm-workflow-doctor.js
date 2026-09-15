@@ -2,15 +2,16 @@
 /**
  * tpm-workflow-doctor.js — a fail-loud PREFLIGHT for the workflow install seams. Every check here corresponds to a
  * way a real `/tpm-workflow` fan-out silently broke in a consumer (claude-decant, 2026-09-01): charters
- * resolving to placeholders, the gate hook not wired, compose emitting bare bundle paths, signoff not
- * writable. Each of those was a 5-second red line that instead cost a whole round. This is the
- * operational form of the "fail loud, name the missing thing" hygiene in
- * claude-context/dev/gating-and-failure-patterns.md.
+ * resolving to placeholders, compose emitting bare bundle paths, signoff not writable. Each of those was
+ * a 5-second red line that instead cost a whole round. This is the operational form of the "fail loud,
+ * name the missing thing" hygiene in claude-context/dev/gating-and-failure-patterns.md.
  *
- * Runs in claude-admin OR in a consumer install (it self-locates the bundle from this file's position,
- * and reads the PROJECT's .claude/settings.json for the wired hooks).
+ * (The PreToolUse hooks — expand-tpm-home + gate-spawn — are delivered by the plugin's hooks/hooks.json,
+ * auto-discovered on enable, so this doctor no longer checks for hook wiring in settings.json.)
  *
- * USAGE:  node tools/workflow/tpm-workflow-doctor.js [--project-root <dir>] [--json]
+ * Runs in claude-admin OR in a consumer install (it self-locates the bundle from this file's position).
+ *
+ * USAGE:  npx tpm workflow doctor [--project-root <dir>] [--json]
  * EXIT:   0 = all checks pass, 1 = at least one FAIL (prints the fix for each).
  */
 'use strict';
@@ -32,16 +33,6 @@ function findProjectRoot(startDir) {
   return path.resolve(startDir || process.cwd());
 }
 
-function readSettings(projectRoot) {
-  try { return JSON.parse(fs.readFileSync(path.join(projectRoot, '.claude', 'settings.json'), 'utf8')); }
-  catch (_e) { return null; }
-}
-function hookWired(settings, matcherSub, cmdSub) {
-  const pre = (settings && settings.hooks && settings.hooks.PreToolUse) || [];
-  return pre.some((e) => String(e.matcher || '').includes(matcherSub)
-    && (e.hooks || []).some((h) => String(h.command || '').includes(cmdSub)));
-}
-
 // ── the checks (each returns { ok, detail, fix }) ────────────────────────────
 
 function checkCharters(projectRoot) {
@@ -58,18 +49,6 @@ function checkCharters(projectRoot) {
     };
   }
   return { ok: true, detail: `all ${configured.length} default charters resolve on disk` };
-}
-
-function checkGateHook(settings) {
-  return hookWired(settings, 'Agent', 'gate-spawn.js')
-    ? { ok: true, detail: 'spawn-gate PreToolUse hook is wired (Agent)' }
-    : { ok: false, detail: 'no spawn-gate hook wired for the Agent tool', fix: 'add a PreToolUse `Agent|Task` hook → tools/workflow/hooks/tpm-workflow-gate-spawn.js in .claude/settings.json (the scaffolder does this). Without it, Gate B is a no-op.' };
-}
-
-function checkExpandHook(settings) {
-  return hookWired(settings, 'Read', 'expand-tpm-home.js')
-    ? { ok: true, detail: 'expand-tpm-home PreToolUse hook is wired (Read/Glob/Grep)' }
-    : { ok: false, detail: 'no ${TPM_HOME} expand hook wired for Read', fix: 'add a PreToolUse `Read|Glob|Grep|NotebookRead` hook → tools/consumer/hooks/expand-tpm-home.js. Without it, ${TPM_HOME}/… reads dead-end at the project root.' };
 }
 
 function checkSignoffWritable(projectRoot) {
@@ -107,11 +86,8 @@ function checkCompose() {
 }
 
 function runAll(projectRoot) {
-  const settings = readSettings(projectRoot);
   return [
     ['charters resolve', checkCharters(projectRoot)],
-    ['spawn-gate hook wired', checkGateHook(settings)],
-    ['${TPM_HOME} expand hook wired', checkExpandHook(settings)],
     ['signoff store writable', checkSignoffWritable(projectRoot)],
     ['compose emits marker + tokens', checkCompose()],
   ];
@@ -143,4 +119,4 @@ function main(argv) {
 }
 
 if (require.main === module) main(process.argv.slice(2));
-module.exports = { runAll, checkCharters, checkGateHook, checkExpandHook, checkSignoffWritable, checkCompose, findProjectRoot, BUNDLE };
+module.exports = { runAll, checkCharters, checkSignoffWritable, checkCompose, findProjectRoot, BUNDLE };

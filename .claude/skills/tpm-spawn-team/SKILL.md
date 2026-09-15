@@ -1,6 +1,6 @@
 ---
 name: tpm-spawn-team
-description: Use when spawning a TEAM of two or more subagents — either a named team (full / ship / build / test / docs / research) or a freeform ordered roster of roles (planning / builder / test-writer / documentarian / verifier / bug-fixer / researcher) with counts and a serial/parallel run mode. Forgiving roster + mode interpretation, then delegates each spawn to the tpm-spawn flow. For a single subagent, use tpm-spawn. For the full round lifecycle, use tpm-workflow.
+description: Use when spawning a TEAM of two or more subagents — either a named team (full / ship / build / test / docs / research) or a freeform ordered roster of roles (planning / builder / test-writer / documentarian / verifier / bug-fixer / researcher) with counts and a serial/parallel run mode. Forgiving roster + mode interpretation, then delegates each spawn to the tpm-spawn flow. For a single subagent, use tpm-spawn. For the full round lifecycle, use tpm-workflow. Orchestrator-only — a subagent never invokes this (subagents don't spawn their own subagents).
 ---
 
 `/tpm-spawn-team` fires **two or more** subagents as an ordered roster. It owns *roster* judgment

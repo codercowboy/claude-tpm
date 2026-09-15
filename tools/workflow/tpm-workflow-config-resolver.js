@@ -57,10 +57,10 @@
  *   findProjectRoot(startDir)        -> absolute path
  *
  * EXAMPLES
- *   node tpm-workflow-config-resolver.js --json
- *   node tpm-workflow-config-resolver.js --config ./sample-config.json --json
- *   node tpm-workflow-config-resolver.js --get verifier.multiCountMode
- *   node tpm-workflow-config-resolver.js --config ./sample-config.json --validate
+ *   npx tpm workflow config --json
+ *   npx tpm workflow config --config ./sample-config.json --json
+ *   npx tpm workflow config --get verifier.multiCountMode
+ *   npx tpm workflow config --config ./sample-config.json --validate
  */
 
 'use strict';
@@ -371,7 +371,7 @@ function getDotted(obj, dottedKey) {
 function printHelp() {
   process.stdout.write(
     [
-      'Usage: node tpm-workflow-config-resolver.js [--config <path>] (--json | --get <dotted.key> | --validate) [--help]',
+      'Usage: npx tpm workflow config [--config <path>] (--json | --get <dotted.key> | --validate) [--help]',
       '',
       "Resolves the 'workflow' section of a claude-tpm config.json over built-in defaults.",
       'Absent/partial config -> defaults (never an error). A config referencing a missing file',
@@ -385,9 +385,9 @@ function printHelp() {
       '  --help                Show this message.',
       '',
       'Examples:',
-      '  node tpm-workflow-config-resolver.js --json',
-      '  node tpm-workflow-config-resolver.js --config ./sample-config.json --get deliverables.tldr',
-      '  node tpm-workflow-config-resolver.js --config ./sample-config.json --validate',
+      '  npx tpm workflow config --json',
+      '  npx tpm workflow config --config ./sample-config.json --get deliverables.tldr',
+      '  npx tpm workflow config --config ./sample-config.json --validate',
       '',
     ].join('\n'),
   );

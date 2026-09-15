@@ -1,7 +1,7 @@
 # `tools/task/` — the `tpm-task` skill's tools
 
 Portable per-suite folder (per `tool-conventions.md` Part I §1) backing the `tpm-task` skill's
-task ledger. Copy this whole folder — with its `lib/` — anywhere and it just works: **zero
+task ledger. Copy this whole folder anywhere and it just works: **zero
 third-party runtime dependencies, Node built-ins only, no shared cross-suite `require`s.** It runs
 via bare `node` today (no `package.json` needed — the `npm run task` alias is deferred, Q5).
 
@@ -13,32 +13,32 @@ each has a `<tool>.md` and is covered by the tests):
 | Tool | What it does | Docs |
 |---|---|---|
 | `tpm-task.js` | The task **engine + write API** — the 14 subcommands (`list`/`show`/`add`/`import`/`export`/`edit`/`check`/`start`/`finish`/`drop`/`remove`/`reopen` + the tool-internal `resolve`/`reindex`) over a per-task-file markdown store. Owns ALL deterministic mechanics; the ONE write path. | [`tpm-task.md`](./tpm-task.md) |
-| `lib/tpm-task-config.js` | Resolves the `tasks` section of a project's `.claude/claude-tpm/config.json` over built-in defaults (12 keys). The skill calls it directly to resolve `--tasks-dir` and to check `enabled`. | [`lib/config.md`](./lib/config.md) |
+| `tpm-task-config.js` | Resolves the `tasks` section of a project's `.claude/claude-tpm/config.json` over built-in defaults (12 keys). The skill calls it directly to resolve `--tasks-dir` and to check `enabled`. | [`config.md`](./config.md) |
 
 **Internal-only helpers** (no `<tool>.md` — not invoked directly, only `require()`d by the tools
 above):
 
-- `lib/tpm-task-format.js` — the format-token SSOT: the canonical body + index tokens (headings,
+- `tpm-task-format.js` — the format-token SSOT: the canonical body + index tokens (headings,
   `- **Label:**` field lines, `- [ ] A.` checkbox lines, index rows, the `**Next ID:**` marker)
   AND the read/write logic over them. Its header docstring IS the canonical format spec. Implements
   the **G1 surgical in-place rewrite** — mutations edit only the managed landmark line(s) they
   target and leave every other byte (blank lines, `## Notes` blocks, stray prose) untouched, so
   hand-written prose is never lost on a write.
-- `lib/tpm-task-store.js` — the on-disk store engine: body-file read/write with thousand-bucketing, the three
+- `tpm-task-store.js` — the on-disk store engine: body-file read/write with thousand-bucketing, the three
   derived index files, the self-healing Next-ID marker, per-task row placement on a state change,
   and the full `reindex` rebuild. Composes `tpm-task-format.js`'s primitives with `fs`; never hand-parses.
-- `lib/tpm-task-render.js` — the view layer: the age ladder (Q3/G2), `list`/`show` rendering, and the shared
+- `tpm-task-render.js` — the view layer: the age ladder (Q3/G2), `list`/`show` rendering, and the shared
   `resolve` selector grammar (spec §5).
-- `lib/tpm-task-paths.js` — suite-local `findRoot()` project-root resolver (byte-identical logic to
+- `tpm-task-paths.js` — suite-local `findRoot()` project-root resolver (byte-identical logic to
   `tools/session/tpm-session-paths.js`, copied per the portability rule — never hardcode absolutes), used by
-  `lib/tpm-task-config.js`.
+  `tpm-task-config.js`.
 
 ## How to run
 
 ```
-node tools/task/tpm-task.js --help                      # top-level usage (all 14 subcommands)
-node tools/task/tpm-task.js --tasks-dir <dir> list      # the compact open-task view
-node tools/task/lib/tpm-task-config.js --json           # resolved tasks config (12 keys)
+npx tpm task --help                      # top-level usage (all 14 subcommands)
+npx tpm task --tasks-dir <dir> list      # the compact open-task view
+npx tpm task config --json           # resolved tasks config (12 keys)
 ```
 
 `--tasks-dir` overrides the store location; otherwise it comes from the resolved `tasks.tasksDir`.
@@ -54,8 +54,8 @@ node tools/task/tests/mutation-check.js   # proves the tests catch real breakage
 Per-suite suites (each independently runnable):
 
 ```
-node tools/task/tests/format/test.js      # 49 units on lib/tpm-task-format.js (lenient parse + surgical mutations + G1 preserve)
-node tools/task/tests/render/test.js      # 37 units on lib/tpm-task-render.js (age-ladder boundaries, sorts, selector grammar)
+node tools/task/tests/format/test.js      # 49 units on tpm-task-format.js (lenient parse + surgical mutations + G1 preserve)
+node tools/task/tests/render/test.js      # 37 units on tpm-task-render.js (age-ladder boundaries, sorts, selector grammar)
 node tools/task/tests/tpm-task/test.js    # 109 end-to-end via the real CLI (all modes + G3 matrix + round-trip + reindex)
 ```
 
@@ -69,13 +69,13 @@ real CLI as subprocesses and assert on actual on-disk file content, not just exi
 
 ```
 tpm-task skill (out/skills/tpm-task/{SKILL.md,modes-mutate.md,modes-end.md})
-  ├─ lib/tpm-task-config.js   --tasks-dir / --json / --get enabled   (resolve config + store dir)
+  ├─ tpm-task-config.js   --tasks-dir / --json / --get enabled   (resolve config + store dir)
   └─ tpm-task.js     add/import/edit/check/start/finish/drop/remove/reopen/list/show/export/resolve/reindex
-                       └─ lib/tpm-task-store.js  (fs engine)  ──uses──▶  lib/tpm-task-format.js  (token SSOT: parse + surgical rewrite)
-                          lib/tpm-task-render.js (age ladder, list/show render, resolve selector grammar)
+                       └─ tpm-task-store.js  (fs engine)  ──uses──▶  tpm-task-format.js  (token SSOT: parse + surgical rewrite)
+                          tpm-task-render.js (age ladder, list/show render, resolve selector grammar)
 ```
 
-`lib/tpm-task-format.js` is the single token SSOT `tpm-task-store.js` imports for both read and write, so the format the
+`tpm-task-format.js` is the single token SSOT `tpm-task-store.js` imports for both read and write, so the format the
 tool writes and the format it parses cannot drift apart — see its header docstring for the canonical
 body + index shape.
 
@@ -83,5 +83,5 @@ body + index shape.
 
 Every behavioral claim in the `<tool>.md` files above was verified by running the real CLI against a
 disposable sandbox store (`--tasks-dir <tmpdir>`) — never the live `.claude/claude-tpm/tasks/` or the
-dogfood `claude-context/tasks/`. Re-run any example command from `tpm-task.md` / `lib/config.md` verbatim to
+dogfood `claude-context/tasks/`. Re-run any example command from `tpm-task.md` / `config.md` verbatim to
 reproduce. The test totals above (195 assertions, 15/15 mutants) were re-run from this folder.

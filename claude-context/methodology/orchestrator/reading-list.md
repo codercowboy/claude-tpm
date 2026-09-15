@@ -31,13 +31,19 @@ The small set you read at every session open, regardless of which modules are en
 1. **[`project-workspace.md`](../project-workspace.md)** — read/write boundaries per actor + naming conventions. (Its `dev/<task>/` layout half is workflow-module machinery — a split is pending; see `dev/workflow-design.md`.)
 2. **[`handbook.md`](./handbook.md)** — ⚠️ orchestrator-only. Your job description: plan-review gate, model selection, promotion criteria, cost tracking, disaster recovery. (Its round-specific parts belong to the workflow module — split pending.)
 3. **[`shared-conventions.md`](../shared-conventions.md)** — shared conventions you and every worker follow.
-4. **[`session-open-questions.md`](./session-open-questions.md)** — ⚠️ orchestrator-only. The boot self-quiz gate. Answer each silently; if fuzzy on any, re-read that question's referenced doc first.
 <!-- reading-list:end -->
 
-Then the project-state reads outside `methodology/` — `docs/tasks.md`, the latest
-`claude-context/sessions/session-NNN/session-notes.md` (or `notes.md` for a legacy pre-`tpm-session`
-folder), and `tools/README.md`. The `tpm-session` skill (`open` mode) walks THIS list; neither it nor
-`CLAUDE.md` re-states these docs (a second copy is what drifts).
+> **No boot self-quiz.** An earlier Tier-1 #4 pointed at a `session-open-questions.md` self-quiz gate.
+> That gate was **relocated out of boot** to the workflow module's pre-flight (fires before
+> spawn/plan/scaffold, not at open — see [`../../../.claude/skills/tpm-session/modes-open.md`] "What
+> this step does NOT do" and `orchestrator/pre-task-questions.md`). The doc was never ported and the
+> item is retired here rather than restored — boot no longer runs a self-quiz. (boot-redesign, session 014)
+
+Then the project-state reads outside `methodology/` — the task ledger under the `tasks` module store
+(`.claude/claude-tpm/tasks/`; read via `npx tpm task list`, **not** the old `docs/tasks.md`), the latest
+`session-notes.md` under the configured sessions dir (`session.notes.sessionsDir`; read via
+`npx tpm session review`), and `tools/README.md`. The `tpm-session` skill (`open` mode) walks THIS list;
+neither it nor `CLAUDE.md` re-states these docs (a second copy is what drifts).
 
 ## Tier 2 — Shared situational shelf (know it exists; read WHEN THE TRIGGER FIRES)
 
@@ -75,5 +81,5 @@ told.
 ## Operational, outside `methodology/`
 
 - **[`tools/README.md`](../../tools/README.md)** — canonical tool index.
-- **[`docs/project structure.md`](../../docs/project%20structure.md)** — flat repo inventory.
+- **`docs/project structure.md`** — flat repo inventory. *(Per-project doc, not shipped in the bundle; kept as a guidance pointer, not a live link.)*
 </content>

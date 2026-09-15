@@ -20,8 +20,11 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { execFileSync } = require('child_process');
+const { mkScratch } = require('../../../../../tests/lib/scratch'); // shared: <bundle>/tmp/scratch/<run-slug>/
 
-const TOOL = path.join(__dirname, '..', '..', 'tools', 'config-resolver.js');
+// The CANONICAL promoted tool at tools/workflow/ (four levels up from this dir) — run against the
+// SHIPPED tool, not a checked-in copy (which used to drift).
+const TOOL = path.join(__dirname, '..', '..', '..', '..', 'tpm-workflow-config-resolver.js');
 const {
   resolveConfig,
   validateResolved,
@@ -48,7 +51,7 @@ function runCLI(args, opts = {}) {
 }
 
 // --- scratch fake project ---
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'config-resolver-test-'));
+const root = mkScratch('config-resolver-test');
 fs.writeFileSync(path.join(root, 'CLAUDE.md'), '# fake project marker\n');
 fs.mkdirSync(path.join(root, 'charters'), { recursive: true });
 fs.writeFileSync(path.join(root, 'charters', 'exists.md'), '# a real charter\n');
@@ -61,7 +64,7 @@ fs.mkdirSync(path.join(root, '.claude', 'claude-tpm'), { recursive: true });
 process.env.TPM_BUNDLE_ROOT = root;
 const HOME_DIR = path.join(root, 'claude-context', 'methodology', 'workflow-setup', 'charters');
 fs.mkdirSync(HOME_DIR, { recursive: true });
-for (const stem of ['planning', 'shipping', 'test-writer', 'documentarian', 'verifier', 'bug-fixer', 'research', 'mvp']) {
+for (const stem of ['planning', 'shipping', 'test-writer', 'documentarian', 'verifier', 'bug-fixer', 'research']) {
   fs.writeFileSync(path.join(HOME_DIR, `${stem}-charter.md`), `# ${stem} charter\n`);
 }
 
@@ -134,11 +137,12 @@ function main() {
   check('getDefaults returns the documented default shape', () => {
     const d = getDefaults();
     assert.strictEqual(d.enabled, true);
-    // 7 personas + the mvp opt-down charter slot (tightening fix #1) = 8.
-    assert.strictEqual(d.subagentConfigs.length, 8);
+    // The 7 shipped personas. Per-round opt-downs are handled by charterVariants (config-guide §2),
+    // NOT an 8th `mvp` persona — that was a superseded design the old test copy froze.
+    assert.strictEqual(d.subagentConfigs.length, 7);
     assert.deepStrictEqual(
       d.subagentConfigs.map((s) => s.name),
-      ['planning', 'builder', 'test-writer', 'documentarian', 'verifier', 'bug-fixer', 'researcher', 'mvp'],
+      ['planning', 'builder', 'test-writer', 'documentarian', 'verifier', 'bug-fixer', 'researcher'],
     );
     assert.deepStrictEqual(d.teams.map((t) => t.name), ['full', 'ship', 'test', 'docs', 'research', 'build']);
     assert.strictEqual(d.defaultParallelism, 'serial');
@@ -152,14 +156,14 @@ function main() {
   // --- tightening fix #1 + relocatable fix (2026-09-01): every subagentConfigs[].charterFile is an
   //     ABSOLUTE, bundle-anchored path ending at its promoted charter home (so it resolves whether the
   //     bundle is the repo root or vendored in a consumer's node_modules), never the "" placeholder no-op. ---
-  check('fix #1: all 8 default charterFiles are absolute bundle paths ending at the promoted home', () => {
+  check('fix #1: all 7 default charterFiles are absolute bundle paths ending at the promoted home', () => {
     const path = require('path');
     const d = getDefaults();
     const HOME = 'claude-context/methodology/workflow-setup/charters';
     const wantStem = {
       planning: 'planning', builder: 'shipping', 'test-writer': 'test-writer',
       documentarian: 'documentarian', verifier: 'verifier', 'bug-fixer': 'bug-fixer',
-      researcher: 'research', mvp: 'mvp',
+      researcher: 'research',
     };
     for (const sc of d.subagentConfigs) {
       const stem = wantStem[sc.name];
@@ -175,7 +179,6 @@ function main() {
     const by = Object.fromEntries(d.subagentConfigs.map((s) => [s.name, s]));
     assert.ok(/shipping-charter\.md$/.test(by.builder.charterFile), 'builder → shipping charter');
     assert.ok(/research-charter\.md$/.test(by.researcher.charterFile), 'researcher → research charter');
-    assert.ok(/mvp-charter\.md$/.test(by.mvp.charterFile), 'mvp → mvp charter (opt-down slot)');
   });
 
   // --- expanded persona / team / loop model (design doc §"Persona / team / loop model") ---
@@ -224,7 +227,7 @@ function main() {
   });
 
   check('absent config → loopFixer default survives (resolveConfig with no config)', () => {
-    const isolatedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'config-resolver-loopfixer-'));
+    const isolatedRoot = mkScratch('config-resolver-loopfixer');
     fs.writeFileSync(path.join(isolatedRoot, 'CLAUDE.md'), '# marker\n');
     const { resolved } = resolveConfig(undefined, { startDir: isolatedRoot });
     assert.strictEqual(resolved.verifier.loopFixer, 'bug-fixer');
@@ -254,12 +257,12 @@ function main() {
     assert.strictEqual(builder.defaultModel, 'sonnet');
     assert.strictEqual(builder.retryCount, 5); // untouched field preserved from default
     assert.ok(/shipping-charter\.md$/.test(builder.charterFile)); // untouched wired charterFile preserved
-    assert.strictEqual(resolved.subagentConfigs.length, 8); // no new entry appended (7 personas + mvp)
+    assert.strictEqual(resolved.subagentConfigs.length, 7); // no new entry appended (the 7 shipped personas)
   });
 
   check('mergeWorkflowConfig appends a new-named subagentConfigs entry', () => {
     const resolved = mergeWorkflowConfig({ subagentConfigs: [{ name: 'designer', defaultModel: 'opus' }] });
-    assert.strictEqual(resolved.subagentConfigs.length, 9);
+    assert.strictEqual(resolved.subagentConfigs.length, 8); // the 7 shipped + the appended `designer`
     assert.ok(resolved.subagentConfigs.some((s) => s.name === 'designer'));
   });
 
@@ -305,7 +308,7 @@ function main() {
   });
 
   check('findProjectRoot falls back to startDir when no marker exists anywhere up the tree', () => {
-    const isolatedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'config-resolver-noroot-'));
+    const isolatedRoot = mkScratch('config-resolver-noroot');
     // os.tmpdir() itself won't have a CLAUDE.md, so this should bottom out at isolatedRoot's
     // own ancestry without throwing.
     const found = findProjectRoot(isolatedRoot);
@@ -315,7 +318,7 @@ function main() {
 
   // --- module API: resolveConfig + validateResolved ---
   check('resolveConfig on a missing default location returns defaults, no throw', () => {
-    const isolatedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'config-resolver-nodefault-'));
+    const isolatedRoot = mkScratch('config-resolver-nodefault');
     fs.writeFileSync(path.join(isolatedRoot, 'CLAUDE.md'), '# marker\n');
     const { resolved, usedDefaultLocation, configExists } = resolveConfig(undefined, { startDir: isolatedRoot });
     assert.strictEqual(usedDefaultLocation, true);
@@ -354,7 +357,7 @@ function main() {
     // The default charters are now ABSOLUTE, bundle-anchored (not project-root-relative), so vary the
     // BUNDLE root: point it at a fresh empty dir → all 8 defaults resolve there and are reported MISSING
     // (proving validation CHECKS them, not ignores them); then create them → --validate passes.
-    const isolatedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'config-resolver-fwd-'));
+    const isolatedRoot = mkScratch('config-resolver-fwd');
     const savedBundle = process.env.TPM_BUNDLE_ROOT;
     try {
       process.env.TPM_BUNDLE_ROOT = isolatedRoot;
@@ -363,10 +366,10 @@ function main() {
       const { ok, missing } = validateResolved(resolved, isolatedRoot);
       assert.strictEqual(ok, false, 'bundle has no charters yet → not ok');
       const missKeys = missing.map((m) => m.key);
-      for (const role of ['planning', 'builder', 'test-writer', 'documentarian', 'verifier', 'bug-fixer', 'researcher', 'mvp']) {
+      for (const role of ['planning', 'builder', 'test-writer', 'documentarian', 'verifier', 'bug-fixer', 'researcher']) {
         assert.ok(missKeys.includes(`subagentConfigs[${role}].charterFile`), `${role} charterFile is validated`);
       }
-      for (const stem of ['planning', 'shipping', 'test-writer', 'documentarian', 'verifier', 'bug-fixer', 'research', 'mvp']) {
+      for (const stem of ['planning', 'shipping', 'test-writer', 'documentarian', 'verifier', 'bug-fixer', 'research']) {
         const abs = path.join(isolatedRoot, 'claude-context', 'methodology', 'workflow-setup', 'charters', `${stem}-charter.md`);
         fs.mkdirSync(path.dirname(abs), { recursive: true });
         fs.writeFileSync(abs, `# ${stem} charter\n`);
@@ -413,7 +416,7 @@ function main() {
   });
 
   check('CLI: absent config (no --config, empty default location) -> built-in defaults', () => {
-    const isolatedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'config-resolver-cli-nodefault-'));
+    const isolatedRoot = mkScratch('config-resolver-cli-nodefault');
     fs.writeFileSync(path.join(isolatedRoot, 'CLAUDE.md'), '# marker\n');
     const r = runCLI(['--json'], { cwd: isolatedRoot });
     assert.strictEqual(r.code, 0);
@@ -505,7 +508,7 @@ function main() {
   // check-filename.js is the blocked-name sibling the scaffolder + lint both use.
   // Its documented precedence is "--patterns wins over --config"; nothing pinned it.
   check('check-filename: --patterns BEATS --config (precedence guard)', () => {
-    const CHECK_FILENAME = path.join(__dirname, '..', '..', 'tools', 'check-filename.js');
+    const CHECK_FILENAME = path.join(__dirname, '..', '..', '..', '..', 'tpm-workflow-check-filename.js');
     // --config lists "notes" (would block), --patterns lists "xyz" (would NOT).
     const cfgBlocksNotes = path.join(root, 'cf-blocks-notes.json');
     fs.writeFileSync(cfgBlocksNotes, JSON.stringify({ workflow: { blockedFilenamePatterns: ['notes'] } }));

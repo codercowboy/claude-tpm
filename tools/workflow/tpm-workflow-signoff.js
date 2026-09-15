@@ -24,18 +24,18 @@
  * silently reused to wave through a different round B).
  *
  * USAGE
- *   node tpm-workflow-signoff.js questions --roster "<one-line>"                    # token 1 (after the user answers)
- *   node tpm-workflow-signoff.js spawn --round "<phase-dir>" --roster "<one-line>"  # token 2 (after an explicit "kick it off")
+ *   npx tpm workflow signoff questions --roster "<one-line>"                    # token 1 (after the user answers)
+ *   npx tpm workflow signoff spawn --round "<phase-dir>" --roster "<one-line>"  # token 2 (after an explicit "kick it off")
  *       --round is the phase-folder path the kickoff authorizes; the hook matches it to the spawn's
  *       `tpm-workflow-spawn phase=…` marker so one round's "go" can't authorize a different round.
  *       Spawn tokens are keyed BY ROUND (`spawn-<hash>.json`), so a PARALLEL FAN-OUT (an epic of N
  *       phases) can hold N fresh per-phase tokens at once — one `spawn --round <phase>` per phase, or
  *       one epic-level token (`--round <epic-path>`) with every phase marker set to `phase="<epic-path>"`.
- *   node tpm-workflow-signoff.js check --gate spawn|questions [--roster "…"] [--round "…"] [--max-age <sec>]
+ *   npx tpm workflow signoff check --gate spawn|questions [--roster "…"] [--round "…"] [--max-age <sec>]
  *                                                          # exit 0 if a FRESH matching token exists, else 1
- *   node tpm-workflow-signoff.js status                                 # print both tokens' freshness (human-readable)
- *   node tpm-workflow-signoff.js clear                                  # remove ALL tokens: questions + every per-round spawn (round done / reset)
- *   node tpm-workflow-signoff.js --help
+ *   npx tpm workflow signoff status                                 # print both tokens' freshness (human-readable)
+ *   npx tpm workflow signoff clear                                  # remove ALL tokens: questions + every per-round spawn (round done / reset)
+ *   npx tpm workflow signoff --help
  *
  * CONVENTIONS: zero deps (Node built-ins only). `node tpm-workflow-signoff.js …`. Also a module
  * (module.exports) so the hook + tests drive the pure helpers directly.

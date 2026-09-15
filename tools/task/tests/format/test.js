@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * tests/format/test.js — unit suite for lib/tpm-task-format.js (the format token SSOT / G1 surgical rewrite).
+ * tests/format/test.js — unit suite for tpm-task-format.js (the format token SSOT / G1 surgical rewrite).
  *
  * WHAT IT GUARDS
  *   - Lenient landmark parse (case / whitespace / missing-bullet / separator / checkbox variants).
@@ -209,4 +209,4 @@ eq('index: row state', idxParsed.rows[0].state, 'in-progress');
 eq('index: row task', idxParsed.rows[0].task, 'Do a thing (2/5)');
 ok('index: separator/header rows are not data', idxParsed.rows.length === 1);
 
-process.stdout.write(`\nPASS — ${count()}/${count()} lib/tpm-task-format.js assertions green\n`);
+process.stdout.write(`\nPASS — ${count()}/${count()} tpm-task-format.js assertions green\n`);

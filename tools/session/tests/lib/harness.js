@@ -7,15 +7,14 @@
  *   (per this project's tools/workflow/tests/scaffold-config/tests/config-resolver/test.js
  *   convention — check() runs the assertion; an uncaught throw fails the whole script
  *   non-zero, which IS the pass/fail signal a CI or mutation-check reads), a CLI subprocess
- *   runner (runNode), and sandbox-directory creation confined to THIS phase folder's
- *   tmp/test-writer-r1/ — never the real claude-context/sessions/, per this round's
- *   constraint (test-writer charter + spawn prompt).
+ *   runner (runNode), and sandbox-directory creation via the shared scratch helper
+ *   (<bundle>/tmp/scratch/<run-slug>/) — never the real claude-context/sessions/.
  *
  * EXPORTS
  *   makeChecker() -> { check(label, fn), count() }
  *   runNode(scriptPath, args, opts) -> { code, stdout, stderr }  (subprocess, never throws)
  *   mkSandbox(prefix) -> absolute path to a fresh, empty scratch dir under
- *     tmp/test-writer-r1/sandbox/<prefix>-XXXXXX (auto-created, unique per call)
+ *     <bundle>/tmp/scratch/<run-slug>/<prefix>-XXXXXX (via tools/tests/lib/scratch.js; unique per call)
  *   PHASE_ROOT, TOOLS_DIR, TOOLS  (paths to the suite under test — all resolved via __dirname,
  *     no hardcoded absolutes, so this test tree stays portable with the phase folder)
  *
@@ -28,11 +27,11 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { mkScratch } = require('../../../tests/lib/scratch'); // shared: <bundle>/tmp/scratch/<run-slug>/
 
 // tools/session/tests/lib/harness.js -> ../.. = the tools/session suite root
 const PHASE_ROOT = path.resolve(__dirname, '..', '..');
 const TOOLS_DIR = PHASE_ROOT;
-const SANDBOX_ROOT = path.join(PHASE_ROOT, 'tmp', 'test-writer-r1', 'sandbox');
 
 const TOOLS = {
   paths: path.join(TOOLS_DIR, 'tpm-session-paths.js'),
@@ -68,10 +67,9 @@ function runNode(scriptPath, args, opts = {}) {
   }
 }
 
-/** A fresh, empty scratch directory under tmp/test-writer-r1/sandbox/. */
+/** A fresh, empty scratch directory under <bundle>/tmp/scratch/<run-slug>/ (shared scratch helper). */
 function mkSandbox(prefix) {
-  fs.mkdirSync(SANDBOX_ROOT, { recursive: true });
-  return fs.mkdtempSync(path.join(SANDBOX_ROOT, `${prefix}-`));
+  return mkScratch(prefix);
 }
 
-module.exports = { makeChecker, runNode, mkSandbox, PHASE_ROOT, TOOLS_DIR, TOOLS, SANDBOX_ROOT };
+module.exports = { makeChecker, runNode, mkSandbox, PHASE_ROOT, TOOLS_DIR, TOOLS };

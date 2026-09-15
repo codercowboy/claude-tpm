@@ -22,8 +22,11 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { mkScratch } = require('../../../../tests/lib/scratch'); // shared: <bundle>/tmp/scratch/<run-slug>/
 
-const TOOL = path.join(__dirname, '..', 'tools', 'audit.js');
+// The CANONICAL promoted tool (tools/workflow/tpm-workflow-audit.js) — this suite runs against the
+// shipped tool, not a checked-in copy (which used to drift). __dirname = tests/<phase>/tests.
+const TOOL = path.join(__dirname, '..', '..', '..', 'tpm-workflow-audit.js');
 let PASS = 0, FAIL = 0;
 const fails = [];
 
@@ -33,7 +36,7 @@ function ok(cond, msg) {
 }
 
 function mkscratch() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'audit-test-'));
+  return mkScratch('audit-test');
 }
 function write(p, s) { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, s); }
 function mkdir(p) { fs.mkdirSync(p, { recursive: true }); }
@@ -202,15 +205,15 @@ function cleanEpicPlan(root) {
   try { stdout = execFileSync('node', [TOOL, '--help'], { encoding: 'utf8' }); }
   catch (e) { status = e.status; }
   ok(status === 0, `--help exits 0 (got ${status})`);
-  ok(/usage: audit\.js/.test(stdout), '--help prints usage');
+  ok(/usage: tpm-workflow-audit\.js/.test(stdout), '--help prints usage');
 })();
 
 // ===========================================================================
 // TEST-HARDENING ROUND (28) — two guard-neutering mutants the canonical suite
 // left GREEN (fable-3 #5): the `# Charter —` posture marker (1 of 3 cleanliness
 // markers; TEST 4 exercises only the other two) and the EPIC-phase
-// scratch-in-findings flag (TEST 5 covers FLAT only). Each is mutation-proved
-// in tests/mutation-check28.js.
+// scratch-in-findings flag (TEST 5 covers FLAT only). (The external
+// mutation-check28 harness that proved these was retired; the assertions remain.)
 // ===========================================================================
 
 // TEST 7 — 00-epic-plan cleanliness: a pasted `# Charter —` HEADING leaks

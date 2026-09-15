@@ -9,8 +9,8 @@
  *       mutation-check.js read (same convention as tools/session/tests/lib/harness.js).
  *     - runTask()/runTaskRaw()/runNode() — real subprocess drivers over the CLI; never throw,
  *       inspect .code.
- *     - mkStore() — a fresh throwaway store under os.tmpdir() via fs.mkdtempSync (G8: NO
- *       phase-relative sandbox, so this test tree survives promotion into tools/task/ unchanged).
+ *     - mkStore() — a fresh throwaway store under <bundle>/tmp/scratch/<run-slug>/ (shared scratch
+ *       helper; one git-ignored folder per run, never a phase-relative sandbox inside tools/).
  *     - TOOLS — absolute paths to the suite under test, resolved via __dirname only (no
  *       hardcoded absolutes, no ../../.. into the project) so the tree is portable.
  *     - body/index read helpers.
@@ -25,17 +25,18 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { mkScratch } = require('../../../tests/lib/scratch'); // shared: <bundle>/tmp/scratch/<run-slug>/
 
 // tests/lib/harness.js -> ../.. = the suite root (out/tools/task, or tools/task once promoted).
 const TOOL_ROOT = path.resolve(__dirname, '..', '..');
 
 const TOOLS = {
   task: path.join(TOOL_ROOT, 'tpm-task.js'),
-  paths: path.join(TOOL_ROOT, 'lib', 'tpm-task-paths.js'),
-  config: path.join(TOOL_ROOT, 'lib', 'tpm-task-config.js'),
-  format: path.join(TOOL_ROOT, 'lib', 'tpm-task-format.js'),
-  store: path.join(TOOL_ROOT, 'lib', 'tpm-task-store.js'),
-  render: path.join(TOOL_ROOT, 'lib', 'tpm-task-render.js'),
+  paths: path.join(TOOL_ROOT, 'tpm-task-paths.js'),
+  config: path.join(TOOL_ROOT, 'tpm-task-config.js'),
+  format: path.join(TOOL_ROOT, 'tpm-task-format.js'),
+  store: path.join(TOOL_ROOT, 'tpm-task-store.js'),
+  render: path.join(TOOL_ROOT, 'tpm-task-render.js'),
 };
 
 /** One counter per test file (call once at the top of each test.js). */
@@ -85,9 +86,9 @@ function runTaskRaw(args, opts = {}) {
   return runNode(TOOLS.task, args, opts);
 }
 
-/** A fresh, empty store directory under os.tmpdir() (G8 — survives promotion). */
+/** A fresh, empty store directory under <bundle>/tmp/scratch/<run-slug>/ (shared scratch helper). */
 function mkStore(prefix = 'tpm-task') {
-  return fs.mkdtempSync(path.join(os.tmpdir(), `${prefix}-`));
+  return mkScratch(prefix);
 }
 
 /** Write a payload markdown file inside the store dir; return its path. */

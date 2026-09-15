@@ -7,6 +7,23 @@ checks and `project-workspace.md` point at).
 All scripts are **zero-dependency and standalone** — run them with `node <path>` or `bash <path>`
 directly; there is no `npm install` step. No hardcoded paths (per `tool-conventions.md`).
 
+## `tools/tpm.js` — the `tpm` command dispatcher (the front door)
+
+One git-style entry point, shipped as the package `bin` (`npx tpm …`, or a linked `tpm`). It is a
+**dumb top dispatcher**: it knows only SUITES and forwards `<suite> <everything-after>` to that
+suite's own router, which owns its verb table. The routers self-locate their scripts via `__dirname`,
+so a `tpm …` call needs **no `${TPM_HOME}`/env**. Dispatch is by child process with exit-code
+propagation. Design: `claude-context/dev/tpm-cli-design.md` §0.
+
+| Tool | Purpose | Docs |
+|---|---|---|
+| `tpm.js` | Top dispatcher. Suites `session` / `task` / `workflow` → each `tpm-<suite>-router.js`; flat consumer aliases `install` / `uninstall`. Unknown command → exit 2; bare/`--help` → menu. | `tpm.md` |
+
+Per-suite routers (each owns its short-verb table; forwarded to by `tpm.js`, listed in their suite
+sections below): `tools/session/tpm-session-router.js`, `tools/task/tpm-task-router.js`,
+`tools/workflow/tpm-workflow-router.js`. Test: `tools/tests/tpm-router.test.js` (13 assertions —
+dispatch, unknown→exit 2, arg pass-through, exit propagation).
+
 ## `tools/workflow/` — the workflow module (round machinery)
 
 The 7 tools the `/tpm-workflow` + `/tpm-spawn*` skills compose to run a round: scaffold → compose → lint →
@@ -21,7 +38,8 @@ Agent, plus config resolution, cost, and audit. Each has a `<tool>.md` reference
 | `tpm-workflow-check-filename.js` | Guard: reject `.md` deliverable names matching blocked server-side patterns (report/summary/analysis/findings). `--patterns` / `--config`. | `tpm-workflow-check-filename.md` |
 | `tpm-workflow-audit.js` | Audit a `dev/` epic/phase tree against the canonical layout + `00-epic-plan/` charter-cleanliness; markdown punch list. `--out` / `--tasks-root` / `--strict`. | `tpm-workflow-audit.md` |
 | `tpm-workflow-cost-ledger.js` | Per-subagent cost rows in `00-epic-plan/` (`--epic-path`) + `--summary` / `--rollup`. | `tpm-workflow-cost-ledger.md` |
-| `tpm-workflow-doctor.js` | Fail-loud PREFLIGHT (`tpm-workflow doctor`): charters resolve · both hooks wired · signoff writable · compose emits a marker + `${TPM_HOME}` paths. Self-locates the bundle; runs in a consumer too. `--json` / `--project-root`. Every ✗ prints its fix. | header |
+| `tpm-workflow-doctor.js` | Fail-loud PREFLIGHT (`tpm-workflow doctor`): charters resolve · signoff writable · compose emits a marker + `${TPM_HOME}` paths. Self-locates the bundle; runs in a consumer too. `--json` / `--project-root`. Every ✗ prints its fix. (PreToolUse hooks are plugin-delivered — no longer checked here.) | header |
+| `tpm-workflow-router.js` | The `workflow` sub-router for `tpm` (`audit` / `compose` / `lint` / `scaffold` / `cost` / `signoff` / `doctor` / `config` / `check-filename` → the scripts above). Self-locates siblings; forwarded to by `tpm.js`. | header |
 
 ## `tools/session/` — the session-notes subsystem (backs `tpm-session`)
 
@@ -37,6 +55,23 @@ and the write/read token format SSOT (`tpm-session-format.js`) — no imports ou
 | `tpm-session-format.js` | The session-notes token SSOT (headings/tokens/parse/render) — imported by both tools below, not a standalone CLI. | header |
 | `tpm-session-notes.js` | The notes WRITE API: `resume` / `open add\|done` / `log` / `decide` / `seal`. Refuses non-current-session writes without `--edit-sealed <NNN> --confirm`. | `tpm-session-notes.md` |
 | `tpm-session-review.js` | The notes READ API: `review --last N [--open-items\|--decisions\|--since <date>\|--grep <term>]`. | `tpm-session-review.md` |
+| `tpm-session-router.js` | The `session` sub-router for `tpm` (`tpm session <config\|current\|notes\|review>`); self-locates siblings, forwarded to by `tpm.js`. | header |
+
+## `tools/task/` — the task ledger (backs `tpm-task`)
+
+Self-contained, zero-dependency suite backing the `tpm-task` skill. `tpm-task.js` is the ledger tool
+(all subcommands); the helpers (`format` / `paths` / `render` / `store`) + the `config` resolver sit
+**flat beside it — no `lib/`** (matches `tools/session/`; the `tests/lib/` under `tests/` is unrelated
+test-support). Self-contained, no imports outside this suite (`tool-conventions.md` Part I §2).
+
+| Tool | Purpose | Docs |
+|---|---|---|
+| `tpm-task.js` | The ledger CLI: `add` / `import` / `export` / `list` / `show` / `edit` / `check` / `add-subtask` / `start` / `finish` / `drop` / `remove` / `reopen`. | `tpm-task.md` |
+| `tpm-task-config.js` | Resolve the `tasks` section of `.claude/claude-tpm/config.json` over defaults (12 keys). The skill's config-gate calls it directly. `--json` / `--get <key>` / `--tasks-dir`. | `config.md` |
+| `tpm-task-router.js` | The `task` sub-router for `tpm` (`tpm task <subcmd>` → `tpm-task.js`; `tpm task config` → the resolver). Self-locates siblings; forwarded to by `tpm.js`. | header |
+| `tpm-task-format.js` · `tpm-task-store.js` · `tpm-task-render.js` · `tpm-task-paths.js` | Internal helpers (token SSOT · fs store engine · view/age-ladder layer · project-root resolver) — imported by `tpm-task.js`, not standalone CLIs. | `README.md` / headers |
+
+Tests: `tools/task/tests/run-all.js` (3 suites) + `tools/task/tests/mutation-check.js` (18 mutants).
 
 ## `tools/child-session/` — orchestrator-launched child Claude sessions
 
@@ -60,15 +95,17 @@ shared bundle refs. Design: `claude-context/dev/consumer-adoption-design.md` +
 
 | Tool | Purpose | Docs |
 |---|---|---|
-| `tpm-consumer-scaffold.js` | Scaffold a consumer project: `package.json` (`file:` dep on claude-tpm), a minimal **boot-free** CLAUDE.md (fresh scaffold only; an existing project's CLAUDE.md is left untouched), README/LICENSE/`.gitignore`, `.claude/claude-tpm/config.json` (config source of truth — `bundle.home`), and a generated `.claude/settings.json` (`env.TPM_HOME` + expand/gate hooks; idempotent merge). `--smoke` installs + runs the smoke suite. | header |
-| `tpm-consumer-manage-plugin.js` | Install/uninstall/enable/disable/status the claude-tpm **plugin** in a consumer (wraps `claude plugin …`): derives plugin + marketplace names from the bundle manifests, self-locates the bundle, computes the marketplace source path; `--dry-run`. The activation step that pairs with `tpm-consumer-scaffold.js`. | `tpm-consumer-manage-plugin.md` |
+| `tpm-consumer-install.js` | Graft claude-tpm onto an **existing** consumer project (replaces the retired scaffolder). Check-then-act, idempotent, **5-step** flow: (1) preflight (`npm` + valid `package.json` + `claude` on PATH, fail-fast per-prereq), (2) add the `@codercowboy/claude-tpm` optional dep (idempotent — skipped when declared **and** in `node_modules`, unless `--force`), (3) `marketplace add`, (4) `plugin install`, (5) `enable` (only if installed-but-disabled). Calls `npm`/`claude plugin …` directly; never authors `package.json`/settings. `--check` doctor · `--quiet` · `--force` · `--dir`/`--from`. | header |
+| `tpm-consumer-uninstall.js` | Reverse the install — remove claude-tpm from an existing project. Idempotent **3-step** reverse-order flow: (1) `plugin uninstall`, (2) `marketplace remove --scope project`, (3) `npm uninstall @codercowboy/claude-tpm`. Never deletes the user's `package.json`, source, or docs. `--check` · `--quiet` · `--force` · `--dir`. | header |
 | `hooks/expand-tpm-home.js` | PreToolUse hook: resolves the `${TPM_HOME}/…` bundle placeholder in READ-tool paths to the real bundle (self-located from `__dirname`). Read-family only + auto-allow + containment + fail-open. Empirical contract in the header. | header |
 | `tpm-consumer-lint-skill-refs.js` | Keep the `tpm-*` skills relocatable: flags any bare bundle ref (`node tools/…`, `` `tools/… ``, `claude-context/methodology/…`) that must carry `${TPM_HOME}/`. Ignores workspace refs + `out/…` staged paths. | header |
 | `tpm-consumer-check-json.js` | Extract + assert on the strict JSON a headless `claude -p` probe returns (`--truthy` / `--eq` / `--includes`). Backs the smoke suites (deterministic, not prose-grep). | header |
-| `smoke.sh` | LLM-in-the-loop consumer smoke: headless `claude -p` probes (boot+skill-discovery, methodology-resolves, `token-methodology-read`) asserted via `tpm-consumer-check-json.js`. Run against a scaffolded+installed consumer dir. | header |
+| `smoke.sh` | LLM-in-the-loop consumer smoke: headless `claude -p` probes (boot+skill-discovery, methodology-resolves, `token-methodology-read`) asserted via `tpm-consumer-check-json.js`. Run against an installed consumer dir. | header |
 
-Tests: `tools/consumer/tests/expand-hook/{unit.js,smoke.sh}` (the hook — deterministic + LLM smoke) and
-`tools/consumer/tests/tpm-scaffold-consumer/test.js` (the scaffolder helpers + end-to-end into a temp dir).
+Tests: `tools/consumer/tests/run-all.js` runs the whole suite — `tpm-consumer-install/test.js`,
+`tpm-consumer-uninstall/test.js` (both drive the tools' pure exported helpers, incl. `parsePluginList`
+and the arg flag-guards; spawn no real `claude`/`npm`), plus `expand-hook/unit.js` (the hook —
+deterministic); `expand-hook/smoke.sh` is the LLM smoke.
 
 ## `tools/misc/` — one-off / domain-agnostic utilities
 

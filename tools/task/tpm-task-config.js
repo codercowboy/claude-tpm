@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * lib/tpm-task-config.js — the `tasks` config-section resolver (checklist A3 / build-plan Wave 1).
+ * tpm-task-config.js — the `tasks` config-section resolver (checklist A3 / build-plan Wave 1).
  *
  * PURPOSE
  *   A minimal, SUITE-LOCAL resolver for the `tasks` section of a project's
@@ -51,9 +51,9 @@
  *   getDotted(obj, key) -> { found, value }
  *
  * EXAMPLES
- *   node lib/tpm-task-config.js --json
- *   node lib/tpm-task-config.js --get startId
- *   node lib/tpm-task-config.js --tasks-dir
+ *   npx tpm task config --json
+ *   npx tpm task config --get startId
+ *   npx tpm task config --tasks-dir
  */
 
 'use strict';
@@ -180,7 +180,7 @@ function getDotted(obj, dottedKey) {
 function printHelp() {
   process.stdout.write(
     [
-      'Usage: node lib/tpm-task-config.js [--config <path>] (--json | --get <dotted.key> | --tasks-dir) [--help]',
+      'Usage: npx tpm task config [--config <path>] (--json | --get <dotted.key> | --tasks-dir) [--help]',
       '',
       "Resolves the 'tasks' section of a claude-tpm config.json over built-in defaults.",
       '',
@@ -192,9 +192,9 @@ function printHelp() {
       '  --help                Show this message.',
       '',
       'Examples:',
-      '  node lib/tpm-task-config.js --json',
-      '  node lib/tpm-task-config.js --get startId',
-      '  node lib/tpm-task-config.js --tasks-dir',
+      '  npx tpm task config --json',
+      '  npx tpm task config --get startId',
+      '  npx tpm task config --tasks-dir',
       '',
     ].join('\n'),
   );
@@ -222,7 +222,7 @@ function main() {
   }
 
   if (!args.json && !args.get && !args.tasksDir) {
-    process.stderr.write('lib/tpm-task-config.js: nothing to do — pass one of --json / --get / --tasks-dir.\n\n');
+    process.stderr.write('tpm-task-config.js: nothing to do — pass one of --json / --get / --tasks-dir.\n\n');
     printHelp();
     process.exit(1);
   }

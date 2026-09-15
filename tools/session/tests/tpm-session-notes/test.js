@@ -150,7 +150,7 @@ check('CLI: unknown verb exits 1', () => {
 check('CLI: --help exits 0', () => {
   const r = runNode(TOOLS.sessionNotes, ['--help']);
   assert.strictEqual(r.code, 0);
-  assert.ok(/Usage: node tpm-session-notes\.js/.test(r.stdout));
+  assert.ok(/Usage: npx tpm session notes/.test(r.stdout));
 });
 
 // =====================================================================================

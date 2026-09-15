@@ -30,7 +30,7 @@
  * the task tree; only writes the one report file you point it at.
  *
  * Usage:
- *   node tools/workflow/tpm-workflow-audit.js --out <path-to-output.md> [--tasks-root <dir>] [--strict]
+ *   npx tpm workflow audit --out <path-to-output.md> [--tasks-root <dir>] [--strict]
  *
  * Flags:
  *   --out <path>        Output markdown file. REQUIRED (no default).

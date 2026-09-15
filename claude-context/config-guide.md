@@ -227,3 +227,11 @@ Drift sweeps + living-document upkeep (`tpm-hygiene`).
 Set `"enabled": false` on any module. A disabled module costs **zero context** — its docs, skills, and
 reading-list entries never load, and its vocabulary never appears in what the orchestrator reads (the
 module-opacity principle; see `methodology/overview.md`).
+
+**Reading the enablement map.** `npx tpm session config --modules` reports every module's ON/OFF state
+as JSON (`{ "session": true, "workflow": true, "tasks": true, "hygiene": true }`) — this is what boot
+uses to decide which modules load and which `tpm-*` commands the open MOTD lists. It reads only the
+top-level `<module>.enabled` booleans (each defaulting `true`), so it stays a cross-cutting *read*, not
+a resolver of any one module's full config. It is deliberately **lenient**: an absent or malformed
+config resolves to "all enabled" (a warning, never a crash) so a bad config can't wedge boot —
+validating a malformed config is the doctor's job (`npx tpm install --check`), not boot's.

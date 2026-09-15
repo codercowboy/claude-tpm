@@ -20,7 +20,7 @@
  * RESOLVED SHAPE (defaults shown)
  *   {
  *     enabled: true,
- *     notes: { enabled: true, sessionsDir: "claude-context/sessions" },
+ *     notes: { enabled: true, sessionsDir: ".claude/claude-tpm/sessions" },
  *     showTPMOpenMessage: true,
  *     showTPMCloseMessage: true,
  *     additionalOpenMessage: "",
@@ -42,17 +42,25 @@
  *   --get <dotted.key> Print one resolved value, e.g. --get notes.sessionsDir
  *   --sessions-dir     Shortcut for --get notes.sessionsDir, printed as a bare path (no
  *                      JSON quoting) — convenient for other scripts/shells to consume.
+ *   --modules          Print the ENABLED-state map of every claude-tpm module as JSON
+ *                      ({ session, workflow, tasks, hygiene }), for the boot MOTD's
+ *                      "list only the ENABLED tpm-* modules" step. This is a cross-cutting
+ *                      READ of the top-level `<module>.enabled` booleans ONLY (every module
+ *                      is ON by default) — it does NOT resolve or require() any other suite's
+ *                      config, so it keeps this resolver suite-local per tool-conventions I§2.
  *   --help             Usage.
  *
  * REUSABLE API (also a module)
  *   resolveSessionConfig(configPathArg, opts) -> { resolved, projectRoot, configPath, configExists }
+ *   readModuleEnablement(configPathArg, opts) -> { modules, projectRoot, configPath, configExists }
  *   getDefaults() -> the built-in session defaults (deep-cloned)
  *   sessionsDirAbs(resolved, projectRoot) -> absolute path to the resolved sessionsDir
  *
  * EXAMPLES
- *   node tpm-session-config.js --json
- *   node tpm-session-config.js --get notes.sessionsDir
- *   node tpm-session-config.js --sessions-dir
+ *   npx tpm session config --json
+ *   npx tpm session config --get notes.sessionsDir
+ *   npx tpm session config --sessions-dir
+ *   npx tpm session config --modules
  */
 
 'use strict';
@@ -61,10 +69,15 @@ const fs = require('fs');
 const path = require('path');
 const { findRoot } = require('./tpm-session-paths');
 
+// The claude-tpm modules that carry a top-level `<module>.enabled` flag in config.json.
+// Every module is ON by default (config-guide.md §"Turning a module OFF"): an absent section,
+// an absent `enabled` key, or a non-boolean value all resolve to `true`.
+const KNOWN_MODULES = ['session', 'workflow', 'tasks', 'hygiene'];
+
 function getDefaults() {
   return {
     enabled: true,
-    notes: { enabled: true, sessionsDir: 'claude-context/sessions' },
+    notes: { enabled: true, sessionsDir: '.claude/claude-tpm/sessions' },
     showTPMOpenMessage: true,
     showTPMCloseMessage: true,
     additionalOpenMessage: '',
@@ -158,6 +171,63 @@ function resolveSessionConfig(configPathArg, opts = {}) {
   return { resolved, projectRoot, configPath, configExists: true };
 }
 
+/**
+ * Report which claude-tpm modules are ENABLED — the map the boot MOTD needs so it lists only
+ * the enabled `tpm-*` modules (modes-open.md steps 2 + 5). Reads ONLY the top-level
+ * `<module>.enabled` booleans (defaulting `true`); it does not resolve any other suite's full
+ * config or `require()` another resolver, so it stays suite-local (tool-conventions I§2).
+ *
+ * Lenient by design so a broken config never crashes boot:
+ *   - default config location absent   -> every module enabled (defaults)
+ *   - EXPLICIT --config path absent     -> throws ENOENT_CONFIG (same rule as resolveSessionConfig)
+ *   - config present but invalid JSON   -> every module enabled + a stderr warning (no throw;
+ *                                          it is the doctor/`install.js --check` that FLAGS a
+ *                                          malformed config, not this boot-time reader).
+ *
+ * @param {string|undefined} configPathArg explicit --config value, or undefined for default
+ * @param {object} [opts]
+ * @param {string} [opts.startDir] where to start walking up for the project root
+ * @param {(msg:string)=>void} [opts.warn] sink for the malformed-JSON warning (default: stderr)
+ * @returns {{modules: Record<string,boolean>, projectRoot: string, configPath: string, configExists: boolean}}
+ */
+function readModuleEnablement(configPathArg, opts = {}) {
+  const startDir = opts.startDir || process.cwd();
+  const projectRoot = findRoot({ startDir, marker: 'CLAUDE.md' });
+  const usedDefaultLocation = !configPathArg;
+  const configPath = configPathArg
+    ? path.resolve(configPathArg)
+    : path.join(projectRoot, '.claude', 'claude-tpm', 'config.json');
+
+  const allEnabled = () => Object.fromEntries(KNOWN_MODULES.map((m) => [m, true]));
+
+  const configExists = fs.existsSync(configPath);
+  if (!configExists) {
+    if (!usedDefaultLocation) {
+      const err = new Error(`--config path does not exist: ${configPath}`);
+      err.code = 'ENOENT_CONFIG';
+      throw err;
+    }
+    return { modules: allEnabled(), projectRoot, configPath, configExists: false };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  } catch (err) {
+    const warn = opts.warn || ((m) => process.stderr.write(m));
+    warn(`config: could not parse ${configPath} as JSON (${err.message}); assuming all modules enabled.\n`);
+    return { modules: allEnabled(), projectRoot, configPath, configExists: true };
+  }
+
+  const modules = {};
+  for (const m of KNOWN_MODULES) {
+    const section = parsed[m];
+    modules[m] =
+      isPlainObject(section) && typeof section.enabled === 'boolean' ? section.enabled : true;
+  }
+  return { modules, projectRoot, configPath, configExists: true };
+}
+
 /** Absolute path to the resolved sessionsDir, relative to projectRoot if not already absolute. */
 function sessionsDirAbs(resolved, projectRoot) {
   const dir = (resolved && resolved.notes && resolved.notes.sessionsDir) || getDefaults().notes.sessionsDir;
@@ -179,7 +249,7 @@ function getDotted(obj, dottedKey) {
 function printHelp() {
   process.stdout.write(
     [
-      'Usage: node tpm-session-config.js [--config <path>] (--json | --get <dotted.key> | --sessions-dir) [--help]',
+      'Usage: npx tpm session config [--config <path>] (--json | --get <dotted.key> | --sessions-dir | --modules) [--help]',
       '',
       "Resolves the 'session' section of a claude-tpm config.json over built-in defaults.",
       '',
@@ -188,12 +258,14 @@ function printHelp() {
       '  --json               Print the resolved session config as JSON.',
       '  --get <dotted.key>   Print one resolved value, e.g. --get notes.sessionsDir',
       '  --sessions-dir        Print the resolved sessionsDir as a bare absolute path.',
+      '  --modules             Print the ENABLED-state map of every module as JSON (session/workflow/tasks/hygiene).',
       '  --help                Show this message.',
       '',
       'Examples:',
-      '  node tpm-session-config.js --json',
-      '  node tpm-session-config.js --get notes.enabled',
-      '  node tpm-session-config.js --sessions-dir',
+      '  npx tpm session config --json',
+      '  npx tpm session config --get notes.enabled',
+      '  npx tpm session config --sessions-dir',
+      '  npx tpm session config --modules',
       '',
     ].join('\n'),
   );
@@ -206,6 +278,7 @@ function parseArgs(argv) {
     if (a === '--help' || a === '-h') args.help = true;
     else if (a === '--json') args.json = true;
     else if (a === '--sessions-dir') args.sessionsDir = true;
+    else if (a === '--modules') args.modules = true;
     else if (a === '--get') {
       args.get = argv[i + 1];
       i += 1;
@@ -225,10 +298,24 @@ function main() {
     process.exit(0);
   }
 
-  if (!args.json && !args.get && !args.sessionsDir) {
-    process.stderr.write('tpm-session-config.js: nothing to do — pass one of --json / --get / --sessions-dir.\n\n');
+  if (!args.json && !args.get && !args.sessionsDir && !args.modules) {
+    process.stderr.write('tpm-session-config.js: nothing to do — pass one of --json / --get / --sessions-dir / --modules.\n\n');
     printHelp();
     process.exit(1);
+  }
+
+  // --modules is a cross-cutting enablement read; handle it BEFORE resolveSessionConfig so a
+  // malformed config stays LENIENT here (boot must not crash) rather than throwing EBADJSON.
+  if (args.modules) {
+    let out;
+    try {
+      out = readModuleEnablement(args.config);
+    } catch (err) {
+      process.stderr.write(`config: ${err.message}\n`);
+      process.exit(1);
+    }
+    process.stdout.write(`${JSON.stringify(out.modules, null, 2)}\n`);
+    process.exit(0);
   }
 
   let resolution;
@@ -268,8 +355,10 @@ if (require.main === module) {
 
 module.exports = {
   resolveSessionConfig,
+  readModuleEnablement,
   mergeSessionConfig,
   getDefaults,
   sessionsDirAbs,
   getDotted,
+  KNOWN_MODULES,
 };

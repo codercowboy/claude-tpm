@@ -20,7 +20,7 @@ a filtered view (open items only / decisions only), optionally further restricte
 ## Requirements / invocation shape
 
 ```
-node tpm-session-review.js --sessions-dir <dir> --last N [--open-items|--decisions] [--since <date>] [--grep <term>] [--json] [--help]
+npx tpm session review --sessions-dir <dir> --last N [--open-items|--decisions] [--since <date>] [--grep <term>] [--json] [--help]
 ```
 
 - `--sessions-dir <dir>` and `--last <N>` are **both required** for any real output. Missing either
@@ -90,7 +90,7 @@ freeform `notes.md`).
 ## Worked example (run against the sandbox — two canonical sessions + one legacy)
 
 ```
-$ node tools/session/tpm-session-review.js --sessions-dir "$SDIR" --last 3
+$ npx tpm session review --sessions-dir "$SDIR" --last 3
 session-002 — 2026-08-31 — second sandbox session [SEALED 2026-08-30]
   Where: second session state
   Next:  none pending
@@ -99,15 +99,15 @@ session-001 — 2026-08-30 — Documentarian sandbox verification [SEALED 2026-0
   Next:  write tpm-session-review.js checks
 session-000 — (legacy format — not token-parseable) — .../session-000/notes.md
 
-$ node tools/session/tpm-session-review.js --sessions-dir "$SDIR" --last 5 --open-items
+$ npx tpm session review --sessions-dir "$SDIR" --last 5 --open-items
 session-002 — [ ] OPEN(jason) #1: check the grep filter
 session-001 — [x] OPEN(jason) #1: review the config-guide patch
 session-001 — [ ] OPEN(claude) #2: write the tool docs
 
-$ node tools/session/tpm-session-review.js --sessions-dir "$SDIR" --last 5 --decisions
+$ npx tpm session review --sessions-dir "$SDIR" --last 5 --decisions
 session-001 — Decided: single pointer, not a sessionId map — env var unreliable outside subagents
 
-$ node tools/session/tpm-session-review.js --sessions-dir "$SDIR" --last 5 --since 2026-08-31
+$ npx tpm session review --sessions-dir "$SDIR" --last 5 --since 2026-08-31
 session-002 — 2026-08-31 — second sandbox session [SEALED 2026-08-30]
   Where: second session state
   Next:  none pending

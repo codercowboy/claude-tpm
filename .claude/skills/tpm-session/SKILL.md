@@ -19,14 +19,14 @@ progressive-disclosure shape as `tpm-workflow`'s `modes-*.md` split):
 
 ## Tools this skill calls (promoted paths)
 
-- `node ${TPM_HOME}/tools/session/tpm-session-config.js --sessions-dir` — resolves the configured sessions directory
+- `npx tpm session config --sessions-dir` — resolves the configured sessions directory
   (`.claude/claude-tpm/config.json` → `session.notes.sessionsDir`, defaulting to
   `claude-context/sessions` for this library).
-- `node ${TPM_HOME}/tools/session/tpm-session-current.js --sessions-dir <dir> [--state|--open|--seal|--next-number]`
+- `npx tpm session current --sessions-dir <dir> [--state|--open|--seal|--next-number]`
   — the current-session pointer (open-vs-not-opened; allocates the next `session-NNN`).
-- `node ${TPM_HOME}/tools/session/tpm-session-notes.js --sessions-dir <dir> <verb> [args]` — the notes WRITE API
+- `npx tpm session notes --sessions-dir <dir> <verb> [args]` — the notes WRITE API
   (`resume`/`open add|done`/`log`/`decide`/`seal`). See its header docstring / `<tool>.md`.
-- `node ${TPM_HOME}/tools/session/tpm-session-review.js --sessions-dir <dir> --last N [...]` — the notes READ API.
+- `npx tpm session review --sessions-dir <dir> --last N [...]` — the notes READ API.
 
 All four are self-contained (`${TPM_HOME}/tools/session/`, zero shared imports with `${TPM_HOME}/tools/workflow/` or
 `${TPM_HOME}/tools/child-session/`, per `tool-conventions.md` Part I §2). Run every invocation from the project

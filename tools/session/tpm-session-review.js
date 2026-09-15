@@ -34,10 +34,10 @@
  * containing "foo".
  *
  * EXAMPLES
- *   node tpm-session-review.js --sessions-dir claude-context/sessions --last 5
- *   node tpm-session-review.js --sessions-dir claude-context/sessions --last 10 --open-items
- *   node tpm-session-review.js --sessions-dir claude-context/sessions --last 20 --grep "sessionId"
- *   node tpm-session-review.js --sessions-dir claude-context/sessions --last 5 --json
+ *   npx tpm session review --sessions-dir claude-context/sessions --last 5
+ *   npx tpm session review --sessions-dir claude-context/sessions --last 10 --open-items
+ *   npx tpm session review --sessions-dir claude-context/sessions --last 20 --grep "sessionId"
+ *   npx tpm session review --sessions-dir claude-context/sessions --last 5 --json
  */
 
 'use strict';
@@ -157,7 +157,7 @@ function renderDecisions(sessions) {
 function printHelp() {
   process.stdout.write(
     [
-      'Usage: node tpm-session-review.js --sessions-dir <dir> --last N [--open-items|--decisions] [--since <date>] [--grep <term>] [--json] [--help]',
+      'Usage: npx tpm session review --sessions-dir <dir> --last N [--open-items|--decisions] [--since <date>] [--grep <term>] [--json] [--help]',
       '',
       'See the header docstring in this file for full flag behaviour.',
       '',

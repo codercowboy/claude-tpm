@@ -1,7 +1,3 @@
-<!-- STAGED — apply where: claude-context/methodology/orchestrator/session-process.md (NEW file — was
-     confirmed MISSING on disk despite being referenced by live CLAUDE.md and methodology/README.md;
-     this promotion also fixes that dangling reference). See findings/promote/PROMOTION-CHECKLIST.md. -->
-
 # Session Notes Process
 
 This document defines how Claude keeps continuity across sessions using the

@@ -1,6 +1,6 @@
 ---
 name: tpm-workflow
-description: Use when running a formal multi-agent round or epic in claude-tpm — planning a round, spawning workers/verifiers, verifying an artifact, or reconciling/closing an epic. The single front door over the round lifecycle. Auto-invoke on "let's plan a round", "run the epic", "set up phase N", "verify the artifact", "close the epic". Thin router: it routes a mode token to a sibling mode body and delegates spawning to tpm-spawn / tpm-spawn-team. For a one-off single subagent with no round, use tpm-spawn directly.
+description: Use when running a formal multi-agent round or epic in claude-tpm — planning a round, spawning workers/verifiers, verifying an artifact, or reconciling/closing an epic. The single front door over the round lifecycle. Invoke when the user explicitly asks to plan a round, run the epic, set up a phase, verify the artifact, or close the epic — never auto-fire; the user directs every kickoff (see the HARD RULE). Thin router: it routes a mode token to a sibling mode body and delegates spawning to tpm-spawn / tpm-spawn-team. For a one-off single subagent with no round, use tpm-spawn directly. Orchestrator-only — a subagent never invokes this (a worker follows its spawn prompt + plan.md, never the round lifecycle).
 ---
 
 `/tpm-workflow` is the front door for **running a formal round** — the HIGH-ceremony path
@@ -34,8 +34,8 @@ Use `AskUserQuestion` for each gate so the answer is genuinely the user's, not y
 - Scaffolding is blocked without a pre-task-ack receipt (`tpm-workflow-scaffold-subagent --pretask-ack`) — Gate A.
 - **Spawning is blocked by a `PreToolUse` hook** (`${TPM_HOME}/tools/workflow/hooks/tpm-workflow-gate-spawn.js`) unless a **fresh**
   `spawn` sign-off token exists — Gate B. On each gate, record the user's actual confirmation:
-  `node ${TPM_HOME}/tools/workflow/tpm-workflow-signoff.js questions --roster "<one-line>"` (Gate A) and
-  `node ${TPM_HOME}/tools/workflow/tpm-workflow-signoff.js spawn --round "<phase-dir>" --roster "<one-line>"` (Gate B — `--round`
+  `npx tpm workflow signoff questions --roster "<one-line>"` (Gate A) and
+  `npx tpm workflow signoff spawn --round "<phase-dir>" --roster "<one-line>"` (Gate B — `--round`
   is the phase-folder path, which the spawn-gate hook matches against the marker `compose` stamps into the
   prompt). **Only ever write these from an
   explicit user confirmation — never from your own reading of an ambiguous turn.**
@@ -52,7 +52,7 @@ The **mode is the first token**; the rest of the line is freeform, interpreted b
 | **`reconcile`** | Judge the verdict + log the call → reconcile delivery+verifier output → update `00-epic-plan/` → epic-close (promotion + cost rollup) | `modes-reconcile.md` |
 | **`reap`** | Stray subagent/subshell cleanup | **delegates to `tpm-reap`** |
 | **`status`** | Report round/epic state — read `00-epic-plan/` (phase map · punchlist · decisions), phase `findings/HANDOFF.md`, and `tpm-workflow-audit.js` output; summarize. No spawn | (inline, below) |
-| **`doctor`** | Fail-loud PREFLIGHT before a round: checks charters resolve, both hooks are wired, signoff is writable, compose emits a marker + `${TPM_HOME}` paths. No spawn | (inline, below) |
+| **`doctor`** | Fail-loud PREFLIGHT before a round: checks charters resolve, signoff is writable, compose emits a marker + `${TPM_HOME}` paths. No spawn | (inline, below) |
 
 ## Interpreting the mode token (forgiving)
 
@@ -96,7 +96,7 @@ just operating, there is nothing to gate.
 ## `status` mode (inline)
 
 No spawn. Report the current picture:
-1. `node ${TPM_HOME}/tools/workflow/tpm-workflow-audit.js --out <tmp>/audit.md` — epic-vs-flat classification, numbering
+1. `npx tpm workflow audit --out <tmp>/audit.md` — epic-vs-flat classification, numbering
    integrity, one-plan-one-charter per phase; relay violations.
 2. Read `00-epic-plan/{epic-plan,punchlist,decisions}.md` for the phase map, open items, and the
    raise-to-user decision queue.
@@ -110,9 +110,9 @@ No spawn. A **fail-loud preflight** for the install seams a real fan-out silentl
 placeholders, gate hook not wired, compose bare paths, signoff unwritable). Run it before spawning a
 round — especially the FIRST round in a fresh consumer:
 
-1. `node ${TPM_HOME}/tools/workflow/tpm-workflow-doctor.js` (add `--json` for machine output; `--project-root <dir>`
-   to check another install). It self-locates the bundle and reads the project's `.claude/settings.json`.
-2. Checks: charters resolve · spawn-gate hook wired · `${TPM_HOME}` expand hook wired · signoff store
-   writable · compose emits a quoted marker + `${TPM_HOME}/…` methodology paths.
+1. `npx tpm workflow doctor` (add `--json` for machine output; `--project-root <dir>`
+   to check another install). It self-locates the bundle.
+2. Checks: charters resolve · signoff store writable · compose emits a quoted marker + `${TPM_HOME}/…`
+   methodology paths. (PreToolUse hooks are plugin-delivered now — the doctor no longer checks hook wiring.)
 3. Relay the ✓/✗ report verbatim. On any ✗, **stop and fix it before spawning** — each failure prints
    its own fix line. Exit 0 = clear to run; exit 1 = do not spawn yet.

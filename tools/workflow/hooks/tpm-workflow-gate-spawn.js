@@ -102,7 +102,7 @@ function main() {
     + 'This is Gate B (the spawn gate), separate from answering the pre-task questions (Gate A). '
     + 'A rambly or discussion turn is NOT a kickoff. To proceed: (1) ensure the pre-task roster was '
     + 'presented and answered, (2) ask the user an explicit "kick it off now?" and get an explicit '
-    + 'yes, (3) record it: `node tools/workflow/tpm-workflow-signoff.js spawn --roster "<one-line>"`, then re-spawn. '
+    + 'yes, (3) record it: `npx tpm workflow signoff spawn --roster "<one-line>"`, then re-spawn. '
     + '(Never write that token from your own inference of the user\'s intent — only from an explicit confirmation.)\n',
   );
   process.exit(BLOCK);

@@ -7,7 +7,7 @@
  * content, confirm destructive ops). This is the ONE write path — the skill hands it payloads,
  * never hand-writes the store. Files are always plain, hand-editable markdown; the tool parses
  * LENIENTLY by landmark, normalizes managed lines on write, and PRESERVES unmanaged human prose
- * (see lib/tpm-task-format.js — the surgical in-place rewrite that makes that hold).
+ * (see tpm-task-format.js — the surgical in-place rewrite that makes that hold).
  *
  * SUBCOMMANDS (14 = 12 user modes + resolve/reindex tool-internal)
  *   list [--order <o>] [--state <s>]          List the compact task view (age computed live).
@@ -43,19 +43,19 @@
  * NO store ops. Missing config ⇒ defaults (system ON). Malformed ⇒ defaults + warning.
  *
  * EXAMPLES
- *   node tpm-task.js --tasks-dir /tmp/store add --from ./payload.md
- *   node tpm-task.js --tasks-dir /tmp/store list --order oldest --state all
- *   node tpm-task.js --tasks-dir /tmp/store finish 1245 --action "shipped in PR #42"
+ *   npx tpm task --tasks-dir /tmp/store add --from ./payload.md
+ *   npx tpm task --tasks-dir /tmp/store list --order oldest --state all
+ *   npx tpm task --tasks-dir /tmp/store finish 1245 --action "shipped in PR #42"
  */
 
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
-const { resolveTasksConfig, tasksDirAbs } = require('./lib/tpm-task-config');
-const fmt = require('./lib/tpm-task-format');
-const store = require('./lib/tpm-task-store');
-const render = require('./lib/tpm-task-render');
+const { resolveTasksConfig, tasksDirAbs } = require('./tpm-task-config');
+const fmt = require('./tpm-task-format');
+const store = require('./tpm-task-store');
+const render = require('./tpm-task-render');
 
 // ── small utilities ───────────────────────────────────────────────────────────
 function die(msg, code = 1) { process.stderr.write(`task: ${msg}\n`); process.exit(code); }
@@ -490,7 +490,7 @@ const USAGE = {
 
 function printTopHelp() {
   const lines = [
-    'Usage: node tpm-task.js [--tasks-dir <path>] [--config <path>] <subcommand> [args]',
+    'Usage: npx tpm task [--tasks-dir <path>] [--config <path>] <subcommand> [args]',
     '',
     'Subcommands:',
   ];
@@ -540,7 +540,7 @@ function main() {
   if (globals.help && !subcommand) { printTopHelp(); process.exit(0); }
   if (globals.badSub) { die(`unknown subcommand "${globals.badSub}". Run with --help.`); }
   if (!subcommand) { printTopHelp(); process.exit(argv.length === 0 ? 1 : 0); }
-  if (args.help) { process.stdout.write(`Usage: node tpm-task.js [--tasks-dir <p>] ${USAGE[subcommand]}\n`); process.exit(0); }
+  if (args.help) { process.stdout.write(`Usage: npx tpm task [--tasks-dir <p>] ${USAGE[subcommand]}\n`); process.exit(0); }
 
   const ctx = makeCtx(globals);
 

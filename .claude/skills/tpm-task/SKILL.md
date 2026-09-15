@@ -27,10 +27,10 @@ the tool.
 
 ## Tools this skill calls (promoted paths)
 
-- `node ${TPM_HOME}/tools/task/lib/tpm-task-config.js --tasks-dir` — resolves the configured store dir (absolute path).
+- `npx tpm task config --tasks-dir` — resolves the configured store dir (absolute path).
   Also `--json` / `--get enabled` to read the config. (The resolver returns the `tasks` SECTION,
   so keys are bare — `--get enabled`, `--get startId` — NOT `--get tasks.enabled`.)
-- `node ${TPM_HOME}/tools/task/tpm-task.js --tasks-dir <dir> <subcommand> [args]` — ALL mechanics. Its header
+- `npx tpm task --tasks-dir <dir> <subcommand> [args]` — ALL mechanics. Its header
   docstring / [`tpm-task.md`](../../tools/task/tpm-task.md) is the full reference.
 
 All of `${TPM_HOME}/tools/task/` is self-contained (zero shared imports, per `tool-conventions.md` Part I §2).
@@ -42,7 +42,7 @@ Run every invocation from the project root; `--tasks-dir` is the resolved absolu
 
 ## Config gate
 
-Read `tasks.enabled` via `node ${TPM_HOME}/tools/task/lib/tpm-task-config.js --get enabled` (or `--json`).
+Read `tasks.enabled` via `npx tpm task config --get enabled` (or `--json`).
 `enabled: false` ⇒ reply one line — "task ledger disabled by config (tasks.enabled: false)" — and stop.
 The tool ALSO gates itself, so this is a courtesy short-circuit, not the only guard. Missing config ⇒
 defaults (system ON).

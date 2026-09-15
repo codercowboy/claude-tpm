@@ -68,13 +68,13 @@
  *   --help
  *
  * EXAMPLES
- *   node tpm-session-notes.js --sessions-dir claude-context/sessions resume \
+ *   npx tpm session notes --sessions-dir claude-context/sessions resume \
  *     --where "Built the tools/session suite" --next "write tests" --in-flight "none"
- *   node tpm-session-notes.js --sessions-dir claude-context/sessions open add --owner jason "review the config-guide patch"
- *   node tpm-session-notes.js --sessions-dir claude-context/sessions open done 1
- *   node tpm-session-notes.js --sessions-dir claude-context/sessions log --status WIP "wrote tpm-session-format.js"
- *   node tpm-session-notes.js --sessions-dir claude-context/sessions decide "single pointer, not a sessionId map" --why "env var unreliable outside subagents"
- *   node tpm-session-notes.js --sessions-dir claude-context/sessions seal
+ *   npx tpm session notes --sessions-dir claude-context/sessions open add --owner jason "review the config-guide patch"
+ *   npx tpm session notes --sessions-dir claude-context/sessions open done 1
+ *   npx tpm session notes --sessions-dir claude-context/sessions log --status WIP "wrote tpm-session-format.js"
+ *   npx tpm session notes --sessions-dir claude-context/sessions decide "single pointer, not a sessionId map" --why "env var unreliable outside subagents"
+ *   npx tpm session notes --sessions-dir claude-context/sessions seal
  */
 
 'use strict';
@@ -251,7 +251,7 @@ function verbSeal(args, ctx) {
 function printHelp() {
   process.stdout.write(
     [
-      'Usage: node tpm-session-notes.js --sessions-dir <dir> [--edit-sealed <NNN> --confirm] <verb> [args]',
+      'Usage: npx tpm session notes --sessions-dir <dir> [--edit-sealed <NNN> --confirm] <verb> [args]',
       '',
       'Verbs:',
       '  init [--theme "<text>"] [--date <YYYY-MM-DD>]',

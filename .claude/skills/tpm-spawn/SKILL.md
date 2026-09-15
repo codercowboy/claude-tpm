@@ -1,6 +1,6 @@
 ---
 name: tpm-spawn
-description: Use when the orchestrator is about to spawn a SINGLE subagent via the Agent tool for a task in this project — a lone builder, researcher, verifier, planner, test-writer, documentarian, or bug-fixer. Forgiving role interpretation (normalize → intent-match → confidence-gate → echo) then the scaffold → compose → lint → Agent flow. For two or more roles with ordering/counts, use tpm-spawn-team. For a full round lifecycle, use tpm-workflow.
+description: Use when the orchestrator is about to spawn a SINGLE subagent via the Agent tool for a task in this project — a lone builder, researcher, verifier, planner, test-writer, documentarian, or bug-fixer. Forgiving role interpretation (normalize → intent-match → confidence-gate → echo) then the scaffold → compose → lint → Agent flow. For two or more roles with ordering/counts, use tpm-spawn-team. For a full round lifecycle, use tpm-workflow. Orchestrator-only — a subagent never invokes this (subagents don't spawn their own subagents).
 ---
 
 `/tpm-spawn` fires **one** subagent. It owns *role* judgment (which role, resolved forgivingly) and
@@ -56,7 +56,7 @@ spawn; it does not run or reason about the loop.
 
 Reference the tools by their promoted path (`${TPM_HOME}/tools/workflow/…`); a skill never bundles its own copy.
 
-1. **Scaffold the folder** (if not already present) — `node ${TPM_HOME}/tools/workflow/tpm-workflow-scaffold-subagent.js …`
+1. **Scaffold the folder** (if not already present) — `npx tpm workflow scaffold …`
    (`add-phase` for a new phase, `add-round --role <role>` to append a kickback round in an existing
    phase — the tool auto-numbers the phase `NN` / round `r<N>` and drops the skeleton: `plan.md`
    stub, `charter-<role>.md` copied from the resolved `charterFile`, `spawn-prompt-<role>-r<N>.md`,
@@ -64,22 +64,22 @@ Reference the tools by their promoted path (`${TPM_HOME}/tools/workflow/…`); a
    The role's charter + model come from `tpm-workflow-config-resolver.js`.
 2. **Fill `plan.md`** — pure structure (DoD triple table · task/method · Tools & MCP · curated
    Context · deliverables · constraints · budget). No posture — that's the charter file.
-3. **Compose the spawn prompt** — `node ${TPM_HOME}/tools/workflow/tpm-workflow-compose-spawn-prompt.js --role <role>
+3. **Compose the spawn prompt** — `npx tpm workflow compose --role <role>
    --phase-dir <dir> --plan plan.md --charter charter-<role>.md [--round N --model <m>
    --project-root "$(pwd)" --out spawn-prompt-<role>-r<N>.md]`. Emits the working-folder line, the
    read-order (charter THEN plan), the env-source ritual, constraints, and return shape — you supply
    only the one `{{TASK_CONTEXT}}` fill.
-4. **Lint BEFORE the Agent call** — `node ${TPM_HOME}/tools/workflow/tpm-workflow-lint-subagent-prompt.js --file
-   spawn-prompt-<role>-r<N>.md --manifest ${TPM_HOME}/claude-context/methodology/subagent/reading-list.md
-   --require-charter --charter-dir <dir> [--verifier] [--resume]`. Exits 0 = PASS, 1 = FAIL with a
-   per-check missing-directive list. Do NOT spawn on a FAIL. The lint enforces the manifest reading
-   chain, env ritual, working folder, charter-file-present, the sentinel taxonomy, and blocked
-   filenames. **Always pass `--manifest` explicitly** — it names the ONE canonical manifest, the
-   **live subagent reading-list** (`${TPM_HOME}/claude-context/methodology/subagent/reading-list.md`), which owns
-   the base chain and the per-persona blocks (`--test-writer` / `--documentarian` / `--bug-fixer`
-   gate their block in that same file). Discovery-fallback is silent on a miss; an explicit-but-wrong
-   `--manifest` fails LOUD (exit 2), so the typo is caught. The workflow reading-list is orchestrator
-   round-machinery and carries no duplicate of this chain.
+4. **Lint BEFORE the Agent call** — `npx tpm workflow lint --file
+   spawn-prompt-<role>-r<N>.md --require-charter --charter-dir <dir> [--verifier] [--resume]`. Exits
+   0 = PASS, 1 = FAIL with a per-check missing-directive list. Do NOT spawn on a FAIL. The lint
+   enforces the manifest reading chain, env ritual, working folder, charter-file-present, the sentinel
+   taxonomy, and blocked filenames. **No `--manifest` needed** — it defaults to the ONE canonical
+   manifest, the **live subagent reading-list** (`${TPM_HOME}/claude-context/methodology/subagent/reading-list.md`),
+   which the tool SELF-LOCATES from its own bundle; it owns the base chain and the per-persona blocks
+   (`--test-writer` / `--documentarian` / `--bug-fixer` gate their block in that same file). `--manifest`
+   stays an OPTIONAL override for a consumer that wants a different one; if the manifest is found nowhere
+   (a broken bundle) the lint FAILS LOUD (exit 2) rather than silently skipping. The workflow reading-list
+   is orchestrator round-machinery and carries no duplicate of this chain.
 5. **Spawn** — the `Agent` call, in the **background** (the orchestrator always backgrounds
    subagents), with the composed prompt and the resolved **model** on the `model` param.
 

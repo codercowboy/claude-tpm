@@ -21,6 +21,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { ensureRunSlug } = require('../../tests/lib/scratch');
 
 const SUITES = [
   'format/test.js',
@@ -29,6 +30,7 @@ const SUITES = [
 ];
 
 function main() {
+  ensureRunSlug(); // share one scratch slug across this group's child suites
   let failures = 0;
   for (const rel of SUITES) {
     const p = path.join(__dirname, rel);

@@ -20,7 +20,7 @@ know whether a project has customized its config; it just reads the resolved sha
 ```json
 {
   "enabled": true,
-  "notes": { "enabled": true, "sessionsDir": "claude-context/sessions" },
+  "notes": { "enabled": true, "sessionsDir": ".claude/claude-tpm/sessions" },
   "showTPMOpenMessage": true,
   "showTPMCloseMessage": true,
   "additionalOpenMessage": "",
@@ -31,7 +31,7 @@ know whether a project has customized its config; it just reads the resolved sha
 ## Requirements / invocation shape
 
 ```
-node tpm-session-config.js [--config <path>] (--json | --get <dotted.key> | --sessions-dir) [--help]
+npx tpm session config [--config <path>] (--json | --get <dotted.key> | --sessions-dir) [--help]
 ```
 
 - Exactly one of `--json` / `--get <key>` / `--sessions-dir` must be passed (with `--help`, none
@@ -53,8 +53,8 @@ node tpm-session-config.js [--config <path>] (--json | --get <dotted.key> | --se
 | Flag | Effect |
 |---|---|
 | `--json` | Prints the fully resolved `session` config as JSON. |
-| `--get <dotted.key>` | Prints one resolved value as JSON (e.g. `--get notes.sessionsDir` → `"claude-context/sessions"`, `--get notes.enabled` → `false`). Verified: a key that doesn't exist in the resolved shape (e.g. `--get nope.nope`) errors `no such key "nope.nope" in resolved config.` and exits 1. |
-| `--sessions-dir` | Shortcut for `--get notes.sessionsDir`, but prints a **bare absolute path** (no JSON quoting) — resolved relative to `projectRoot` if the configured value isn't already absolute. Convenient for other scripts/shells to consume directly (e.g. `--sessions-dir "$(node tpm-session-config.js --sessions-dir)"`). |
+| `--get <dotted.key>` | Prints one resolved value as JSON (e.g. `--get notes.sessionsDir` → `".claude/claude-tpm/sessions"`, `--get notes.enabled` → `false`). Verified: a key that doesn't exist in the resolved shape (e.g. `--get nope.nope`) errors `no such key "nope.nope" in resolved config.` and exits 1. |
+| `--sessions-dir` | Shortcut for `--get notes.sessionsDir`, but prints a **bare absolute path** (no JSON quoting) — resolved relative to `projectRoot` if the configured value isn't already absolute. Convenient for other scripts/shells to consume directly (e.g. `--sessions-dir "$(npx tpm session config --sessions-dir)"`). |
 | `--config <path>` | Explicit config file path (see above for default-vs-explicit-missing behavior). |
 | `--help` | Usage. Exits 0. |
 
@@ -83,24 +83,24 @@ node tpm-session-config.js [--config <path>] (--json | --get <dotted.key> | --se
 ## Worked example (run against the sandbox)
 
 ```
-$ node tools/session/tpm-session-config.js --config nonexistent.json --json
+$ npx tpm session config --config nonexistent.json --json
 config: --config path does not exist: /abs/path/nonexistent.json
 
-$ node tools/session/tpm-session-config.js --json      # no config file at the default location
+$ npx tpm session config --json      # no config file at the default location
 {
   "enabled": true,
-  "notes": { "enabled": true, "sessionsDir": "claude-context/sessions" },
+  "notes": { "enabled": true, "sessionsDir": ".claude/claude-tpm/sessions" },
   "showTPMOpenMessage": true, "showTPMCloseMessage": true,
   "additionalOpenMessage": "", "additionalCloseMessage": ""
 }
 
-$ node tools/session/tpm-session-config.js --sessions-dir
-/abs/project/root/claude-context/sessions
+$ npx tpm session config --sessions-dir
+/abs/project/root/.claude/claude-tpm/sessions
 
-$ node tools/session/tpm-session-config.js --get notes.enabled
+$ npx tpm session config --get notes.enabled
 false                                                    # (with the nested-override config above)
 
-$ node tools/session/tpm-session-config.js --get nope.nope
+$ npx tpm session config --get nope.nope
 config: no such key "nope.nope" in resolved config.
 ```
 
