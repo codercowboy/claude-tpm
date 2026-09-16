@@ -110,9 +110,9 @@ const path = require('path');
 // file + tpm-workflow-check-filename.js travel together. Build on it; do not re-implement.
 const { isBlockedFilename } = require('./tpm-workflow-check-filename.js');
 
-// PORT-NOTE: unchanged from legacy - the library include-token must byte-match
-// the token consumer manifests write. Provisional value; a one-line flip.
-const LIBRARY_INCLUDE_TOKEN = 'claude-admin';
+// The library include-token must byte-match the token consumer manifests write
+// (`<!-- include: claude-tpm -->` — see tpm-session/modes-open.md + methodology/overview.md).
+const LIBRARY_INCLUDE_TOKEN = 'claude-tpm';
 const INCLUDE_RE = new RegExp('<!--\\s*include:\\s*' + LIBRARY_INCLUDE_TOKEN + '\\s*-->');
 
 function parseArgs(argv) {

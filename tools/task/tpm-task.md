@@ -78,8 +78,8 @@ header docstring for the canonical body format (the token SSOT).
 Allocate the next id, write the body in the right bucket, add the open-index row, self-heal the marker.
 Content comes from a markdown payload the skill wrote (see the skill's `modes-mutate.md` for the format).
 ```
-$ npx tpm task --tasks-dir ./store add --from ./tmp/tpm-task/add-rename.md
-added #1000 · Rename claude-admin to claude-tpm
+$ npx tpm task --tasks-dir ./store add --from ./tmp/tpm-task/add-darkmode.md
+added #1000 · Add a dark-mode toggle
 ```
 
 ### `import --from <payload>`
@@ -117,7 +117,7 @@ $ npx tpm task --tasks-dir ./store list
 #1003   · today · Second imported task
 #1002   · today · First imported task
 #1001 ▶ · today · Collapse task-add/list into /tpm-task (2/3)
-#1000   · today · Rename claude-admin to claude-tpm
+#1000   · today · Add a dark-mode toggle
 ```
 - **`--order`** (aliases in parens): `newest` (default; new/recent) · `oldest` (old/age/stale) · `id`
   (num/number/seq) · `state` (status/grouped). `--order state` groups by `in-progress → open → finished
@@ -133,14 +133,14 @@ Print the full body of one or several tasks (dates, subtasks with check-state, e
 bodies are joined by a `---` separator. `--state` reaches into the ended/removed pools.
 ```
 $ npx tpm task --tasks-dir ./store show 1000
-# #1000 · Rename claude-admin to claude-tpm
+# #1000 · Add a dark-mode toggle
 
 - **State:** open
 - **Created:** 2026-08-30
 
-**Summary:** Rename the project throughout.
+**Summary:** Add a dark-mode toggle to the settings panel.
 
-**Context:** Touches `CLAUDE.md`, session notes, methodology docs.
+**Context:** Touches the settings component and the theme CSS.
 ```
 
 ### `edit <id> --from <payload>`

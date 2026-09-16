@@ -4,7 +4,7 @@
  * to its real absolute path in the FILE-LOCATION field of a READ-family tool call, deterministically,
  * before the tool runs. This is how a claude-tpm consumer makes the skills' shared references
  * (`${TPM_HOME}/claude-context/methodology/…`, `${TPM_HOME}/tools/…`) resolve whether the bundle sits
- * at the project root (in claude-admin itself) or three levels down in
+ * at the project root (in claude-tpm itself) or three levels down in
  * `node_modules/@codercowboy/claude-tpm/` (in a consumer) — with ZERO model cooperation.
  *
  * WHY A HOOK (not CLAUDE.md prose): env vars are invisible to the model's reasoning, and nothing
@@ -41,7 +41,7 @@
  * NOT interpolate inside a settings.json `env` value (contra the docs) — so `env.TPM_HOME` can't carry
  * the abs path portably. Instead this hook derives the bundle from its OWN location: it lives at
  * `<bundle>/tools/consumer/hooks/expand-tpm-home.js`, so up-3 dirs = the bundle root — correct whether
- * the bundle is claude-admin itself or a vendored `node_modules/@codercowboy/claude-tpm/`. Zero env,
+ * the bundle is claude-tpm itself or a vendored `node_modules/@codercowboy/claude-tpm/`. Zero env,
  * zero interpolation. (A TPM_HOME_OVERRIDE env exists only so the unit test can pin a synthetic root.)
  */
 'use strict';

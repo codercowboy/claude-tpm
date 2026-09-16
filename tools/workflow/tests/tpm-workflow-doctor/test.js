@@ -2,7 +2,7 @@
 /**
  * test.js — unit test for the tpm-workflow doctor preflight. Zero-dep (node assert). Exercises the
  * pure check functions, charter resolution against the real bundle, and the full runAll (all-green in
- * claude-admin). Usage: node tools/workflow/tests/doctor/test.js
+ * claude-tpm). Usage: node tools/workflow/tests/doctor/test.js
  *
  * (The doctor no longer checks PreToolUse hook wiring — those hooks are plugin-delivered now — so the
  * former checkGateHook / checkExpandHook tests are gone.)
@@ -22,7 +22,7 @@ check('checkCharters: all default charters resolve under the bundle', () => {
   const r = doctor.checkCharters(doctor.BUNDLE);
   assert.strictEqual(r.ok, true, r.detail);
 });
-check('runAll: 3 checks, all green in claude-admin', () => {
+check('runAll: 3 checks, all green in claude-tpm', () => {
   const results = doctor.runAll(doctor.BUNDLE);
   assert.strictEqual(results.length, 3);
   const failed = results.filter(([, r]) => !r.ok);

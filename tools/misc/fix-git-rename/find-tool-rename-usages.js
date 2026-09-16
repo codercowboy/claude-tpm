@@ -15,11 +15,11 @@
  *
  *   Options:
  *     --status-file <path>   git status file to parse rename pairs from
- *                            (default: .../claude-tpm/current-git-status2.txt)
+ *                            (default: <repo-root>/current-git-status2.txt)
  *     --scan-root <path>     tree to scan for OLD-name usages
- *                            (default: .../claude-tpm)
+ *                            (default: <repo-root>, self-located from this script)
  *     --report-file <path>   where to also write the report
- *                            (default: .../claude-tpm-dev/tmp/tool-renames/usages-report.txt)
+ *                            (default: <repo-root>/tmp/tool-renames/usages-report.txt)
  *     --help, -h             show this message
  *
  *   Exit code is 0 on a clean run whether or not hits are found (hits are not an error).
@@ -32,12 +32,13 @@
 const fs = require('fs');
 const path = require('path');
 
-// ── defaults ─────────────────────────────────────────────────────────────────
-const WORKSPACE = '/Volumes/My Shared Files/claude/tpm-workspace';
+// ── defaults (self-located from this file — nothing hardcoded to a machine) ──
+// This script lives at tools/misc/fix-git-rename/, so the repo root is three levels up.
+const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
 const DEFAULTS = {
-  statusFile: path.join(WORKSPACE, 'claude-tpm', 'current-git-status2.txt'),
-  scanRoot: path.join(WORKSPACE, 'claude-tpm'),
-  reportFile: path.join(WORKSPACE, 'claude-tpm-dev', 'tmp', 'tool-renames', 'usages-report.txt'),
+  statusFile: path.join(REPO_ROOT, 'current-git-status2.txt'),
+  scanRoot: REPO_ROOT,
+  reportFile: path.join(REPO_ROOT, 'tmp', 'tool-renames', 'usages-report.txt'),
 };
 
 // Dirs never worth scanning, and files that are the rename ledgers themselves.

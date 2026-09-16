@@ -23,13 +23,13 @@ const { check, ok, eq, count } = makeChecker();
 
 // ── canonical parse ─────────────────────────────────────────────────────────────
 const canonical = [
-  '# #1245 · Rename claude-admin',
+  '# #1245 · Add a dark-mode toggle',
   '',
   '- **State:** in-progress',
   '- **Created:** 2026-08-27',
   '- **Started:** 2026-08-28',
   '',
-  '**Summary:** the big rename.',
+  '**Summary:** add a toggle.',
   '',
   '**Context:** touches `CLAUDE.md`.',
   '',
@@ -41,11 +41,11 @@ const canonical = [
 
 const p = fmt.parseBody(canonical);
 eq('parse: number', p.number, 1245);
-eq('parse: headline', p.headline, 'Rename claude-admin');
+eq('parse: headline', p.headline, 'Add a dark-mode toggle');
 eq('parse: State value', p.fields.State.value, 'in-progress');
 eq('parse: Created value', p.fields.Created.value, '2026-08-27');
 eq('parse: Started value', p.fields.Started.value, '2026-08-28');
-eq('parse: Summary value', p.summary.value, 'the big rename.');
+eq('parse: Summary value', p.summary.value, 'add a toggle.');
 eq('parse: Context value', p.context.value, 'touches `CLAUDE.md`.');
 eq('parse: subtasks count', p.subtasks.items.length, 2);
 eq('parse: subtask A unchecked', p.subtasks.items[0].checked, false);

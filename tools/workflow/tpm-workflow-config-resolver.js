@@ -112,7 +112,7 @@ function findProjectRoot(startDir, marker = 'CLAUDE.md') {
 // and scaffold-subagent resolves a RELATIVE charterFile against the CONSUMER's projectRoot
 // — where the charters don't exist → a placeholder charter for every phase (found live in
 // claude-decant, 2026-09-01). An absolute bundle path hits scaffold-subagent's
-// `path.isAbsolute()` short-circuit and resolves correctly in BOTH claude-admin and any
+// `path.isAbsolute()` short-circuit and resolves correctly in BOTH claude-tpm and any
 // consumer. A consumer's OWN config that OVERRIDES charterFile with a relative path still
 // resolves against its projectRoot (that's the consumer's charter, by design).
 // ---------------------------------------------------------------------------

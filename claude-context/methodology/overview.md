@@ -1,13 +1,8 @@
 # claude-tpm — what it is & the opt-in activation model
 
-> **Design north star.** This describes the TARGET shape of claude-tpm — a modular, opt-in framework.
-> The core is shipped (the `tasks`, `workflow`, and `session` modules), while others (`hygiene`, `motd`)
-> are still planned, so read this as the directional vision the build serves, not a one-to-one
-> description of shipped reality. This doc is the "what & why."
-
 ## What TPM is
 
-**A modular, opt-in SDLC orchestration framework.** It runs Claude as a disciplined multi-agent system
+**A modular SDLC orchestration framework.** It runs Claude as a disciplined multi-agent system
 where the main session is a **Technical Program Manager (TPM)**: it takes intent from the product owner
 (you), decomposes it, delegates to worker / verifier / researcher subagents across parallel
 workstreams, verifies the output, integrates it, and reports back. The name is the role: TPM, not

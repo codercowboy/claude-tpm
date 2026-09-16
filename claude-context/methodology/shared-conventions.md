@@ -3,19 +3,6 @@
 Module-agnostic conventions both the orchestrator and subagents follow: default communication style, when
 to grep vs. full-read. These hold regardless of which claude-tpm modules are enabled.
 
-> **⚠️ Carve note.** The round-specific conventions that used to live here — "your charter
-> governs your round", the **resumption protocol / `findings/HANDOFF.md`** format, the **findings-doc**
-> format, and the **acceptance-test catalog** — were `workflow`-module machinery and live in the
-> **`workflow` module** now (the `tpm-workflow`/`tpm-spawn` skills and the docs under
-> [`workflow-setup/`](./workflow-setup/)). Per the **module-opacity principle**
-> ([`./overview.md`](./overview.md) §"Module opacity"), a project with `workflow` disabled shouldn't read
-> round machinery here.
-
-> **Reading order on first encounter:**
-> - **Orchestrator:** see [`reading-list.md`](./orchestrator/reading-list.md).
-> - **Subagent** (when the `workflow` module is enabled): see [`reading-list.md`](./subagent/reading-list.md)
->   — base chain plus the conditional blocks for the spawn flavor.
-
 ---
 
 ## Default communication style — terse
@@ -85,11 +72,3 @@ session notes for one specific event.
 
 **Reach for existing tools before hand-work.** When a question is shaped like something a project tool
 already answers, check for that tool first — see [`./tool-conventions.md`](./tool-conventions.md).
-
----
-
-## Reading-order recap
-
-- **Orchestrator:** see [`reading-list.md`](./orchestrator/reading-list.md).
-- **Subagent** (workflow module enabled): see [`reading-list.md`](./subagent/reading-list.md) — base chain
-  plus the conditional blocks for the spawn flavor.

@@ -9,7 +9,7 @@
  * (The PreToolUse hooks — expand-tpm-home + gate-spawn — are delivered by the plugin's hooks/hooks.json,
  * auto-discovered on enable, so this doctor no longer checks for hook wiring in settings.json.)
  *
- * Runs in claude-admin OR in a consumer install (it self-locates the bundle from this file's position).
+ * Runs in claude-tpm OR in a consumer install (it self-locates the bundle from this file's position).
  *
  * USAGE:  npx tpm workflow doctor [--project-root <dir>] [--json]
  * EXIT:   0 = all checks pass, 1 = at least one FAIL (prints the fix for each).

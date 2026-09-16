@@ -1,7 +1,7 @@
 # `tpm-workflow-cost-ledger.js` — per-subagent cost ledger (v2, epic-aware)
 
 Reference doc for `tools/workflow/tpm-workflow-cost-ledger.js`. Every claim below was confirmed by running the canonical tool
-(`../02c-audit-cost/tools/cost-ledger.js`) with `node v24.16.0`.
+(`tools/workflow/tpm-workflow-cost-ledger.js`, via `npx tpm workflow cost`) with `node v24.16.0`.
 
 ## Purpose
 
@@ -83,11 +83,11 @@ All run against scratch folders under `tmp/`.
 ### Append two rows to a flat round ledger, then summarize
 
 ```
-node ../02c-audit-cost/tools/cost-ledger.js --dir <round-a> \
+npx tpm workflow cost --dir <round-a> \
   --agent w1 --role worker --model opus --tokens 715k --calls 198 --verdict ACCEPT --round "phase B" --note ok
-node ../02c-audit-cost/tools/cost-ledger.js --dir <round-a> \
+npx tpm workflow cost --dir <round-a> \
   --agent v1 --role verifier --model sonnet --tokens 1.2m --calls 40 --verdict PASS
-node ../02c-audit-cost/tools/cost-ledger.js --dir <round-a> --summary
+npx tpm workflow cost --dir <round-a> --summary
 ```
 
 The first append printed (ledger written to `<round-a>/tmp/cost-ledger.md`):
@@ -113,7 +113,7 @@ Cost ledger — …/round-a/tmp/cost-ledger.md
 ### Append to the epic ledger (lands in `00-epic-plan/`, not `tmp/`)
 
 ```
-node ../02c-audit-cost/tools/cost-ledger.js --epic-path <my-epic> \
+npx tpm workflow cost --epic-path <my-epic> \
   --agent orch --role orchestrator --tokens 40k --calls 12 --round "epic bookkeeping"
 ```
 
@@ -152,7 +152,7 @@ no `--model` fall under `(none)`).
 
 ## Tests
 
-`../02c-audit-cost/tests/cost-ledger.test.js` — run with `node tests/cost-ledger.test.js` (exit 0 = all
+The tool's tests live under `tools/workflow/tests/tpm-workflow-audit-cost/` — run the full suite with `npm test` (exit 0 = all
 pass). Confirmed green: **21/21 assertions passed**. It covers the flat append + `--summary` total, token
 parsing (`715k` / `1.2m`), the `--epic-path` target landing in `00-epic-plan/` (and *not* `tmp/`), the
 `--rollup` aggregation across phase + epic ledgers, the mutually-exclusive-target guard (exit `2`), and

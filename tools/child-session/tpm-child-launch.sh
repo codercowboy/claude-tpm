@@ -2,11 +2,11 @@
 # tpm-child-launch.sh — Orchestrator-owned launcher for a child Claude session.
 #
 # Design (option A, symlink-free for cross-platform portability):
-#   - The ORCHESTRATOR (claude-admin) owns everything under this repo's
+#   - The ORCHESTRATOR (claude-tpm) owns everything under this repo's
 #     tmp/sessions/<session-name>/ : the vendored methodology the child reads
-#     (claude-admin/BOOT.md + ...) AND a session.json descriptor (pid, start,
+#     (claude-tpm/BOOT.md + ...) AND a session.json descriptor (pid, start,
 #     end, status, transcript path, vendor hash).
-#   - The CHILD project stays pristine: a hidden .claude-admin/config.json
+#   - The CHILD project stays pristine: a hidden .claude-tpm/config.json
 #     pointer (rewritten every launch — option A, no symlinks) + one bootstrap
 #     line in its CLAUDE.md.
 #   - The child is granted read access to ONLY its session folder via --add-dir.
@@ -29,11 +29,10 @@ set -euo pipefail
 # Verified 2026-08-26: this single flag is what makes an orchestrator-launched,
 # DETACHED-screen, Remote-Control child log. The earlier "needs an attached
 # terminal / bridge-only can't log" theory was a MISDIAGNOSIS — attachment is
-# irrelevant; the inherited marker was the whole cause. See
-# claude-context/dev/child-session-design.md.
+# irrelevant; the inherited marker was the whole cause.
 export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1
 
-# --- locate this repo (claude-admin) root: the dir two levels up from this script ---
+# --- locate this repo (claude-tpm) root: the dir two levels up from this script ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ADMIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
@@ -70,16 +69,16 @@ CHILD_TRANSCRIPT="$HOME/.claude/projects/${ESCAPED_CWD}/${CHILD_UUID}.jsonl"
 
 # --- orchestrator-owned session folder (I own this; safe to sweep once ended) ---
 SESS_DIR="$ADMIN_ROOT/tmp/sessions/$SESSION_NAME"
-VENDOR_DIR="$SESS_DIR/claude-admin"
+VENDOR_DIR="$SESS_DIR/claude-tpm"
 mkdir -p "$VENDOR_DIR"
 
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 # --- vendor the child-facing bootstrap (prototype: BOOT.md only; full methodology later) ---
 cat > "$VENDOR_DIR/BOOT.md" <<EOF
-# Child bootstrap — managed by claude-admin
+# Child bootstrap — managed by claude-tpm
 
-You are a **child Claude** launched and supervised by a claude-admin orchestrator.
+You are a **child Claude** launched and supervised by a claude-tpm orchestrator.
 This folder was vendored fresh for THIS session ($SESSION_NAME) and is read-only
 to you. Do not attempt to manage the orchestrator or edit anything outside your
 own project directory.
@@ -95,23 +94,23 @@ EOF
 VENDOR_SHA="$( (cd "$VENDOR_DIR" && find . -type f -exec shasum -a 256 {} \; | LC_ALL=C sort | shasum -a 256 | awk '{print $1}') )"
 
 # --- write the child's pristine pointer (option A: rewrite every launch) ---
-CHILD_CFG_DIR="$CHILD_DIR/.claude-admin"
+CHILD_CFG_DIR="$CHILD_DIR/.claude-tpm"
 mkdir -p "$CHILD_CFG_DIR"
 cat > "$CHILD_CFG_DIR/config.json" <<EOF
 {
   "boot": "$VENDOR_DIR/BOOT.md",
   "session_name": "$SESSION_NAME",
   "vendor_sha256": "$VENDOR_SHA",
-  "managed_by": "claude-admin",
+  "managed_by": "claude-tpm",
   "written_at": "$(now)"
 }
 EOF
 
 # --- ensure the child's CLAUDE.md carries the one bootstrap line ---
 CHILD_CLAUDE="$CHILD_DIR/CLAUDE.md"
-BOOT_LINE='If a `.claude-admin/` folder exists in this project, read the file named by `.claude-admin/config.json` `boot` FIRST, before anything else — it is your claude-admin bootstrap.'
-if [ ! -f "$CHILD_CLAUDE" ] || ! grep -qF '.claude-admin/config.json' "$CHILD_CLAUDE"; then
-  { echo ""; echo "<!-- claude-admin:bootstrap -->"; echo "$BOOT_LINE"; } >> "$CHILD_CLAUDE"
+BOOT_LINE='If a `.claude-tpm/` folder exists in this project, read the file named by `.claude-tpm/config.json` `boot` FIRST, before anything else — it is your claude-tpm bootstrap.'
+if [ ! -f "$CHILD_CLAUDE" ] || ! grep -qF '.claude-tpm/config.json' "$CHILD_CLAUDE"; then
+  { echo ""; echo "<!-- claude-tpm:bootstrap -->"; echo "$BOOT_LINE"; } >> "$CHILD_CLAUDE"
   BOOT_LINE_ADDED="yes"
 else
   BOOT_LINE_ADDED="already-present"

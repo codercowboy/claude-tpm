@@ -2,12 +2,7 @@
 
 This is the deep dive: the innards of claude-tpm for anyone who's curious how the thing actually works, not just how to run it. If you just want to install it and go, the [README](../README.md) and [`docs/INSTALL.md`](INSTALL.md) have you covered. This one is about *why* it's shaped the way it is.
 
-Full transparency up front, because it's the honest thing to do and it's how I work now: **Claude wrote nearly all of this code and these docs.** I'm the ideas guy: I decided what it should do and why, argued with it about the design, and drove the rounds. Claude did the typing. That's not a disclaimer I'm embarrassed about; it's kind of the whole point of a tool that turns Claude into a disciplined engineering team.
-
-A couple of expectation-setters before the deep dive:
-
-- **This is a personal tool, v0.1.0.** Mac-first, works-on-my-machine energy. It's a methodology I lifted out of months of real use, not a product with a support line. I haven't tested it across a matrix of operating systems, so if you're on Linux or Windows, you're a little further out on the frontier than I am.
-- **Distribution is local for now.** Today claude-tpm installs from a local copy of the bundle sitting somewhere on your disk (a sibling `../claude-tpm` checkout is the easy default). A published npm/GitHub form is coming soon, but it isn't the working path yet - so nothing below assumes you can `npm install @codercowboy/claude-tpm` from the registry.
+Note: **Claude wrote nearly all of this code and these docs.** I'm the ideas guy: I decided what it should do and why, argued with it about the design, and drove the rounds. Claude did the typing. That's not a disclaimer I'm embarrassed about; it's kind of the whole point of a tool that turns Claude into a disciplined engineering team.
 
 ---
 
@@ -275,10 +270,10 @@ That's a real feature, not an accident. Every dependency you *don't* take is a d
 
 "No npm deps" is *not* "no requirements." claude-tpm cannot function without the following, none of which show up in any package manifest, so know what you need before you start:
 
-- **[Node.js](https://nodejs.org) + [npm](https://www.npmjs.com/)** - the `tpm` CLI is a Node program (`bin` = `tools/tpm.js`), and install drives `npm`. Both need to be on your PATH. *No minimum Node version is pinned*: there's no `engines` field and no floor declared anywhere, so I won't assert one. <!-- TODO: confirm and document a minimum Node version -->
+- **[Node.js](https://nodejs.org) + [npm](https://www.npmjs.com/)** - the `tpm` CLI is a Node program (`bin` = `tools/tpm.js`), and install drives `npm`. Both need to be on your PATH. *No minimum Node version is pinned*: there's no `engines` field and no floor declared anywhere, so I won't assert one.
 - **The [Claude Code](https://claude.com/claude-code) CLI** - the whole thing rides on it. claude-tpm *is* a Claude Code plugin; without the `claude` command on your PATH there is nothing to plug into.
 - **An existing project with a `package.json`** - claude-tpm grafts onto a project you already have; it won't create one. If you don't have one, `npm init -y` first.
-- **A local copy of the claude-tpm bundle** - since distribution is local for now, you need the bundle reachable on disk (a sibling `../claude-tpm` is the easy default) to run `node ../claude-tpm/tools/tpm.js install .` the first time.
+- **A way to get the bundle** - you install from GitHub, either as a project dependency (`npm install --save-optional github:codercowboy/claude-tpm`, then `npx tpm install .`) or from a local clone you point at your projects (`git clone …/claude-tpm && npx tpm install ../my-project`). There's no npm-registry package. See [`INSTALL.md`](INSTALL.md) for both routes.
 
 Platform-wise: it's **Mac-first with works-on-my-machine energy.** I haven't done a real cross-platform test pass, so I'm not going to claim tested Linux/Windows support. The code is plain Node with no obvious OS-specific tricks, so it *should* travel, but "should" is doing real work in that sentence.
 

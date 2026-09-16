@@ -68,7 +68,7 @@ fs.rmSync(store, { recursive: true, force: true });
 fs.mkdirSync(store, { recursive: true });
 
 // ── ADD: id from startId, bucket, index row, marker heal ─────────────────────────
-let r = runTask(store, ['add', '--from', P('a1', '# Rename claude-admin\n\n**Summary:** big rename.\n\n**Context:** touches `CLAUDE.md`.\n')]);
+let r = runTask(store, ['add', '--from', P('a1', '# Add a dark-mode toggle\n\n**Summary:** add a toggle.\n\n**Context:** touches `CLAUDE.md`.\n')]);
 ok('add #1000 (id from startId 1000)', r.code === 0 && /added #1000/.test(r.stdout));
 ok('body bucketed at bodies/1000-1999/task-1000.md', readBody(store, 1000) !== null);
 ok('open index Next ID marker = 1001', /\*\*Next ID:\*\* 1001/.test(readOpenIdx(store)));
@@ -104,7 +104,7 @@ ok('list --order id puts #1000 first', /^#1000/.test(listLines(['--order', 'id']
 ok('list --order newest puts a recent id first (not #1003)', !/^#1003/.test(listLines(['--order', 'newest'])[0]));
 
 // ── SHOW one / many ──────────────────────────────────────────────────────────────
-ok('show 1000 prints its body', /# #1000 · Rename claude-admin/.test(runTask(store, ['show', '1000']).stdout));
+ok('show 1000 prints its body', /# #1000 · Add a dark-mode toggle/.test(runTask(store, ['show', '1000']).stdout));
 ok('show comma-list prints both, separated by ---', (() => {
   const s = runTask(store, ['show', '1003,1004']).stdout;
   return /First imported/.test(s) && /Second imported/.test(s) && /---/.test(s);

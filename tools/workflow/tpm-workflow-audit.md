@@ -1,7 +1,7 @@
 # `tpm-workflow-audit.js` — task-folder adherence audit (v2, epic-aware)
 
 Reference doc for `tools/workflow/tpm-workflow-audit.js`. Every claim below was confirmed by running the canonical tool
-(`../02c-audit-cost/tools/audit.js`) with `node v24.16.0`.
+(`tools/workflow/tpm-workflow-audit.js`, via `npx tpm workflow audit`) with `node v24.16.0`.
 
 ## Purpose
 
@@ -87,7 +87,7 @@ Built a scratch tree under `tmp/` containing a clean epic (`demo-epic`), a delib
 (`broken-epic`), and a legacy flat task (`legacy-task`), then ran:
 
 ```
-node ../02c-audit-cost/tools/audit.js \
+npx tpm workflow audit \
   --out audit-report.md --tasks-root <scratch-work> --strict
 ```
 
@@ -139,7 +139,7 @@ The report legend: `✓` present · `✗` missing · `-` optional · `❌ FLAG` 
 
 ## Tests
 
-`../02c-audit-cost/tests/audit.test.js` — run with `node tests/audit.test.js` (exit 0 = all pass).
+The tool's tests live under `tools/workflow/tests/tpm-workflow-audit-cost/` — run the full suite with `npm test` (exit 0 = all pass).
 Confirmed green: **25/25 assertions passed**. It covers epic-vs-flat classification, numbering integrity
 (duplicate / malformed / monotonic-with-gaps), one-plan-one-charter, the structural charter-cleanliness
 check (including that the legitimate word "charter" does not trip it), the preserved legacy flat checks,

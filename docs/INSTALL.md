@@ -8,10 +8,9 @@ session.
 This guide covers installing into an **existing** project. claude-tpm does not create a project for
 you - it only adds itself to one you already have.
 
-> **Distribution note.** Today claude-tpm installs from a **local copy of the bundle** (the `file:`
-> dependency model below). A published GitHub/npm form is coming soon and will simplify getting the
-> bundle (step 0) and the dependency step; this guide will be updated when that lands. Everything else
-> here stays the same.
+You install it **from GitHub**, one of two ways - as a dependency of your project (the usual path), or
+from a local clone you point at your projects. There is **no npm-registry package** (`npm install
+@codercowboy/claude-tpm` from the public registry won't work); both routes below go through GitHub.
 
 ---
 
@@ -23,27 +22,22 @@ you - it only adds itself to one you already have.
   create it first (the installer will stop and tell you to):
   - `npm init` — the interactive wizard (asks for name, version, entry point, …), or
   - `npm init -y` — accept all defaults, no questions.
-- **A local copy of the claude-tpm bundle** (until GitHub distribution lands). Place or clone it
-  somewhere reachable - e.g. next to your project at `../claude-tpm`.
 
 ---
 
 ## Quick start
 
-From your project directory, run the installer straight out of your local claude-tpm bundle, targeting
-the current directory (`.`):
+From your project directory, add claude-tpm as a dependency, **then** run the installer:
 
 ```bash
 cd my-project
-node ../claude-tpm/tools/tpm.js install .
+npm install --save-optional github:codercowboy/claude-tpm
+npx tpm install .
 ```
 
-That's the whole happy path. The installer walks each step, **prints the exact command it's about to
-run, and asks before it changes anything** - decline and it stops without touching your project. When
-it finishes, launch `claude` in the project and the `/tpm-*` commands are there.
+The installer walks through each step. **prints the exact command it's about to run, and asks before it changes anything** - decline and it stops without touching your project. When it finishes, you launch `claude` in the project and the `/tpm-*` commands are there.
 
-Once claude-tpm is a dependency of your project (after that first install), the shorter `npx tpm …`
-form works for everything else:
+Once claude-tpm is wired into a project, use the following commands to manage the installation:
 
 ```bash
 npx tpm install .           # re-run / repair
@@ -66,7 +60,8 @@ before running it. Declining any step exits without further changes.
    directory or non-exec file is shadowing the real bin, or the binary lives in a VM and you're on the
    host. Never writes anything, in any mode.
 2. **Dependency.** Records `@codercowboy/claude-tpm` in your `package.json` and runs `npm install`,
-   creating the `node_modules/@codercowboy/claude-tpm` link to the bundle. In interactive mode this is
+   populating `node_modules/@codercowboy/claude-tpm` (from the GitHub repo on Route B; already present
+   and so **skipped** on Route A, where you installed it yourself). In interactive mode this is
    **consent-gated**: it asks (a) whether to add the dependency at all — declining skips only this step,
    the marketplace + plugin steps still run; (b) whether to record it as a **regular** (`--save`) or
    **optional** (`--save-optional`, the default) dependency; then (c) confirms the exact `npm install`
@@ -123,7 +118,6 @@ message #1 (with `/claude-tpm:tpm-*` as the namespaced form).
 | `--quiet` | **Non-interactive** — assume yes to every step; for scripts/CI. Still exits non-zero on real errors. |
 | `--force` | Skip the "already done" checks and re-run/repair every step. "Just fix my setup." |
 | `--debug` | Operation trace to stdout (a `set -x`-style log, also via `TPM_DEBUG=1`) — narrates every child spawn (command, cwd, exit status/signal/errno) and step decision. Diagnostic only; changes nothing. Use it when a step fails opaquely. |
-| `--from <spec>` | Override the dependency source for step 2 (default: a self-located `file:` path to the bundle the installer ships inside). |
 | `--dir <path>` | The target dir as a flag instead of the positional. |
 
 ---
@@ -187,6 +181,10 @@ project-only). The same `--quiet` / `--force` / `--check` modes apply. It never 
 
 ## Troubleshooting
 
+- **`npx tpm` printed something unfamiliar (a different tool).** On Route A you ran `npx tpm` before
+  `npm install` finished, so npx grabbed an unrelated registry package of the same name. Run `npm
+  install --save-optional github:codercowboy/claude-tpm` first, confirm `node_modules/.bin/tpm` exists,
+  then re-run `npx tpm install .`.
 - **"package.json not found"** — run `npm init -y` in the project first, then re-run the installer.
 - **Preflight fails on `claude`** — install the Claude Code CLI and confirm `claude --version` works.
 - **Commands don't show up in `claude`** — run `npx tpm install . --check`; if the plugin isn't

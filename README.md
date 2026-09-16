@@ -1,55 +1,176 @@
 # claude-tpm
 
-**claude-tpm turns a [Claude Code](https://claude.com/claude-code) session into a disciplined multi-agent system: one orchestrator, a "TPM", that decomposes what you want, hands the legwork to researcher / builder / verifier subagents in their own contexts, and verifies what comes back before it reports up.**
+`claude-tpm` turns a [Claude Code](https://claude.com/claude-code) session into a disciplined multi-agent end-to-end SDLC system. The system keeps Claude on track from session to session via formalized structured session notes and handoff documents, and it mechanically ensures subagent workflows deliver completed, accurate work along with accompanying unit test coverage and documentation. 
 
-## What?
+## Who can use claude-tpm?
 
-It's a modular, opt-in SDLC orchestration framework that runs Claude Code like a small engineering org. The session you talk to plays **Technical Program Manager**: it takes intent from you (the product owner), breaks the work down, delegates pieces to subagents running in isolated contexts, checks their output, integrates it, and reports back. The name is the role on purpose: a TPM.
+`claude-tpm` is intended as a SDLC (software development lifecycle) management framework, but it is task-agnostic. You can use `claude-tpm` in any project that requires claude to understand the project's direction from session to session and deliver work reliably.
 
-A few things worth knowing up front:
+**Who it's not for:** anyone who wants a GUI or a one-click app, and anyone looking to *replace* talking to Claude. This is scaffolding *around* the "just talk to it" core (see [Resources](#resources)), not a substitute for it. If it doesn't sound like your fit, the [Alternatives](#alternatives) doc might point you somewhere better.
 
-- It **grafts onto a project you already have.** It does *not* scaffold a new repo. After install, a plain `claude` in your project gets `/tpm-session`, `/tpm-task`, `/tpm-workflow` and friends as live slash commands from message #1.
-- It's **project-agnostic**: nothing here assumes what you're building. Child projects adopt the library and add their own domain-specific supplements.
-- It ships as a **Claude Code plugin** with a small, dependency-free **`tpm` command-line tool** that does the plumbing the skills lean on.
+## How is it different?
 
-**Who it's for:** people already living in the Claude Code CLI on real projects who want more structure than one improvising chat: repeatable rounds, independent verification, a shared task ledger. **Who it's not for:** anyone who wants a GUI or a one-click app, and anyone looking to *replace* talking to Claude. This is scaffolding *around* the "just talk to it" core (see [Resources](#resources)), not a substitute for it. If it doesn't sound like your fit, the [Alternatives](#alternatives) doc points you somewhere better.
+`claude-tpm` is a light-weight opt-in SDLC framework that runs Claude Code like a small engineering team. The claude agent you talk to, the orchestrator, is the **Technical Program Manager** (aka 'TPM') or lead engineer. The orchestrator takes intent from you (the product owner), breaks the work down, delegates pieces to subagents running in isolated contexts, checks their output, integrates it, and reports back.
 
-> **Status / maturity.** v0.1.0. This is a personal methodology I lifted out of months of real use. **Mac-first, works-on-my-machine energy, not a product with a support line.** I haven't run it across a matrix of operating systems, so on Linux or Windows you're further out on the frontier than I am. And **distribution is local for now.** You install from a copy of the bundle on your disk; a published npm/GitHub form is coming soon but isn't the working path yet. Full transparency: **Claude wrote nearly all of the code and docs.** I'm the ideas guy. That's not something I'm hiding - it's kind of the whole point of a tool that turns Claude into a disciplined engineering team.
+Many alternatives to `claude-tpm` exist, with various popular options to consider documented in this project's [Alternatives](docs/alternatives.md) document. `claude-tpm` differs from many popular approaches in several ways:
+
+- Workflows (invoked with `/tpm-workflow`) ensure subagents remain focused and reliably deliver their work via independent per-agent charters. For example, a `builder` subagent might build a software tool or fix a bug for you, and it can be followed by an adversarial `verifier` subagent coupled with `fixing` agents to ensure the delivered result matches your intentions.
+- `claude-tpm's` session skill (`/tpm-session`) provides session management, which allows claude to seamlessly pick up where it left off in a previous session via formalized session notes ledgers, task punchlists, and handoff documents. 
+- `claude-tpm` also provides a lightweight task management skill (`/tpm-task`) that allows you and claude to easily track and manage long-term progress. 
+
+If you're curious about how any of this works, follow the install instructions below, boot a claude session, type `/tpm-session open`, and ask claude how `claude-tpm` works. 
+
+Alternatively, if you're the rtfm type, consult the [`docs/user-guide.md`](docs/user-guide.md).
+
+## History
+
+`claude-tpm` is a framework that was organically developed and lifted out of months of real use and troubleshooting issues with claude's consistency while working on a variety of personal software projects. It was developed during the summer of 2026, when claude's [`opus`](https://www.anthropic.com/claude/opus) model 4.6/4.8 were the frontier models to work with. Though the framework is designed to specifically keep an `opus` 4.x orchestrator and accompanying subagents on task, the system has proven to work well for both [`fable`](https://www.anthropic.com/claude/fable) and [`sonnet`](https://www.anthropic.com/claude/sonnet) 5.x-era models in both orchestrator and subagent capacities as well. 
 
 ## Install
 
-The 60-second version, using the real local-bundle path. (The full walkthrough - flags, verification, uninstall, troubleshooting - lives in [`docs/INSTALL.md`](docs/INSTALL.md).)
+**Note:** `claude-tpm` is cross-platform, but installation instructions below have been tested and proven on `MacOS`. 
 
-**You'll need:** [Node.js](https://nodejs.org) + [npm](https://www.npmjs.com/) on your PATH, the [Claude Code](https://claude.com/claude-code) CLI (`claude`) on your PATH, an existing project with a `package.json` (run `npm init -y` first if you don't have one), and a local copy of the claude-tpm bundle placed somewhere reachable. A sibling `../claude-tpm` checkout is the easy default.
+If the quick instructions below seem foreign to you, a detailed installation walkthrough - flags, verification, uninstall, and troubleshooting are detailed in [`docs/INSTALL.md`](docs/INSTALL.md).
 
-```bash
-cd my-project
-node ../claude-tpm/tools/tpm.js install .
+Before you install, you'll need the following tools installed:
+
+- [Node.js](https://nodejs.org)
+- [npm](https://www.npmjs.com/)
+- the [Claude Code](https://claude.com/claude-code) CLI (`claude`), and an existing project with a `package.json` (run `npm init -y` first if you don't have one).
+
+After the tools above are installed, open the `terminal` MacOs app and install `claude-tpm` in your project with the following:
+
+```
+# ensure your terminal is running bash rather than another shell
+
+> bash
+
+# change the working folder to your project
+
+> cd my-project
+
+# if your project is not yet initialized to be a Node.js project, run this:
+# note: this simply makes a file called 'package.json' that allows your project
+# to automatically download and install claude-tpm, it does not REQUIRE your 
+# project to be a Node.js product at all
+
+> npm init -y
+
+# add claude-tpm code as a dependency into your Node.js package.json file, 
+# and install it in node_modules with this:
+
+> npm install --save-optional github:codercowboy/claude-tpm
+
+# execute this to install claude-tpm's claude plugin and skills in your project 
+
+> npx tpm install .
 ```
 
-The installer is interactive: it prints the exact command it's about to run and asks before it changes anything. After that first install, the `npx tpm …` porcelain works from inside your project:
+The installer is interactive: it prints the exact command it's about to run and asks before it changes anything. Once claude-tpm is wired into a project, the `npx tpm …` can be used to manage your project's claude-tpm installtion:
 
-```bash
-npx tpm install . --check   # doctor — read-only, changes nothing
-npx tpm doctor .            # same thing, spelled friendlier
+```
+npx tpm doctor .            # doctor — read-only, changes nothing
 npx tpm install .           # re-run / repair
-npx tpm uninstall .         # remove it again
+npx tpm uninstall .         # remove it
 ```
 
-> **Coming soon (not working yet):** a public `git clone` and `npm install @codercowboy/claude-tpm` from the registry. Don't reach for those today - the local-bundle path above is the one that actually works.
+After installation, claude will be ready to use `claude-tpm` any time you want, but you don't have to use it every single session if you don't want to. Simply skip invoking the `/tpm-session open` skill.
+
+## Using claude-tpm for the first time
+
+In your terminal, ensure you're in the bash shell as you did during installation, `cd` into your project's directory, and start claude and run `/tpm-session open`:
+
+```
+claude
+
+# inside claude's session, open claude-tpm session
+
+/tpm-session open
+```
+
+When you invoke the session open skill, claude will show you what it's doing:
+
+> I'll boot the session. First, let me load the open mode body and confirm the config/wiring in parallel.
+> 
+> Read modes-open.md, ran a command
+> 
+> Config confirms session.enabled and notes.enabled. Proceeding with the boot sequence — allocate/confirm session and read the module map.
+> 
+> Ran 2 commands
+> 
+> Session 019 is open (new). All four modules enabled. Now walking the core reading list fresh and loading prior state.
+> 
+> Read reading-list.md, ran a command
+> 
+> Now the Tier-1 core docs, the previous session notes, and tools index.
+> 
+> Read 4 files
+> 
+> Session 019 open — TPM engine booted. Reading chain walked (project-workspace · handbook · shared-conventions · prior notes · task queue).
+> 
+> Prior state (session 018, sealed): claude-tpm SHIPPED and verified — pushed to github.com/codercowboy/claude-tpm, 0.1.0 published, both install routes 9/9 doctor-clean. No open items; arc complete. Only optional leftovers: clear stale 0.2.0/tpm-baseball local plugin cache, and rm the gitignored tmp/dogfood-20260915 throwaways.
+> 
+> Available skills:
+> 
+> tpm-session → open / save / close / info session notes
+> tpm-task → task ledger management
+> tpm-workflow → run a formal multi-agent round/epic
+> 
+> Task queue: ~40 open, newest #1090 (GitHub-ready publish prep, 3/6) and #1088 (node xyz.js → npx docs).
+> 
+> You are in session 019 — claude-context/sessions/session-019/ (no session-notes.md yet; written on first save). SessionId 296ac893. 19 sessions total.
+> 
+> What are we working on?
+
+Once claude is finished loading the `claude-tpm` framework, just talk to claude casually about it:
+
+> hey claude, pretend i'm a brand new user who's never used claude-tpm before, can you tell me why I'd use it? what does it do?
+
+Claude will respond hapilly and help you understand how to use `claude-tpm`, here's a typical response:
+
+> Happy to. Here's the newcomer pitch for claude-tpm (TPM = Technical Program Manager).
+> 
+> It turns your main Claude Code session into an orchestrator — a project manager that holds state across sessions and coordinates fleets of subagents — instead of a single assistant that forgets everything when the window closes and spawns helpers ad-hoc. It ships as a Claude Code plugin delivering a handful of tpm-* skills.
+> 
+> The problems it solves:
+> 
+> If you do sustained, multi-session work with Claude Code, you hit these:
+> 
+> Context evaporates between sessions. You close the terminal and the next session starts cold — what you decided, what's half-done, what's next is all gone.
+> 
+> Multi-agent work is chaotic. Spawning subagents by hand means no consistent plan, no verification step, and strays left running.
+> 
+> Subagents drift. Point a worker at too much process context and it "reasons its way" into writing an elegant essay about why the task is hard instead of just doing it.
+> 
+> What it gives you:
+> 
+> Session lifecycle & memory (tpm-session) — open boots and loads prior state; save checkpoints durable notes; close wraps up. Your "where we are / what's next" survives across sessions in session-notes.md. This is the backbone.
+> 
+> A task ledger (tpm-task) — a lightweight, hand-editable shared to-do list you and Claude both read (add, list, start, finish, subtasks). Not a heavyweight issue tracker — just skimmable shared memory of work.
+> 
+> Structured multi-agent rounds (tpm-workflow, tpm-spawn, tpm-spawn-team) — plan a round, spawn workers verifiers/researchers with a real plan and defined roles, then reconcile their results. Repeatable instead of improvised.
+> 
+> Charters — a key trick: workers get a "shipping" charter (produce the artifact) and never learn a "research" charter exists, which keeps them building instead of philosophizing.
+> 
+> Cleanup (tpm-reap) — safely enumerate and kill stray subagents/scripts after a round, always with explicit confirmation.
+> 
+> Would you use it?
+> 
+> Yes, if you run long-lived, multi-step projects in Claude Code, want continuity across sessions, and coordinate several subagents at once.
+> 
+> Probably not yet, if you're doing quick one-off edits or single-shot questions — the ceremony isn't worth it there.
+> 
+> The mental model: Claude stops being a chat assistant and becomes a program manager for your project — one that remembers, tracks, delegates, verifies, and cleans up.
+> 
+> Want me to show a concrete example — e.g. boot a session, add a task, and run a small workflow — so you can see the loop in action?
 
 ## Use — the short version
 
 Open a `claude` session in your installed project and you've got the `tpm-*` skills live. The minimal loop:
 
-1. **`/tpm-session`** - boot the session (and later, checkpoint or wrap up).
+1. **`/tpm-session`** - initialize claude's awareness of the previous session's work and handoff.
 2. **`/tpm-task`** - jot and track work in a plain, hand-editable markdown to-do list you and Claude both read.
-3. **`/tpm-workflow`** - *when* a task earns it, kick off a formal multi-agent round.
-
-That last "when" is what matters. There are two gears:
-
-- **Just operating (low ceremony).** A quick question or a one-line edit doesn't spin up any machinery, the orchestrator just does it. You don't pay a ceremony tax for small work.
-- **Running a workflow (high ceremony).** The round engine (spawning workers, independent verification, the whole discipline) is *triggered, not boot-default.* It fires only when a piece of work is worth it.
+3. **`/tpm-workflow`** - kick off a formal multi-agent round.
 
 The six skills at a glance:
 
@@ -66,15 +187,15 @@ Slash commands work as both the short `/tpm-*` form and the namespaced `/claude-
 
 ## More detail
 
-Under the skills sits the `tpm` CLI: `tpm <suite> <verb> [args…]`, where `tools/tpm.js` is a dumb top dispatcher that forwards to a per-suite router. The four suites are `session` · `task` · `workflow` · `hooks`, plus the flat consumer aliases `install` · `uninstall` · `doctor`. A taste of the real verbs:
+Under the skills sits the `tpm` CLI: `tpm <suite> <verb> [args…]`, where `tools/tpm.js` is a simple top-level dispatcher that forwards to a per-suite router. The four suites are `session` · `task` · `workflow` · `hooks`, plus the flat consumer aliases `install` · `uninstall` · `doctor`. A taste of the real verbs:
 
 ```bash
 npx tpm session config --modules   # dump which modules are ON/OFF (JSON)
-npx tpm task list                  # show the open tasks
+npx tpm task list                  # show open tasks
 npx tpm workflow doctor            # workflow-side health check
 ```
 
-When a task *does* earn a formal round, you pick from six built-in teams. The array order is the run order:
+When a workflow is run, you pick from six built-in teams. The array order is the run order:
 
 | Team | Shape | When |
 |---|---|---|
@@ -89,34 +210,32 @@ Any team with a verifier runs a bounded verify↔bug-fixer loop on a FAIL (cappe
 
 ## Caveats & gotchas
 
-- **It rides entirely on the Claude Code CLI.** claude-tpm *is* a Claude Code plugin. No `claude` on your PATH, nothing to plug into.
+- **`claude-tpm` rides entirely on the Claude Code CLI.** claude-tpm *is* a Claude Code plugin. No `claude` on your PATH, nothing to plug into.
 - **It grafts onto an existing project - it won't create one.** You need a repo with a `package.json` first.
-- **Distribution is local-bundle only right now.** No working `git clone` / `npm install @codercowboy/claude-tpm` from the registry yet (coming soon). You install from a copy of the bundle on disk.
-- **`hygiene` and `motd` are planned, not shipped.** Both modules are named in the design, but `hygiene`'s config is still being finalized and there's no shipped implementation for `motd` yet. Don't count on either working today.
-- **v0.1.0, Mac-first, works-on-my-machine.** No pinned minimum Node version and no cross-platform test pass. <!-- TODO: confirm minimum Node version and OS support -->
+- **v0.1.0, Mac-first, works-on-my-machine.** No pinned minimum Node version and no cross-platform test pass has been performed yet, lmk if it works for you on windows!
 
 ## Why it works
 
-A few design ideas do the heavy lifting, and they're worth a paragraph each in the deep-dive:
-
-- **Module opacity** - a *disabled* module costs zero context. Its concept leaves no residual awareness in the orchestrator at all, because awareness is behavior: an orchestrator that knows charters exist reaches for them, one that's never heard of them just operates.
+- **Module opacity** - a *disabled* module (session / task / workflow) costs zero context tokens. Its concept leaves no residual awareness in the orchestrator at all, because awareness is behavior: an orchestrator that knows charters exist reaches for them, one that's never heard of them just operates.
 - **Reading lists as the single source of truth** - what each role reads is defined once, in a manifest the linter parses directly, so docs and enforcement literally can't drift.
-- **Charter secrecy** - every round runs under exactly one posture (ship a working artifact *or* produce durable knowledge), and a worker must never learn the other exists.
+- **Charter secrecy** - every round runs under exactly one posture (ship a working artifact *or* produce durable knowledge), and subagents remain focused.
 - **The verify↔bug-fixer loop** and **asymmetric trust** - the orchestrator is user-facing and self-correcting so it's trusted lightly; subagents are user-invisible so their output gets a critical eye. Verification exists because the work happened where you couldn't see it.
 
 The full deep-dive is in **[Technical details](docs/technical.md)**: architecture, the CLI dispatcher, the module model, plugin/marketplace mechanics, the two PreToolUse hooks, plus the **dependency breakdown (zero npm dependencies) and the build toolkit**.
 
 ## Alternatives
 
-claude-tpm is one way to make Claude Code behave like an organized program office, and for a lot of people it isn't the right way. The closest cousin is **[Superpowers](https://github.com/obra/superpowers)** (Jesse Vincent's agentic-skills + TDD methodology). If you want the most established, most opinionated skills-plus-methodology framework with the biggest community, start there. Beyond it there's a whole map: heavyweight swarm orchestrators, cross-vendor agent frameworks, parallel-session runners, and the honest option that you may not need a framework at all (Claude Code's built-in subagents might be enough).
+`claude-tpm` is one way to make Claude Code behave, but there are many alternative options. The closest cousin is **[Superpowers](https://github.com/obra/superpowers)** (Jesse Vincent's agentic-skills + TDD methodology). If you want the most established, most opinionated skills-plus-methodology framework with the biggest community, start there. 
 
-If claude-tpm isn't your fit, I'd rather you ship than be loyal. The **[Alternatives](docs/alternatives.md)** doc is my honest, linked map of the space with a "when to pick it instead" for each option.
+Beyond `Superpowers` there's a whole map: heavyweight swarm orchestrators, cross-vendor agent frameworks, parallel-session runners, and the honest option that you may not need a framework at all (Claude Code's built-in subagents might be enough).
+
+The [Alternatives](docs/alternatives.md) doc lists many alternatives in the Claude SDLC space with a "when to pick it" for each option.
 
 ## Resources
 
-**Start here → [The Creator of Claude Code Teaches You How to Actually Use It](https://www.youtube.com/watch?v=jsoKH4Pvld0)** (Boris Cherny, 2026). If you watch one thing, watch this. The disarming TLDR: **just talk to it.** That sounds too simple, but it's the single most under-appreciated thing about Claude Code. A lot of the friction people hit comes from over-engineering prompts and process instead of having a conversation with the tool and letting it work. Everything in claude-tpm is scaffolding *around* that idea, not a replacement for it.
+**[The Creator of Claude Code Teaches You How to Actually Use It](https://www.youtube.com/watch?v=jsoKH4Pvld0)** (Boris Cherny, 2026). If you watch one thing, watch this. The disarming TLDR: **just talk to it.** That sounds too simple, but it's the single most under-appreciated thing about Claude Code. A lot of the friction people hit comes from over-engineering prompts and process instead of having a conversation with the tool and letting it work. Everything in claude-tpm is scaffolding *around* that idea, not a replacement for it.
 
-More from the same source:
+More from Anthropic:
 
 - [Mastering Claude Code in 30 Minutes](https://www.youtube.com/watch?v=B_KAEqiC-0Q) - official Anthropic workshop with Boris; a fast, practical tour.
 - [How Boris Uses Claude Code](https://howborisusesclaudecode.com/) - a collected set of his tips and habits (running multiple instances, notifications, and the like).
@@ -131,5 +250,4 @@ More from the same source:
 
 [MIT](LICENSE) - it's a great license because it gets out of your way: use it however you want, commercial or not, just keep the notice. **MY CODE SHOULD WORK, BUT I'M NOT LIABLE IF IT GOES SIDEWAYS ON YOU.**
 
-Questions, comments, kudos, criticisms — all welcome.
-— Coder Cowboy
+Questions, comments, kudos, criticisms are all welcome.

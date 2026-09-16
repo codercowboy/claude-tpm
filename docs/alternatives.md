@@ -1,17 +1,16 @@
 # Alternatives & the wider world
 
-I built [claude-tpm](https://github.com/codercowboy/claude-tpm) because I wanted Claude Code to
-behave like a disciplined little program office: a main session acting as the TPM (technical
+[claude-tpm](https://github.com/codercowboy/claude-tpm) was built to help Claude Code
+behave like a disciplined agentic engineer with the main session acting as the TPM (technical
 program manager) that takes what I want, breaks it down, and hands the legwork to
-researcher / worker / verifier subagents running in their own contexts. It's a **project-agnostic
-Claude Code plugin**: it grafts onto a repo you already have, it's lighter than the
-big swarm frameworks, and its task ledger is a plain markdown file you and Claude both hand-edit.
-That's the whole pitch.
+researcher / worker / verifier subagents running in their own contexts. 
 
-But it is very much *not* the only way to skin this cat, and for a lot of people it isn't the
-right way. This doc is my honest map of the space. If something below fits your problem better,
-go use it. I'd rather you ship than be loyal. I've tried to say, for each thing, **when you'd
-pick it instead of claude-tpm.**
+It's a **project-agnostic Claude Code plugin**: it grafts onto a repo you already have, 
+it's lighter than the big swarm frameworks, and its task ledger is a plain markdown file that 
+you and Claude can both hand-edit.
+
+But it is very much *not* the only way to use claude, and for a lot of people it isn't the
+right way. If something below fits your problem better, go use it. 
 
 > **A note on honesty:** Claude compiled and verified this list with me (researched and verified
 > 2026-09-15). I've dropped anything I couldn't confirm actually exists, caveated the shaky

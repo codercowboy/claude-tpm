@@ -35,10 +35,9 @@ the workflow module, not by gatekeeping who may boot.)
 
 4. **Load project state — module-gated:**
    - **Latest session notes** (only if `session.notes.enabled`): the HIGHEST-numbered
-     `claude-context/sessions/session-NNN/` folder — check for `session-notes.md` first (008+, this
-     build's canonical format), falling back to `notes.md` if absent (001–007, the legacy freeform
-     format — read it as prose, it predates the tool). This is your "previous session" — it carries
-     forward decisions and open threads. If no session folders exist, start fresh.
+     `claude-context/sessions/session-NNN/` folder — check for `session-notes.md` first. 
+     This is your "previous session" — it carries forward decisions and open threads. 
+     If no session folders exist, start fresh.
    - **The task queue** (only if `tasks` module enabled): blocking breadcrumbs and queued work.
 
 5. **Surface capabilities — the open MOTD** (gated by `session.showTPMOpenMessage`): list the
@@ -55,7 +54,7 @@ the workflow module, not by gatekeeping who may boot.)
 
 ## In a consumer project
 
-If running inside a consumer project (not claude-admin/claude-tpm itself), the consumer's config +
+If running inside a consumer project (not claude-tpm itself), the consumer's config +
 supplements drive, resolved via the `<!-- include: claude-tpm -->` splice. Details: the extensibility
 model. If the wiring is unclear, **ASK** — don't invent a resolution mechanism.
 

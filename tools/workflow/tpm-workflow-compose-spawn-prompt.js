@@ -245,7 +245,7 @@ function compose(opts) {
   L.push(`${n++}. Your plan: \`${opts.plan}\` — the task, the Definition of Done, the specs, the constraints.`);
   L.push(`${n++}. The curated context files the plan's "Context" section names.`);
   // ${TPM_HOME}/ so these resolve for a WORKER in a consumer install too (the expand hook rewrites the
-  // token in the worker's Read; in claude-admin TPM_HOME="." so it reads the repo root). Bare paths
+  // token in the worker's Read; in claude-tpm TPM_HOME="." so it reads the repo root). Bare paths
   // here dead-ended at the consumer root — every spawned worker got an unresolvable reading chain.
   L.push('Also always read your base methodology chain (always-on conventions): `${TPM_HOME}/claude-context/methodology/project-workspace.md`, `${TPM_HOME}/claude-context/methodology/subagent/handbook.md`, `${TPM_HOME}/claude-context/methodology/shared-conventions.md`, `${TPM_HOME}/claude-context/methodology/tool-conventions.md`, `${TPM_HOME}/claude-context/methodology/troubleshooting.md`, `${TPM_HOME}/claude-context/methodology/verification.md`.');
   L.push('');
