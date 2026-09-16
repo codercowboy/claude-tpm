@@ -23,7 +23,8 @@
  *   tpm workflow <verb> [args…]     # multi-agent round tooling  → workflow/tpm-workflow-router.js
  *   tpm hooks   <verb> [args…]      # PreToolUse hooks           → hooks/tpm-hooks-router.js
  *   tpm install [dir] [options]     # graft claude-tpm onto an existing project
- *   tpm uninstall [dir] [options]   # reverse it
+ *   tpm uninstall [dir] [options]   # reverse it (scope-aware: this project vs the whole system)
+ *   tpm doctor [dir]                # read-only health check (= `install --check`)
  *   tpm --help | -h
  *
  *   e.g.  npx tpm session notes resume --where "…" --next "…"
@@ -48,6 +49,13 @@ const SUITES = {
 const ALIASES = {
   install: 'consumer/tpm-consumer-install.js',
   uninstall: 'consumer/tpm-consumer-uninstall.js',
+  doctor: 'consumer/tpm-consumer-install.js', // read-only health check = `install --check`
+};
+
+// Fixed trailing args a porcelain alias injects — `doctor` IS `install --check`, so the dispatcher
+// appends --check after whatever the user passed (e.g. `tpm doctor ../proj` → `install ../proj --check`).
+const ALIAS_EXTRA = {
+  doctor: ['--check'],
 };
 
 function help() {
@@ -64,7 +72,8 @@ Suites:
 
 Consumer adoption:
   install [dir] [options]     graft claude-tpm onto an existing project
-  uninstall [dir] [options]   reverse it
+  uninstall [dir] [options]   reverse it (asks: this project only, or the whole system)
+  doctor [dir]                read-only health check (= install --check)
 
   tpm <suite> --help          list that suite's verbs
   tpm --help, -h              show this message
@@ -90,9 +99,11 @@ function main(argv) {
     return 2;
   }
 
-  // Dumb forward: hand the suite router (or aliased script) EVERYTHING after the suite/alias token.
+  // Dumb forward: hand the suite router (or aliased script) EVERYTHING after the suite/alias token,
+  // plus any fixed trailing args a porcelain alias injects (e.g. doctor → install … --check).
   const tool = path.join(__dirname, rel);
-  const r = spawnSync('node', [tool, ...args.slice(1)], { stdio: 'inherit' });
+  const extra = ALIAS_EXTRA[cmd] || [];
+  const r = spawnSync('node', [tool, ...args.slice(1), ...extra], { stdio: 'inherit' });
   if (r.error) {
     process.stderr.write(`tpm: failed to run '${cmd}': ${r.error.message}\n`);
     return 1;
@@ -104,4 +115,4 @@ if (require.main === module) {
   process.exit(main(process.argv));
 }
 
-module.exports = { main, SUITES, ALIASES };
+module.exports = { main, SUITES, ALIASES, ALIAS_EXTRA };

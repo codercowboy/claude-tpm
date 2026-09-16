@@ -4,17 +4,18 @@ The general operating identity of the orchestrator (the main Claude session): ta
 owning project-wide state. Module-agnostic — it holds only what is true of the orchestrator regardless of
 which claude-tpm modules are enabled.
 
-> **⚠️ Carve note (2026-08-27).** The formal-round machinery that used to live here — the pre-task question
+> **⚠️ Carve note.** The formal-round machinery that used to live here — the pre-task question
 > chain, the charter doctrine, the plan-review gate, pre-load-by-digging, orchestrator-side resumption,
-> spawn mechanics, and tool promotion — has been **carved out to the `workflow` module** (staged at
-> `tmp/workflow-redesign/legacy/docs/orchestrator/handbook.md` until the module is built). Per the
-> **module-opacity principle** ([`../overview.md`](../overview.md) §"Module opacity"), a project with
-> `workflow` disabled must never encounter that machinery here. This doc now carries only the
-> module-agnostic orchestrator identity. (The **session** rituals — onboarding orientation + session notes —
-> have likewise been carved to the `session` module, staged at `tmp/sessions-redesign/legacy/`.)
+> spawn mechanics, and tool promotion — lives in the **`workflow` module** now: its skills (`tpm-workflow`,
+> `tpm-spawn`, `tpm-spawn-team`) plus the docs under [`../workflow-setup/`](../workflow-setup/) and
+> [`pre-task-questions.md`](./pre-task-questions.md). Per the **module-opacity principle**
+> ([`../overview.md`](../overview.md) §"Module opacity"), a project with `workflow` disabled must never
+> encounter that machinery here. This doc now carries only the module-agnostic orchestrator identity.
+> (The **session** rituals — onboarding orientation + session notes — likewise live in the `session`
+> module: the `tpm-session` skill and [`session-process.md`](./session-process.md).)
 
-> **Reading order at session open:** see [`reading-list.md`](./reading-list.md). Then perform the
-> session-open onboarding ritual below.
+> **Reading order at session open:** see [`reading-list.md`](./reading-list.md). Session onboarding
+> itself is the `session` module's job (`tpm-session open`).
 
 ---
 
@@ -39,8 +40,8 @@ project never reads it).
 ## Session lifecycle & notes
 
 The session-open onboarding orientation and the session-notes behavior are the **`session` module** —
-carved out (staged: `tmp/sessions-redesign/legacy/`) so this handbook stays module-agnostic. When the
-session module is enabled, `tpm-session` owns open / close / notes.
+carved out so this handbook stays module-agnostic. When the session module is enabled, `tpm-session`
+owns open / close / notes; see [`session-process.md`](./session-process.md).
 
 ---
 
@@ -54,7 +55,7 @@ The orchestrator's responsibility is to know they exist and reach for the right 
 
 ## Reading-order for any new work
 
-- **Orchestrator at session open:** [`reading-list.md`](./reading-list.md), then the onboarding ritual above.
+- **Orchestrator at session open:** [`reading-list.md`](./reading-list.md); session onboarding is run by the `session` module (`tpm-session open`).
 
 *(When the `workflow` module is enabled, the orchestrator also composes each subagent's reading chain from
 the subagent reading-list manifest — that mechanism lives in the workflow module, not here.)*

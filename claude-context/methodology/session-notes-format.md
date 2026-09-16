@@ -1,7 +1,3 @@
-<!-- STAGED — apply where: claude-context/methodology/session-notes-format.md (NEW file, does not exist live yet).
-     Draft by the builder (task D1); prose finalized by the documentarian role of this same round.
-     See findings/promote/PROMOTION-CHECKLIST.md for the full staged-artifact manifest. -->
-
 # Session-notes format — the `tpm-session` tool's contract + a human-editing reference
 
 **What this is.** The canonical shape of `session-NNN/session-notes.md`, written by

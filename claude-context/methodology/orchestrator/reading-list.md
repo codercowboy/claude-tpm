@@ -28,8 +28,8 @@
 The small set you read at every session open, regardless of which modules are enabled. Small on purpose.
 
 <!-- reading-list:begin tpm-session-open -->
-1. **[`project-workspace.md`](../project-workspace.md)** — read/write boundaries per actor + naming conventions. (Its `dev/<task>/` layout half is workflow-module machinery — a split is pending; see `dev/workflow-design.md`.)
-2. **[`handbook.md`](./handbook.md)** — ⚠️ orchestrator-only. Your job description: plan-review gate, model selection, promotion criteria, cost tracking, disaster recovery. (Its round-specific parts belong to the workflow module — split pending.)
+1. **[`project-workspace.md`](../project-workspace.md)** — read/write boundaries per actor + naming conventions. (Its `dev/<task>/` layout half is workflow-module machinery and now lives with the `workflow` module.)
+2. **[`handbook.md`](./handbook.md)** — ⚠️ orchestrator-only. Your general operating identity: project-wide state ownership, reading order, disaster recovery. (Its formal-round machinery now lives in the `workflow` module.)
 3. **[`shared-conventions.md`](../shared-conventions.md)** — shared conventions you and every worker follow.
 <!-- reading-list:end -->
 
@@ -53,22 +53,23 @@ Not read at boot. Both are also on the worker's shelf.
 
 `verification.md` is **subagent-facing — NOT on the orchestrator list.** You see it via the worker
 reading list, where it's conditional under `--shipping` / `--verifier`. (This is why the orchestrator
-should NOT treat verification as an automatic step — see `dev/workflow-design.md`.)
+should NOT treat verification as an automatic step — it's a per-round decision.)
 
-## Modules — pointers, loaded ONLY when the module is enabled (see `dev/framework-config-design.md`)
+## Modules — pointers, loaded ONLY when the module is enabled (config: `.claude/claude-tpm/config.json`)
 
 Each module owns its own reading list; this boot list POINTS at it rather than enumerating, and only
 when config enables the module. **Disabled module ⇒ its docs never load** (the framework-level token
 lever). Do NOT re-list a module's docs here.
 
 - **Workflow module** (⚠️ orchestrator-only; **charter-secret** — never pointed at a worker) — the
-  formal multi-agent round machinery: `pre-task-questions.md` (the 13-Q ritual + `🛑 DO NOT START`
-  pre-check), `workflow-setup/shipping-charter.md` + `research-charter.md` (paste exactly one into
-  `plan.md`; default shipping; a worker must never learn the other exists), `workflow-setup/plan-template.md`,
-  `workflow-setup/subagent-orchestration.md`, `workflow-setup/prompt-templates/`. Read ONLY when running
-  a workflow. Planned SSOT: `workflow-setup/reading-list.md` — see `dev/workflow-design.md`.
-- **Hygiene module** — periodic drift sweeps: `hygiene/checks.md`, `hygiene/living-documents.md`,
-  `hygiene/research-consolidation.md`. Read only on a hygiene sweep. See `dev/hygiene-redesign.md`.
+  formal multi-agent round machinery: [`pre-task-questions.md`](./pre-task-questions.md) (the big-rocks
+  pre-task ritual + `🛑 DO NOT START` pre-check), `workflow-setup/charters/shipping-charter.md` +
+  `charters/research-charter.md` (paste exactly one into `plan.md`; default shipping; a worker must
+  never learn the other exists), `workflow-setup/plan-template.md`,
+  `workflow-setup/subagent-orchestration.md`. Read ONLY when running a workflow. The `tpm-workflow`
+  skill drives this.
+- **Hygiene module** *(planned — not yet shipped)* — periodic drift sweeps (doc rot, living-document
+  maintenance, research consolidation). No skill or docs on disk yet; nothing loads until it ships.
 
 <!-- PORT-NOTE: The source listed release-line addenda here — `release-shipping-charter.md`, `release-design-charter.md`, and `release-methodology.md`. The release layer is DEFERRED this pass (LOCKED-DECISIONS §Release layer); those docs are not ported, so their bullets are removed rather than left dangling. Restore them when the release line is ported. (release-line addenda: not yet ported) -->
 
@@ -82,4 +83,3 @@ told.
 
 - **[`tools/README.md`](../../tools/README.md)** — canonical tool index.
 - **`docs/project structure.md`** — flat repo inventory. *(Per-project doc, not shipped in the bundle; kept as a guidance pointer, not a live link.)*
-</content>

@@ -10,8 +10,11 @@
  *     1. preflight — fail fast unless `npm` is on PATH, a package.json exists (never created — authoring
  *        project identity is the user's call, not this tool's; if missing, print the `npm init -y`
  *        instruction and exit 1), and the `claude` CLI is on PATH.
- *     2. claude-tpm dependency — `npm install <from> --save-optional` unless the dep is already declared
- *        AND present in node_modules (skipped unless --force).
+ *     2. claude-tpm dependency — INTERACTIVE, consent-gated: ask whether to record the dep at all, then
+ *        regular (`--save`) vs optional (`--save-optional`, the default), then confirm the exact npm
+ *        command before running. Declining the first question skips the dep entirely (marketplace +
+ *        plugin steps still run). Skipped as "already done" when the dep is already declared AND present
+ *        in node_modules (unless --force). --quiet/-y never prompts: records it as optional (unchanged).
  *     3. marketplace — `claude plugin marketplace add ./node_modules/@codercowboy/claude-tpm
  *        --scope project` if not already registered.
  *     4. plugin install — `claude plugin install claude-tpm@claude-tpm-market --scope project`
@@ -46,13 +49,22 @@
  *     --force          skip the "already done" checks and (re-)run every step; treat an
  *                      already-added/already-installed response as success, not error. Still asks per
  *                      step unless combined with --quiet.
+ *     --debug          operation trace to STDOUT, prefixed `[tpm-debug]` (a `set -x`-style log): narrate
+ *                      every child spawn (bin/argv/cwd → status/signal/elapsed-ms), every `claude … --json`
+ *                      probe, and each step decision (already/marketplaceReady/needsEnable + its inputs).
+ *                      Also enabled by the TPM_DEBUG=1 env var. Diagnostic ONLY — changes no install
+ *                      behavior; the abnormal-exit signal name is surfaced even without it.
  *     --check          read-only: run every state check, print a PASS/FAIL checklist, change nothing.
  *                      Exits non-zero if anything is missing. (The consumer "doctor".) Checks:
- *                      package.json valid · tpm dep declared · marketplace registered · plugin
- *                      installed · plugin enabled for the project · the bundle delivers its two
- *                      PreToolUse hooks (gate-spawn + expand-tpm-home) · any consumer config.json
- *                      parses as JSON. (There is NO env.TPM_HOME / settings.json hook wiring to
- *                      check — the plugin delivers the hooks itself; env.TPM_HOME is retired.)
+ *                      package.json valid · tpm dep declared · marketplace registered · marketplace
+ *                      SOURCE resolves (catches a registration whose source path is gone — "points at
+ *                      the wrong place") · plugin installed · plugin enabled for the project · plugin
+ *                      CACHE present (catches an installed record whose cache dir is gone — "registered
+ *                      but not there" / cache-miss) · the bundle delivers its two PreToolUse hooks
+ *                      (gate-spawn + expand-tpm-home) · any consumer config.json parses as JSON. (There
+ *                      is NO env.TPM_HOME / settings.json hook wiring to check — the plugin delivers the
+ *                      hooks itself; env.TPM_HOME is retired.) A normal install runs this same doctor as
+ *                      a final step, and SELF-HEALS a dead-source marketplace (removes + re-adds it).
  *     -h, --help
  *
  *   Examples:
@@ -77,6 +89,51 @@ const PLUGIN_NAME = 'claude-tpm';
 const PLUGIN_ID = `${PLUGIN_NAME}@${MARKETPLACE_NAME}`;
 // Fixed regardless of --from — this is where `npm install` lands the dep in the TARGET's own tree.
 const MARKETPLACE_SOURCE = `./node_modules/${TPM_PKG_NAME}`;
+
+// ── operation-trace (--debug / TPM_DEBUG) + child-exit formatter ────────────────────────────────────
+// A `set -x`-style trace to STDOUT so an "exit null" run narrates what it did and what every child
+// returned (incl. the signal name). Instrumentation ONLY — it changes no install behavior. The writer is
+// a module-level singleton (like _prompter below) so runChild, which has no opts in scope, can call it.
+let _dbg = () => {};
+function makeDbg(enabled) {
+  if (!enabled) return () => {};
+  return (...parts) => { process.stdout.write('[tpm-debug] ' + parts.filter((p) => p !== '' && p != null).join(' ') + '\n'); };
+}
+// True when --debug was passed OR TPM_DEBUG is set to a non-empty value.
+function debugEnabled(opts) { return !!(opts && opts.debug) || !!process.env.TPM_DEBUG; }
+
+// Human-readable reason per spawn errno, shared by every message that renders a spawn error so the
+// failure line, the --debug '←' line, and formatChildExit all speak with one voice.
+const SPAWN_ERROR_REASON = { ENOENT: 'not found on PATH', EACCES: 'permission denied' };
+function spawnErrorReason(code) { return SPAWN_ERROR_REASON[code] || 'spawn error'; }
+
+// Pure primitive: classify a spawnSync-style result into ONE honest verdict the whole tool builds on.
+// `ran` is false when the child never executed (a spawn-level error — ENOENT for an absent bin, EACCES for
+// a directory / non-executable file shadowing it on PATH, or any other errno); `errorCode` carries that
+// errno. `ok` is the single availability rule: the probe actually RAN and exited 0. Feeding a fake result
+// shape here (no real spawn) is how the tests reproduce the EACCES/ENOENT misdetection deterministically.
+function classifySpawn(r) {
+  const errorCode = r && r.error ? (r.error.code || 'ESPAWN') : null;
+  const ran = !errorCode;
+  const status = r && typeof r.status === 'number' ? r.status : null;
+  const signal = r && r.signal ? r.signal : null;
+  return { ok: ran && status === 0, ran, status, signal, errorCode };
+}
+
+// Pure: render a spawnSync-style result as a human string. A spawn error (the child NEVER ran) →
+// 'could not run (<CODE>: <reason>)', NOT a signal branch. Otherwise status 0 → 'ok'; status>0 →
+// 'exited N'; a genuine status null WITHOUT a spawn error (signal-killed) → the signal string. Accepts
+// either a raw spawnSync result (carrying `error`) or a runChild result (carrying `errorCode`). Exported
+// so the always-on failure line AND the --debug '←' line share ONE formatting, and tests drive it directly.
+function formatChildExit(r) {
+  const errorCode = r ? (r.errorCode || (r.error && r.error.code) || null) : null;
+  if (errorCode) return `could not run (${errorCode}: ${spawnErrorReason(errorCode)})`;
+  const status = r ? r.status : undefined;
+  const signal = r ? r.signal : undefined;
+  if (status === 0) return 'ok';
+  if (typeof status === 'number' && status > 0) return 'exited ' + status;
+  return `exited null (killed by signal ${signal || 'unknown'})`;
+}
 
 // ── self-location (per tool-conventions.md — never hardcode absolutes / __dirname gymnastics for
 // project-internal locations; walk up for a repo marker instead). The marker is the bundle's OWN
@@ -132,15 +189,29 @@ function nodeModulesHasTpm(dir) {
 
 // ── `claude` state checks (read-only; defensive about JSON shape) ───────────────────────────────────
 
+// Availability = the probe actually RAN and exited 0 (classifySpawn.ok) — NOT merely "the error wasn't
+// ENOENT". That one rule catches an absent bin (ENOENT), a directory / non-exec file shadowing it on PATH
+// (EACCES), AND a broken bin that errors, all at once. Returns the RICHER classifySpawn verdict (not a
+// bare boolean any more) so callers read `.ok` for availability and `.errorCode` for the reason.
 function claudeCliAvailable() {
-  const r = spawnSync('claude', ['--version'], { encoding: 'utf8' });
-  return !(r.error && r.error.code === 'ENOENT');
+  return classifySpawn(spawnSync('claude', ['--version'], { encoding: 'utf8' }));
 }
 
-// Generic PATH probe (ENOENT ⇒ not found). Used by the preflight for `npm`.
+// Generic PATH probe. Returns the classifySpawn verdict ({ok, ran, status, signal, errorCode}); callers
+// read `.ok` for availability and `.errorCode` for the reason. Used by the preflight for `npm`.
 function commandAvailable(bin) {
-  const r = spawnSync(bin, ['--version'], { encoding: 'utf8' });
-  return !(r.error && r.error.code === 'ENOENT');
+  return classifySpawn(spawnSync(bin, ['--version'], { encoding: 'utf8' }));
+}
+
+// Pure: build the honest preflight line for a bin that isn't runnable, from its classifySpawn verdict.
+// ENOENT → truly absent (install it). EACCES → present on PATH but not executable — the classic "the bin
+// lives in the VM, not on THIS host" / a directory shadowing the real bin. Any other errno → surfaced
+// verbatim. A bin that RAN but exited non-zero → reported as such (rare). `installHint` tails the ENOENT case.
+function preflightMessage(bin, cls, installHint) {
+  if (cls.errorCode === 'ENOENT') return `\`${bin}\` not found on PATH — ${installHint}`;
+  if (cls.errorCode === 'EACCES') return `\`${bin}\` found on PATH but not executable (EACCES) — is \`${bin}\` installed on THIS host? (e.g. the binary lives in the VM, not the host).`;
+  if (cls.errorCode) return `\`${bin}\` could not be run: ${cls.errorCode} (${spawnErrorReason(cls.errorCode)}).`;
+  return `\`${bin}\` is on PATH but \`${bin} --version\` exited ${cls.status} — check the install.`;
 }
 
 // `cwd` MATTERS: `claude plugin list --json` reports each plugin's `enabled` state RELATIVE TO the
@@ -151,6 +222,9 @@ function commandAvailable(bin) {
 // targetDir; it defaults to process.cwd() only for ad-hoc/module use.
 function runClaudeJson(argv, cwd) {
   const r = spawnSync('claude', argv, { encoding: 'utf8', cwd: cwd || process.cwd() });
+  _dbg('probe:', 'claude ' + argv.join(' '), '(cwd=' + (cwd || process.cwd()) + ')',
+    '→ status=' + r.status + ' signal=' + (r.signal || 'none') + (r.error ? ' error=' + r.error.code : '') +
+    ' json=' + (!r.error && r.status === 0 && r.stdout ? 'parsed' : 'null'));
   if (r.error || r.status !== 0 || !r.stdout) return null;
   try { return JSON.parse(r.stdout); } catch (_e) { return null; }
 }
@@ -248,27 +322,139 @@ function configJsonValidity(targetDir) {
   catch (e) { return { present: true, valid: false, error: e.message }; }
 }
 
+// ── marketplace SOURCE health (the "registered but points at the wrong place" shape) ────────────────────
+// A marketplace can be registered by NAME while its SOURCE PATH no longer resolves — e.g. the global
+// singleton `claude-tpm-market` still points at a sibling consumer whose node_modules was deleted. A
+// name-only "registered?" check reports PASS for that dead registration, yet it blocks every install: the
+// plugin "is not found in marketplace" / loads with a cache-miss. This verifies the registered
+// marketplace's source actually exists on disk. Split pure-parse / disk-read like parsePluginList.
+//
+// Pure: given parsed `claude plugin marketplace list --json` (VERIFIED shape, claude 2.1.272: an array of
+// { name, source, path?, repo?, installLocation }), return OUR marketplace's registration shape.
+// `path` is the on-disk source dir for a `directory` source (absent for a `github` source).
+function parseMarketplaceList(list) {
+  if (!Array.isArray(list)) return { registered: false, source: null, path: null };
+  const m = list.find((e) => e && typeof e === 'object' && e.name === MARKETPLACE_NAME);
+  if (!m) return { registered: false, source: null, path: null };
+  return {
+    registered: true,
+    source: typeof m.source === 'string' ? m.source : null,
+    path: typeof m.path === 'string' ? m.path : null,
+  };
+}
+
+// Reader: is our marketplace registered, and if so does its source resolve on disk?
+// resolves is true when NOT registered (nothing to resolve — callers gate on `registered`) OR the source
+// isn't a local directory (a `github` marketplace has no local path to check) OR the directory source
+// exists. A registered directory-source marketplace whose path is gone → resolves:false (dead-source).
+function marketplaceSourceHealth(cwd) {
+  const parsed = parseMarketplaceList(runClaudeJson(['plugin', 'marketplace', 'list', '--json'], cwd));
+  if (!parsed.registered) return { registered: false, source: null, sourcePath: null, resolves: true };
+  const isDir = parsed.source === 'directory' || (parsed.source == null && parsed.path != null);
+  const resolves = !isDir || (parsed.path != null && fs.existsSync(parsed.path));
+  return { registered: true, source: parsed.source, sourcePath: parsed.path, resolves };
+}
+
+// ── plugin CACHE health (the "version registered but it's not there" shape) ─────────────────────────────
+// `claude plugin list --json` can report an installed-plugin RECORD whose cached copy under
+// ~/.claude/plugins/cache/ is gone ("failed to load: cache-miss" in the human list). pluginState().installed
+// is true for such a record, so a name-only "installed?" check misses it. This verifies the record's
+// installPath cache dir exists on disk. Split pure-parse / disk-read.
+//
+// Pure: given parsed `plugin list --json`, return OUR project-scope entry's installPath (the cache dir),
+// or null when there's no such entry / it reports no installPath.
+function parsePluginInstallPath(list) {
+  if (!Array.isArray(list)) return null;
+  const entry = list.find((e) => e && typeof e === 'object' && e.id === PLUGIN_ID &&
+    (e.scope === undefined || e.scope === 'project'));
+  return entry && typeof entry.installPath === 'string' ? entry.installPath : null;
+}
+
+// Reader: does the installed plugin record's cached copy exist on disk?
+//   present:true  → installPath reported AND exists (healthy)
+//   present:false → installPath reported but the cache dir is GONE (the cache-miss shape)
+//   present:null  → no installPath reported (nothing to check — e.g. no record, or schema drift)
+function pluginCacheHealth(cwd) {
+  const installPath = parsePluginInstallPath(runClaudeJson(['plugin', 'list', '--json'], cwd));
+  if (installPath == null) return { installPath: null, present: null };
+  return { installPath, present: fs.existsSync(installPath) };
+}
+
 // ── child-process runner (captures output so the --force "already" heuristic can inspect it, then
 // echoes it so the user still sees what happened) ────────────────────────────────────────────────────
 
 function runChild(bin, argv, cwd) {
+  // If an interactive prompter is open, release the TTY (drop raw mode) for the duration of this
+  // synchronous spawn — otherwise a real TTY signal-kills the process ("exit null"). No-op under
+  // --quiet/--check (no prompter) and under piped stdin (not a TTY), so those paths are unchanged.
+  const releaseTty = !!_prompter && !!process.stdin.isTTY;
+  _dbg('→ spawn:', bin, argv.join(' '), '(cwd=' + cwd + ')', releaseTty ? '[tty-release]' : '');
+  if (releaseTty) _prompter.pause();
+  const t0 = Date.now();
   const r = spawnSync(bin, argv, { cwd, encoding: 'utf8' });
+  const ms = Date.now() - t0;
+  if (releaseTty) _prompter.resume();
   if (r.stdout) process.stdout.write(r.stdout);
   if (r.stderr) process.stderr.write(r.stderr);
-  if (r.error && r.error.code === 'ENOENT') return { status: 127, enoent: true, combined: '' };
-  return { status: r.status, enoent: false, combined: (r.stdout || '') + (r.stderr || '') };
+  const cls = classifySpawn(r);
+  if (!cls.ran) {
+    // Spawn-level error — the child NEVER ran (ENOENT: absent; EACCES: a dir / non-exec file shadows it on
+    // PATH; or any other errno). Surface the errno instead of letting it fall through as a fake status:null
+    // "killed by signal unknown". The `←` line gains error=<code>, parity with the runClaudeJson probe line.
+    _dbg('← status=' + cls.status, 'signal=' + (cls.signal || 'none'), 'error=' + cls.errorCode, `(${ms}ms)`, formatChildExit(r));
+    return { status: cls.status, signal: cls.signal, errorCode: cls.errorCode, enoent: cls.errorCode === 'ENOENT', combined: '' };
+  }
+  _dbg('← status=' + cls.status, 'signal=' + (cls.signal || 'none'), `(${ms}ms)`, formatChildExit(r));
+  return { status: cls.status, signal: cls.signal, errorCode: null, enoent: false, combined: (r.stdout || '') + (r.stderr || '') };
 }
 
 // ── interactive consent (zero-dep: Node core `readline`) ────────────────────────────────────────────
 
-function ask(question) {
-  return new Promise((resolve) => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: !!process.stdin.isTTY });
-    let answered = false;
-    rl.question(question, (answer) => { answered = true; rl.close(); resolve(answer); });
-    rl.on('close', () => { if (!answered) resolve(''); });
-  });
+// A multi-question prompter over ONE readline interface, shared by EVERY prompt in a run. A per-question
+// interface can't work with scripted input: piped stdin delivers all its lines (and EOF) in one burst, so
+// a second interface finds the stream already drained/closed ("readline was closed") and every line after
+// the first is lost. Instead, buffer every `line` event into a queue and let each question() pull the next
+// line (or '' once stdin has closed). Prompts are written to stdout manually. ONE prompter per process —
+// created lazily on the first prompt (so --quiet / --check, which never prompt, open no readline and the
+// process exits cleanly), and torn down by process.exit at the end of a CLI run.
+let _prompter = null;
+function makePrompter() {
+  // ONE shared readline interface for the whole run. It must get TWO things right at once:
+  //  (1) piped/scripted stdin flushes every line + EOF in one burst, so we buffer `line` events into a
+  //      queue and let each question() pull the next (or '' once closed). Calling rl.question() per prompt
+  //      instead races that close and throws "readline was closed" on the 2nd/3rd question.
+  //  (2) a real interactive TTY must ECHO what you type — which requires an `output` stream on the
+  //      interface. The original omitted `output`, so a human saw nothing and "couldn't even press y".
+  // Fix = keep the line-queue AND pass `output: process.stdout`. Prompt strings are written manually.
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: !!process.stdin.isTTY });
+  const queue = [];
+  const waiters = [];
+  let closed = false;
+  rl.on('line', (line) => { if (waiters.length) waiters.shift()(line); else queue.push(line); });
+  rl.on('close', () => { closed = true; while (waiters.length) waiters.shift()(''); });
+  return {
+    question: (prompt) => new Promise((resolve) => {
+      process.stdout.write(prompt);
+      if (queue.length) resolve(queue.shift());
+      else if (closed) resolve('');
+      else waiters.push(resolve);
+    }),
+    // Release/re-grab the TTY around synchronous child spawns. An open readline holds stdin in RAW mode;
+    // spawnSync while raw-mode is active gets the process signal-killed on a real TTY ("exit null") — even
+    // though we pipe the child's stdio. pause() drops raw mode + pauses input for the duration of the spawn.
+    pause: () => { try { if (process.stdin.isTTY) process.stdin.setRawMode(false); } catch (_) {} rl.pause(); },
+    resume: () => { rl.resume(); try { if (process.stdin.isTTY) process.stdin.setRawMode(true); } catch (_) {} },
+    close: () => { rl.close(); _prompter = null; },
+  };
 }
+
+// Single shared prompter for the whole run (see makePrompter). Every consent prompt — doStep's "Run this?"
+// and doDependencyStep's three questions — goes through here, so scripted/piped answers flow across steps.
+function ask(question) {
+  if (!_prompter) _prompter = makePrompter();
+  return _prompter.question(question);
+}
+function closePrompter() { if (_prompter) _prompter.close(); }
 
 // Run one REPL step: check state, print command+edit+what, ask consent (unless --quiet), run, report.
 // `already` = the state check already satisfies this step (skipped unless --force).
@@ -290,8 +476,8 @@ async function doStep(opts, step) {
     }
   }
   const res = runChild(bin, argv, cwd);
-  if (res.enoent) {
-    process.stderr.write(`  ✗ '${bin}' not found on PATH.\n`);
+  if (res.errorCode) {
+    process.stderr.write(`  ✗ could not run '${bin}': ${res.errorCode} (${spawnErrorReason(res.errorCode)})\n`);
     return { ok: false };
   }
   if (res.status !== 0) {
@@ -304,7 +490,73 @@ async function doStep(opts, step) {
       process.stdout.write('  (already in the desired state — treating as success under --force)\n');
       return { ok: true, alreadyOk: true };
     }
-    process.stderr.write(`  ✗ exited ${res.status}\n`);
+    process.stderr.write(`  ✗ ${formatChildExit(res)}\n`);
+    return { ok: false };
+  }
+  process.stdout.write('  ✓ done.\n');
+  return { ok: true };
+}
+
+// Step 2 is special — an INTERACTIVE, consent-gated dependency RECORDER (replaces the old hardcoded
+// `npm install <spec> --save-optional`). Three prompts, reusing the same `ask` helper + the
+// show-command-before-running pattern as doStep:
+//   1) add the dep at all? — a bare `n` SKIPS the dependency step entirely (marketplace + plugin steps
+//      still run; `npx tpm …` just won't resolve locally from this project — a legitimate choice).
+//   2) regular vs optional? — 1 → --save (dependencies); 2 or bare-enter → --save-optional
+//      (optionalDependencies). Default 2 preserves today's behavior + the "won't break the host's own
+//      `npm install` if the bundle is absent" safety.
+//   3) confirm the exact command before running.
+// --quiet / -y (non-interactive) NEVER prompts: it records the dep as OPTIONAL, exactly as the old
+// unconditional `--save-optional` did (keeps all headless/automated installs + test harnesses working).
+async function doDependencyStep(opts, step) {
+  const { already, describe, targetDir, fromSpec } = step;
+  if (already && !opts.force) {
+    process.stdout.write(`✓ ${describe} — already done, skipping.\n`);
+    return { ok: true, skipped: true };
+  }
+  process.stdout.write(`\n${describe}\n`);
+
+  let saveFlag = '--save-optional';
+  let bucket = 'optionalDependencies';
+  if (!opts.quiet) {
+    const add = (await ask(`  Install ${TPM_PKG_NAME} into this project's package.json via npm? (y/n) `)).trim().toLowerCase();
+    if (add !== 'y' && add !== 'yes') {
+      process.stdout.write(`  skipped — NOT recording ${TPM_PKG_NAME} in package.json.\n`);
+      process.stdout.write('           (the marketplace + plugin steps still run; `npx tpm …` just won\'t\n');
+      process.stdout.write('           resolve locally from this project — a legitimate choice.)\n');
+      return { ok: true, skippedDep: true };
+    }
+    const kind = (await ask('  Record it as a (1) regular dependency or (2) optional dependency? [default 2] ')).trim();
+    if (kind === '1') { saveFlag = '--save'; bucket = 'dependencies'; }
+  }
+
+  const command = `npm install ${fromSpec} ${saveFlag}`;
+  process.stdout.write(`  command: ${command}\n`);
+  process.stdout.write(`  edits:   ${path.join(targetDir, 'package.json')} (${bucket}) + its lockfile + node_modules/${TPM_PKG_NAME}\n`);
+  process.stdout.write(`  does:    Adds "${TPM_PKG_NAME}": "${fromSpec}" to ${bucket}, updates the lockfile, and\n`);
+  process.stdout.write(`           creates the node_modules/${TPM_PKG_NAME} symlink/copy that step 3 points the marketplace at.\n`);
+
+  if (!opts.quiet) {
+    const proceed = (await ask(`  About to run: ${command}. Proceed? (y/n) `)).trim().toLowerCase();
+    if (proceed !== 'y' && proceed !== 'yes') {
+      process.stdout.write('  declined — stopping.\n');
+      return { ok: false, declined: true };
+    }
+  }
+
+  const argv = ['install', fromSpec, saveFlag];
+  const verify = () => hasTpmDependency(readPackageJson(targetDir).value) && nodeModulesHasTpm(targetDir);
+  const res = runChild('npm', argv, targetDir);
+  if (res.errorCode) {
+    process.stderr.write(`  ✗ could not run 'npm': ${res.errorCode} (${spawnErrorReason(res.errorCode)})\n`);
+    return { ok: false };
+  }
+  if (res.status !== 0) {
+    if (opts.force && verify()) {
+      process.stdout.write('  (already in the desired state — treating as success under --force)\n');
+      return { ok: true, alreadyOk: true };
+    }
+    process.stderr.write(`  ✗ ${formatChildExit(res)}\n`);
     return { ok: false };
   }
   process.stdout.write('  ✓ done.\n');
@@ -323,10 +575,19 @@ function runCheck(targetDir) {
   rows.push({ label: `"${TPM_PKG_NAME}" declared as a dependency`, pass: !!depOk,
     note: (pkgRead.exists && !pkgRead.error) ? '' : '(skipped — no valid package.json)' });
 
-  const claudeOk = claudeCliAvailable();
+  const claudeOk = claudeCliAvailable().ok;
   const marketOk = claudeOk && marketplaceRegistered(targetDir);
   rows.push({ label: `marketplace "${MARKETPLACE_NAME}" registered`, pass: marketOk,
     note: claudeOk ? '' : '(`claude` CLI not found on PATH)' });
+
+  // Marketplace SOURCE resolves — a registration can exist by name while its source path is gone (the
+  // "points at the wrong place" / dead-source shape). Only meaningful once it's registered.
+  const mHealth = marketOk ? marketplaceSourceHealth(targetDir) : { resolves: true, sourcePath: null };
+  rows.push({ label: `marketplace "${MARKETPLACE_NAME}" source resolves`, pass: !marketOk ? true : mHealth.resolves,
+    note: !claudeOk ? '(skipped — `claude` CLI not found on PATH)'
+      : !marketOk ? '(skipped — not registered)'
+      : mHealth.resolves ? ''
+      : `(source path missing: ${mHealth.sourcePath || 'unknown'} — re-run \`npx tpm install\` here; install self-repairs the stale marketplace)` });
 
   // Probe project-scope state FROM the target dir — enablement is cwd-relative (see runClaudeJson).
   const pstate = claudeOk ? pluginState(targetDir) : { installed: false, enabled: false };
@@ -334,6 +595,16 @@ function runCheck(targetDir) {
     note: claudeOk ? '' : '(`claude` CLI not found on PATH)' });
   rows.push({ label: `plugin ${PLUGIN_ID} enabled for this project`, pass: pstate.installed && pstate.enabled,
     note: (claudeOk && !pstate.installed) ? '(skipped — not installed)' : '' });
+
+  // Plugin CACHE present — an installed record can point at a cache dir that's gone (the "version
+  // registered but it's not there" / cache-miss shape). FAIL only on a definitively-missing cache.
+  const cacheH = (claudeOk && pstate.installed) ? pluginCacheHealth(targetDir) : { installPath: null, present: null };
+  rows.push({ label: `plugin ${PLUGIN_ID} cache present (loads)`, pass: cacheH.present !== false,
+    note: !claudeOk ? '(skipped — `claude` CLI not found on PATH)'
+      : !pstate.installed ? '(skipped — not installed)'
+      : cacheH.present === null ? '(skipped — no installPath reported)'
+      : cacheH.present ? ''
+      : `(cache missing: ${cacheH.installPath} — re-run \`npx tpm install\` here to reinstall the plugin)` });
 
   // Hooks-delivery health: the bundle in node_modules carries a hooks/hooks.json declaring both hooks.
   // Only meaningful once the dep is materialized in node_modules; otherwise skip (step 2 handles that).
@@ -366,15 +637,20 @@ function runCheck(targetDir) {
 // ── the install run (default / --quiet / --force) ───────────────────────────────────────────────────
 
 async function runInstall(opts) {
+  _dbg = makeDbg(debugEnabled(opts)); // idempotent — main() also sets it; covers a direct module call
   const targetDir = path.resolve(opts.dir);
+  _dbg('resolved run: opts=' + JSON.stringify({ dir: opts.dir, from: opts.from, quiet: !!opts.quiet, force: !!opts.force, debug: !!opts.debug }));
+  _dbg('resolved run: targetDir=' + targetDir + ' bundleRoot=' + findBundleRoot(__dirname));
+  _dbg('tty: stdin.isTTY=' + !!process.stdin.isTTY + ' stdout.isTTY=' + !!process.stdout.isTTY);
 
   // Step 1/5 — preflight. Fail fast, per-prerequisite: `npm` on PATH, a package.json to write into, and
   // the `claude` CLI on PATH (a missing `claude` used to surface downstream as an unhelpful "exited null").
   // package.json is never created by this tool, in ANY mode (--force included) — authoring project identity
   // is the user's call, not ours; it's also load-bearing (step 2 needs it to exist).
-  if (!commandAvailable('npm')) {
+  const npmProbe = commandAvailable('npm');
+  if (!npmProbe.ok) {
     process.stderr.write('Step 1/5 — ✗ preflight failed\n');
-    process.stderr.write('  error: `npm` not found on PATH — install Node.js/npm first.\n');
+    process.stderr.write('  error: ' + preflightMessage('npm', npmProbe, 'install Node.js/npm first.') + '\n');
     return 1;
   }
   const pkgRead = readPackageJson(targetDir);
@@ -393,9 +669,10 @@ async function runInstall(opts) {
     process.stderr.write(`  error: ${path.join(targetDir, 'package.json')} is not valid JSON: ${pkgRead.error}\n`);
     return 1;
   }
-  if (!claudeCliAvailable()) {
+  const claudeProbe = claudeCliAvailable();
+  if (!claudeProbe.ok) {
     process.stderr.write('Step 1/5 — ✗ preflight failed\n');
-    process.stderr.write('  error: `claude` CLI not found on PATH — install Claude Code first.\n');
+    process.stderr.write('  error: ' + preflightMessage('claude', claudeProbe, 'install Claude Code first.') + '\n');
     return 1;
   }
   const pkg = pkgRead.value;
@@ -409,39 +686,65 @@ async function runInstall(opts) {
     process.stderr.write('  pass --from <spec> explicitly (e.g. --from file:../claude-tpm).\n');
     return 1;
   }
-  const r2 = await doStep(opts, {
-    already: hasTpmDependency(pkg) && nodeModulesHasTpm(targetDir),
+  _dbg('resolved run: fromSpec=' + fromSpec);
+  const step2Already = hasTpmDependency(pkg) && nodeModulesHasTpm(targetDir);
+  _dbg('step 2: hasDep=' + hasTpmDependency(pkg) + ' inNodeModules=' + nodeModulesHasTpm(targetDir) + ' → already=' + step2Already);
+  const r2 = await doDependencyStep(opts, {
+    already: step2Already,
     describe: 'Step 2/5 — add the claude-tpm dependency',
-    command: `npm install ${fromSpec} --save-optional`,
-    edit: `${path.join(targetDir, 'package.json')} (optionalDependencies) + its lockfile + node_modules/${TPM_PKG_NAME}`,
-    what: `Adds "${TPM_PKG_NAME}": "${fromSpec}" to optionalDependencies, updates the lockfile, and\n` +
-      `           creates the node_modules/${TPM_PKG_NAME} symlink/copy that step 3 points the marketplace at.`,
-    bin: 'npm', argv: ['install', fromSpec, '--save-optional'], cwd: targetDir,
-    verify: () => hasTpmDependency(readPackageJson(targetDir).value) && nodeModulesHasTpm(targetDir),
+    targetDir, fromSpec,
   });
   if (!r2.ok) return 1;
 
   // Step 3 — marketplace registration. (marketplace add/remove take no -y flag; unaffected by --quiet.)
+  // SELF-HEAL first: a marketplace registered by NAME whose source path no longer resolves (e.g. the
+  // global singleton points at a deleted sibling consumer) would make step 3 "already done" → skip, and
+  // step 4 then fails opaquely ("plugin not found in marketplace" / cache-miss). Detect that dead-source
+  // shape and repair it (remove the stale registration so the add below re-registers against THIS project).
+  const mHealth = marketplaceSourceHealth(targetDir);
+  let marketplaceReady = mHealth.registered && mHealth.resolves;
+  _dbg('step 3: registered=' + mHealth.registered + ' resolves=' + mHealth.resolves + ' source=' + mHealth.source + ' path=' + mHealth.sourcePath + ' → marketplaceReady=' + marketplaceReady);
+  if (mHealth.registered && !mHealth.resolves) {
+    _dbg('step 3: dead-source marketplace detected → repairing (remove stale registration first)');
+    const rHeal = await doStep(opts, {
+      already: false,
+      describe: 'Step 3/5 — repair: remove the STALE claude-tpm marketplace (its source no longer resolves)',
+      command: `claude plugin marketplace remove ${MARKETPLACE_NAME}`,
+      edit: "this machine's Claude Code marketplace registry",
+      what: `Marketplace "${MARKETPLACE_NAME}" is registered but its source (${mHealth.sourcePath || 'unknown'})\n` +
+        '           is gone — removing the dead registration so it can be re-added against this project below.',
+      bin: 'claude', argv: ['plugin', 'marketplace', 'remove', MARKETPLACE_NAME], cwd: targetDir,
+      verify: () => !marketplaceRegistered(targetDir),
+    });
+    if (!rHeal.ok) return 1;
+    marketplaceReady = false; // removed → the add below must run
+  }
   const r3 = await doStep(opts, {
-    already: marketplaceRegistered(targetDir),
+    already: marketplaceReady,
     describe: 'Step 3/5 — register the claude-tpm marketplace',
     command: `claude plugin marketplace add ${MARKETPLACE_SOURCE} --scope project`,
     edit: "this project's Claude Code settings (project scope)",
     what: `Trusts/registers ${MARKETPLACE_SOURCE} as marketplace "${MARKETPLACE_NAME}" so its plugin becomes installable.`,
     bin: 'claude', argv: ['plugin', 'marketplace', 'add', MARKETPLACE_SOURCE, '--scope', 'project'], cwd: targetDir,
-    verify: () => marketplaceRegistered(targetDir),
+    verify: () => marketplaceRegistered(targetDir) && marketplaceSourceHealth(targetDir).resolves,
   });
   if (!r3.ok) return 1;
 
-  // Step 4 — plugin install (usually also enables it for this project — see step 5).
+  // Step 4 — plugin install (usually also enables it for this project — see step 5). A plugin RECORD that
+  // exists but whose cache dir is gone (cache-miss / "version registered but it's not there") is NOT
+  // "already done" — require the cache present so a broken record triggers a reinstall rather than a skip.
+  const p4 = pluginState(targetDir);
+  const cache4 = p4.installed ? pluginCacheHealth(targetDir) : { present: null };
+  const alreadyInstalled = p4.installed && cache4.present !== false;
+  _dbg('step 4: installed=' + p4.installed + ' enabled=' + p4.enabled + ' cachePresent=' + cache4.present + ' → already=' + alreadyInstalled);
   const r4 = await doStep(opts, {
-    already: pluginState(targetDir).installed,
+    already: alreadyInstalled,
     describe: 'Step 4/5 — install the claude-tpm plugin',
     command: `claude plugin install ${PLUGIN_ID} --scope project${opts.quiet ? ' -y' : ''}`,
     edit: "~/.claude/plugins/ (global cache) + this project's plugin registry (project scope)",
     what: `Installs ${PLUGIN_ID} and, in the common case, enables it for this project in the same step.`,
     bin: 'claude', argv: ['plugin', 'install', PLUGIN_ID, '--scope', 'project'].concat(opts.quiet ? ['-y'] : []), cwd: targetDir,
-    verify: () => pluginState(targetDir).installed,
+    verify: () => pluginState(targetDir).installed && pluginCacheHealth(targetDir).present !== false,
   });
   if (!r4.ok) return 1;
 
@@ -450,6 +753,7 @@ async function runInstall(opts) {
   // is cwd-relative, so a probe from anywhere else misreads it (the false-exit-1 re-enable bug).
   const afterInstall = pluginState(targetDir);
   const needsEnable = afterInstall.installed && !afterInstall.enabled;
+  _dbg('step 5: installed=' + afterInstall.installed + ' enabled=' + afterInstall.enabled + ' → needsEnable=' + needsEnable);
   const r5 = await doStep(opts, {
     already: !needsEnable,
     describe: 'Step 5/5 — enable the plugin for this project',
@@ -462,7 +766,16 @@ async function runInstall(opts) {
   });
   if (!r5.ok) return 1;
 
-  process.stdout.write(`\n✓ claude-tpm is installed and enabled (${PLUGIN_ID}) for ${targetDir}\n`);
+  // Final verification — run the read-only doctor over the END STATE so a broken result (a dead-source
+  // marketplace, a cache-miss, a malformed config) is surfaced deterministically rather than assumed. The
+  // steps above act; this confirms the acted-on state is actually healthy.
+  process.stdout.write('\nFinal check — doctor (verifying the end state):\n');
+  const checkCode = runCheck(targetDir);
+  if (checkCode !== 0) {
+    process.stderr.write('\n✗ the install steps ran, but the final doctor found problems (see the FAIL rows above).\n');
+    return 1;
+  }
+  process.stdout.write(`\n✓ claude-tpm is installed and enabled (${PLUGIN_ID}) for ${targetDir} — doctor clean.\n`);
   return 0;
 }
 
@@ -475,13 +788,14 @@ function printHelp() {
 }
 
 function parseArgs(argv) {
-  const a = { dir: null, from: null, quiet: false, force: false, check: false, help: false };
+  const a = { dir: null, from: null, quiet: false, force: false, check: false, debug: false, help: false };
   for (let i = 0; i < argv.length; i += 1) {
     const x = argv[i];
     if (x === '-h' || x === '--help') a.help = true;
     else if (x === '--quiet') a.quiet = true;
     else if (x === '--force') a.force = true;
     else if (x === '--check') a.check = true;
+    else if (x === '--debug') a.debug = true;
     else if (x === '--from') {
       const v = argv[i + 1];
       if (v === undefined || v.startsWith('-')) {
@@ -507,10 +821,13 @@ function parseArgs(argv) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
+  _dbg = makeDbg(debugEnabled(opts)); // enable the operation trace before any spawn/probe happens
   if (opts.help) { printHelp(); process.exit(0); }
   const targetDir = path.resolve(opts.dir);
   if (opts.check) { process.exit(runCheck(targetDir)); }
-  process.exit(await runInstall(opts));
+  const code = await runInstall(opts);
+  closePrompter(); // release the shared readline (a no-op when nothing prompted, e.g. --quiet)
+  process.exit(code);
 }
 
 if (require.main === module) {
@@ -518,9 +835,11 @@ if (require.main === module) {
 }
 
 module.exports = {
-  main, runInstall, runCheck, parseArgs, findBundleRoot, defaultFromSpec,
+  main, runInstall, runCheck, parseArgs, doDependencyStep, closePrompter, findBundleRoot, defaultFromSpec,
+  makeDbg, debugEnabled, formatChildExit, classifySpawn, spawnErrorReason, preflightMessage,
   readPackageJson, hasTpmDependency, nodeModulesHasTpm, claudeCliAvailable, commandAvailable,
   marketplaceRegistered, pluginState, parsePluginList,
+  parseMarketplaceList, marketplaceSourceHealth, parsePluginInstallPath, pluginCacheHealth,
   parseHooksManifest, bundleHooksHealth, configJsonValidity,
   TPM_PKG_NAME, MARKETPLACE_NAME, PLUGIN_NAME, PLUGIN_ID, MARKETPLACE_SOURCE,
 };

@@ -8,7 +8,7 @@
      findings to; it is deliberately kept blind to how many fix-and-recheck cycles have run, so the
      body must never mention a loop, a cycle count, or a recheck to come. A bug-fixer charter sitting
      next to a builder is harmless; the secrecy that matters is never dropping a weaker-bar BUILDER
-     charter (mvp / research) there, and keeping this body free of any hint that a lower definition
+     charter there, and keeping this body free of any hint that a lower definition
      of done is available to any role. If this comment survives into an agent-facing file, that is a
      leak and the linter flags it. -->
 

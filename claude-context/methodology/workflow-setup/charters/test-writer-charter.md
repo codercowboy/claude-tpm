@@ -6,7 +6,7 @@
      orchestrator-only. This is the TEST-WRITER charter — constant for the role (unlike builder
      charters, it is not chosen per round). A test-writer charter sitting next to a builder is
      harmless, so it is safe to drop in a build folder; the secrecy that matters is never dropping a
-     weaker-bar BUILDER charter (mvp / research) there. Charter secrecy: keep this body free of any
+     weaker-bar BUILDER charter there. Charter secrecy: keep this body free of any
      hint that a lower definition of done is available to any role — a test-writer must never learn a
      weaker-bar posture exists. If this comment survives into an agent-facing file, that is a leak
      and the linter flags it. -->

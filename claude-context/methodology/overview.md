@@ -1,10 +1,9 @@
 # claude-tpm — what it is & the opt-in activation model
 
 > **Design north star.** This describes the TARGET shape of claude-tpm — a modular, opt-in framework.
-> Some modules are still being built and the `claude-admin` → `claude-tpm` rename is pending, so read
-> this as the directional vision the build serves, not a description of shipped reality. Mechanism
-> lives in [`../dev/framework-config-design.md`](../dev/framework-config-design.md); this doc is the
-> "what & why."
+> The core is shipped (the `tasks`, `workflow`, and `session` modules), while others (`hygiene`, `motd`)
+> are still planned, so read this as the directional vision the build serves, not a one-to-one
+> description of shipped reality. This doc is the "what & why."
 
 ## What TPM is
 
@@ -84,8 +83,10 @@ reflexively verify lightweight work — verification is a per-round decision, no
 
 ## Where to go next
 
-- **Mechanism / config shape:** [`../dev/framework-config-design.md`](../dev/framework-config-design.md).
-- **Per-module design:** `../dev/task-process-design.md`, `../dev/workflow-design.md`,
-  `../dev/session-skill-design.md`, `../dev/hygiene-redesign.md`.
+- **Config shape:** module `enabled` flags and per-module config live in `.claude/claude-tpm/config.json`;
+  see [`../config-guide.md`](../config-guide.md).
+- **Per-module surface:** each shipped module owns a skill (`tpm-task`, `tpm-workflow`, `tpm-session`) and
+  its tools under `tools/`; the workflow module's planning + charter docs live under
+  [`workflow-setup/`](workflow-setup/).
 - **Boot ritual:** the `session` module's `open` bootstraps the engine; the reading chain it walks is
   [`orchestrator/reading-list.md`](orchestrator/reading-list.md) (the SSOT).

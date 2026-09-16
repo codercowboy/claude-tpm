@@ -25,16 +25,17 @@ Project-level tools live in **portable per-suite folders**:
 
 ```
 tools/
-  README.md                      # categorized index of ALL tools, one-liner each
+  README.md                      # THE canonical ledger: every tool + a tests ledger, one bullet each (SSOT — §4)
   <suite>/                       # e.g. task, spawn, session, workflow — a self-contained suite
     <tool>.js (or .sh)           # the executable
     <tool>.md                    # its reference doc  (tool + its .md at the suite ROOT)
-    README.md                    # per-suite readme (its tools + tests), kept current
-    lib/                         # the suite's OWN library code
+    lib/                         # the suite's OWN library code (or flat helpers beside the tool)
     tests/
       <tool>/test.js             # human-readable tests for that tool
       lib/                       # shared test helpers WITHIN this suite
 ```
+
+There is **one** ledger (`tools/README.md`) — suites do **not** each keep their own README.
 
 At the suite root: only the tool executables + their `.md`s + `README.md` + `lib/` + `tests/`. Anything
 a tool needs beyond a single file goes in `lib/`. `<tool>.md` sits beside `<tool>.js`. A suite name may
@@ -52,31 +53,39 @@ suite is self-contained.
 - **Zero runtime dependencies:** tools use only Node built-ins (or POSIX for `.sh`). No third-party npm
   deps. A tool stays runnable with a bare `node tools/<suite>/<tool>.js`.
 
-## 3. npm — script registry + tool listing
+## 3. Running tools — `npm run` and/or a `tpm`-style bin
 
-Root **`package.json`** is a convenience wrapper (script registry), NOT a dependency manifest:
+Root **`package.json`** is a convenience wrapper (a script registry + `bin`), NOT a dependency manifest. A
+project wires its tools to be run in one or both of two ways:
 
-```jsonc
-{
-  "name": "@codercowboy/claude-tpm",   // npm rendering of maven com.codercowboy:claude-tpm
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "task":  "node tools/task/tpm-task.js",
-    "tools": "node tools/list-tools.js"   // prints every tool + its one-liner (discovery command)
-    // …one script per tool…
-  }
-}
-```
+- **npm scripts** — one `scripts` entry per tool, run as `npm run <name>` (args after `--`, e.g.
+  `npm run task -- list`):
+  ```jsonc
+  { "scripts": { "task": "node tools/task/tpm-task.js" } }
+  ```
+- **A `bin` dispatcher** — a single git-style front-door command declared as the package `bin`, run as
+  `npx <bin> <suite> <verb>`. claude-tpm ships `"bin": { "tpm": "tools/tpm.js" }`, so its tools run as
+  `npx tpm session review`, `npx tpm task list`, etc. (claude-tpm exposes only this bin — no per-tool
+  `npm run` scripts beyond `npm test`; another project may prefer npm scripts, or both.)
 
-Every tool is runnable via `npm run <name>` (args after `--`, e.g. `npm run task -- list`) AND directly
-via `node`. `npm run tools` lists all tools + one-liners (from the README index, so it can't drift).
+Either style is fine, and a tool wired **neither** way (an internal helper, a hook script the harness
+invokes, a one-off utility) simply has **no** run command. Every tool also stays runnable by a bare
+`node tools/<suite>/<tool>.js` regardless (§2). The `tools/README.md` ledger records a tool's run command
+**only when it's actually wired** (§4).
 
-## 4. Docs — three levels, all kept current
+## 4. Docs — the canonical ledger + per-tool references
 
-- **`tools/README.md`** — categorized global index: every tool, one line each.
-- **`tools/<suite>/README.md`** — the suite's tools + tests, how to run them.
-- **`<tool>.md`** — the tool's own reference (flags, subcommands, examples).
+- **`tools/README.md` — the one canonical ledger (SSOT).** Suites do NOT each keep their own README; this
+  single file is the exhaustive index. Its contract:
+  - **Exhaustive + honest** — every tool that exists is listed; nothing that no longer exists is.
+  - **Categorized by suite**, each category opening with a one-line description of what the suite is for.
+  - **One bullet per tool** = the `` `path` `` + one sentence on what it does; a **Run:** command **only if
+    the tool is wired** (`npm run …` / `npx <bin> …` per §3) — otherwise no run line; and a **Doc:** pointer
+    to its `<tool>.md` or "header". Internal helpers and routers are listed but **tagged** (e.g. "internal
+    helper — imported, not a CLI") so the ledger is complete without implying they're runnable.
+  - **A tests ledger** below the tools ledger — how to run everything (`npm test`) and each suite's runner.
+  - **Kept in sync in the same change** that adds, removes, or renames a tool.
+- **`<tool>.md`** — the tool's own reference (flags, subcommands, examples), beside `<tool>.js`.
 - Test files carry a header docstring (purpose / guards / how-to-run).
 
 ## 5. CLI conventions (uniform across project-level tools)
@@ -85,15 +94,16 @@ via `node`. `npm run tools` lists all tools + one-liners (from the README index,
 - **No silent defaults for REQUIRED inputs** — a required flag with no value fails loudly with usage
   (e.g. `tpm-workflow-audit.js --out`). No guessing a path/target. (Full rationale in Part II §"No hardcoded paths.")
 - **Every tool supports `--help`** and carries a header docstring (purpose, usage, flags, what it guards).
-- **`npm run <alias>` per tool** (§3).
+- **Run-wired where applicable** — via `npm run` and/or the project's `bin` (`npx …`) per §3; not every
+  tool is wired, and unwired tools carry no run command in the ledger.
 - **Genericity:** tools stay project-agnostic; project-specific data comes via flags/env, never
   hardcoded.
 
 ## 6. Migration status + a rejected pattern
 
-**Migration (queued):** the existing tools (`scaffold-subagent`, `audit`, `lint-*`, `cost-ledger`) are
-being moved from the old `tools/workflow/` category layout + `tools/test/workflow/` into this per-suite
-shape, and `package.json` + `tools/list-tools.js` created. See the tasks queue.
+**Migration (largely done):** the workflow tools (`scaffold-subagent`, `audit`, `lint-*`, `cost-ledger`,
+…) were moved from the old `tools/workflow/` category layout + `tools/test/workflow/` into this per-suite
+shape, with `package.json` + the `tpm` bin dispatcher wiring them (`npx tpm <suite> <verb>`).
 
 **⚠️ Deliberate DIVERGENCE from ggaitk — no shared tool lib.** ggaitk used a shared `tools/lib/`
 (`GGAITKPaths.js`, `#paths` subpath imports) every tool `require()`d. **We reject that** for the §2

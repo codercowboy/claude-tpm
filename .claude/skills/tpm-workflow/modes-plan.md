@@ -13,7 +13,7 @@ npx tpm workflow config --json
 This hands you the RESOLVED picture — the **7 personas** (`subagentConfigs[]`: `planning` · `builder`
 · `test-writer` · `documentarian` · `verifier` · `bug-fixer` · `researcher`), each with its
 `defaultModel` + `retryCount`; the charter file each role maps to (`charterFile` + `charterVariants`);
-the **6 teams** (`teams[]`: `full` / `ship` / `build` / `test` / `docs` / `research` — **array order IS
+the **6 teams** (`teams[]`: `full` / `ship` / `test` / `docs` / `research` / `build` — **array order IS
 run order**); `defaultParallelism`; `verifyLoopCap`; `verifier.loopFixer`; `deliverables.{tldr,toolFeedback,wiki}`;
 and the plan-template path. Config parsing is **mechanics** — let the resolver do it; you supply judgment.
 
@@ -39,17 +39,18 @@ expands the team's `subagents[]` (array order = run order) into per-line entries
 - **One subagent per line, in run order:** `role · charter: <name> · <model>` (+ a per-role note — an
   opt-down, a count). The roster reads top-to-bottom as the pipeline. Models come from
   `subagentConfigs[].defaultModel`; retries from `retryCount`.
-- **The charter question folds INTO the roster** — it is NOT a separate big rock. The builder's line
-  shows its default charter (`shipping`) with the opt-down inline (`opt-down: "builder mvp"`); every
-  other role's charter is **fixed** and just displayed. **A team with no builder shows no charter
-  choice** — the question set shrinks to fit the team ("more personas, not more questions").
+- **The charter is shown ON the roster, not asked as a separate big rock.** Each role's charter is
+  **fixed** (resolved from config; `charterVariants` is empty) and just displayed on its line — there
+  is no live per-round charter menu. The builder's line shows its charter (`shipping`, the default and
+  only shipped builder charter); a weaker "mvp" bar is not a roster opt-down but an ad-hoc `--charter`
+  override (see §3). The question set shrinks to fit the team ("more personas, not more questions").
 - **The verify↔bug-fixer loop is a sub-line** under the roster, marked *"on FAIL only"*
   (`bug-fixer · <model> · cap <verifyLoopCap>`) — visible but off the happy path. Delivery agents each
   run ONCE, in roster order; the ONLY thing that repeats is verify↔bug-fixer.
 - **Every default is shown explicitly** (models, time, scope, retries) and **a default is NEVER a
   mutation** — accepting runs the team **AS CONFIGURED** (shipping stays shipping; the team runs as-is).
   The header states this.
-- **Accept phrase = `all defaults`.** Any override is named (e.g. `builder mvp`, `time 1h`). On accept,
+- **Accept phrase = `all defaults`.** Any override is named (e.g. `time 1h`, `2 verifiers`). On accept,
   you **write the pre-task receipt** (`00-epic-plan/pretask-<NN>.md`, `**Accepted:** <phrase>`) — it is
   the tool-enforced precondition of scaffolding (see §4's STOP gate); no receipt → `add-phase` refuses.
 
@@ -61,7 +62,7 @@ Defaults run the team AS CONFIGURED. Reply "all defaults" to accept; name only w
 
 ① Roster + sequencing — serial, 1 each:
      planner        · charter: planning        · opus
-     builder        · charter: shipping        · opus     (opt-down: "builder mvp")
+     builder        · charter: shipping        · opus
      test-writer    · charter: test-writer      · opus
      documentarian  · charter: documentarian    · opus
      verifier       · charter: verifier         · opus
@@ -136,14 +137,17 @@ correct only deltas:
 The charter is the agent's **singular, unconditional success bar** — it lives on the roster line, not
 as a separate big rock. A worker must **never** see that a weaker bar exists for some other role — the
 harm is not "knowing another role exists," it's *adopting the weaker definition of done*. So:
-- The **builder is the ONLY role with a charter choice** (`shipping` default vs the `mvp` opt-down,
-  from `charterVariants`) — shown inline on its roster line. Every other persona has exactly one fixed
-  charter for its role, just displayed. A team with **no builder shows no charter choice at all.**
+- **Every persona has exactly ONE fixed charter**, resolved from config and just displayed on its
+  roster line — `charterVariants` is empty, so there is no live per-round charter menu for any role.
+  The builder's is `shipping` (the default and only shipped builder charter). A weaker "mvp" bar is
+  NOT a live opt-down: it is an ad-hoc route — pass `--charter <path>` to `scaffold add-phase`/`add-round`
+  (e.g. the now-orphaned `charters/mvp-charter.md`, unreferenced by config) to copy a lower-bar charter
+  into that one round.
 - A **weaker-bar charter (`research`/`mvp`) NEVER sits in a build folder.** A verifier charter next
   to a builder charter is harmless (different role); a research charter next to a builder is the
   contamination that matters.
-- You pick per round; the worker never sees the choice happened. This is why charter selection folds
-  into the first step of `plan`.
+- When you do opt a builder down (the ad-hoc `--charter` route above), the worker never sees the
+  choice happened — which is why any charter handling stays in the first step of `plan`.
 
 ## 4. Scaffold the folder(s) — epic vs flat
 
@@ -162,7 +166,7 @@ harm is not "knowing another role exists," it's *adopting the weaker definition 
 > linting, ask an **explicit** "kick it off now?" and STOP. A rambly / discussion / "process-what-I'm-saying"
 > turn is **NOT** a kickoff. Only on an explicit "yes": **`npx tpm workflow signoff spawn --round
 > "<phase-dir>" --roster "<one-line>"`** (`--round` = the phase-folder path), then spawn. A **`PreToolUse` hook**
-> (`hooks/tpm-workflow-gate-spawn.js`) BLOCKS any workflow spawn whose `compose`-stamped marker (`<!-- tpm-workflow-spawn
+> (`npx tpm hooks gate-spawn`) BLOCKS any workflow spawn whose `compose`-stamped marker (`<!-- tpm-workflow-spawn
 > phase=… -->`) has no **fresh, same-round, same-session** `spawn` token — so a missed/faked Gate B, or a
 > token for a different round, fails loudly at spawn time. **Only ever write the token from an explicit user
 > confirmation — never from your own inference.**
@@ -231,13 +235,11 @@ found nowhere (a broken bundle) the lint also fails LOUD rather than silently sk
 > the lint enforces against: the **live subagent reading-list**
 > (`${TPM_HOME}/claude-context/methodology/subagent/reading-list.md`). It owns the base chain AND the per-persona
 > blocks (`test-writer` / `documentarian` / `bug-fixer`, gated by the matching `--<role>` flag) — the
-> persona blocks live in that ONE file. The **workflow reading-list**
-> (`${TPM_HOME}/claude-context/methodology/workflow-setup/reading-list.md`) is orchestrator round-machinery (Chain 2 — the
-> pre-task questions, charter registry, spawn mechanics); it points AT the canonical manifest and does
-> **not** carry a second copy of the subagent chain. So every lint invocation in these skills passes
-> `--manifest <the subagent reading-list>`, and nothing lints against the workflow list. (Folding the
-> persona blocks INTO the live manifest is a separate promotion step — this note only records that
-> they land there, canonically.)
+> persona blocks live in that ONE file. The orchestrator's own round-machinery docs (the pre-task
+> questions, the charters, `subagent-orchestration.md`) are separate and carry no second copy of the
+> subagent chain — so the lint self-locates that ONE manifest and nothing lints against a duplicate.
+> (Folding the persona blocks INTO the live manifest is a separate promotion step — this note only
+> records that they land there, canonically.)
 
 Exits 0 on PASS, 1 on FAIL with a per-check missing-directive list. It checks the manifest reading
 chain, the env-source ritual, the working folder, the **charter-file-present** guard, the sentinel

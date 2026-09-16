@@ -50,7 +50,7 @@ Verbs:
   review    the notes READ API (--last N …)
 
 Remaining args pass straight through, e.g.:
-  tpm session current --sessions-dir claude-context/sessions --open
+  tpm session current --sessions-dir .claude/claude-tpm/sessions --open
   tpm session notes resume --where "…" --next "…"`);
 }
 

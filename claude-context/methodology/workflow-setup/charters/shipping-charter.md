@@ -5,7 +5,7 @@
      from "## The one rule" downward — that heading is the strip boundary; everything above it is
      orchestrator-only. This is the SHIPPING ("do it well") builder charter — the DEFAULT builder
      posture. Charter secrecy: exactly one builder charter is ever dropped in a build folder, and a
-     builder must never learn a lower-bar posture (mvp / research) exists — the moment it can see a
+     builder must never learn a lower-bar posture exists — the moment it can see a
      weaker definition of done, it can reason its way down to the one that lets it stop sooner. If
      this comment survives into an agent-facing file, that is a leak and the linter flags it. -->
 

@@ -117,6 +117,36 @@ check('flag-guard: unknown argument → exit 2', () => {
   assert.strictEqual(runTool(['--bogus']).status, 2);
 });
 
+// ── parseArgs — scope flags (project vs whole-system) ────────────────────────────────────────────────
+check('parseArgs: --system sets system, leaves project false', () => {
+  const a = uninst.parseArgs(['../p', '--system']);
+  assert.strictEqual(a.system, true); assert.strictEqual(a.project, false);
+});
+check('parseArgs: --project sets project, leaves system false', () => {
+  const a = uninst.parseArgs(['../p', '--project']);
+  assert.strictEqual(a.project, true); assert.strictEqual(a.system, false);
+});
+check('parseArgs: neither scope flag → both false (interactive fork / --quiet default)', () => {
+  const a = uninst.parseArgs(['../p']);
+  assert.strictEqual(a.system, false); assert.strictEqual(a.project, false);
+});
+
+// ── parseMarketplaceList — landmine detection (shared marketplace source) ─────────────────────────────
+const MK = uninst.MARKETPLACE_NAME;
+check('parseMarketplaceList: directory-source entry → {registered, source, path}', () => {
+  assert.deepStrictEqual(
+    uninst.parseMarketplaceList([{ name: MK, source: 'directory', path: '/some/dir' }]),
+    { registered: true, source: 'directory', path: '/some/dir' });
+});
+check('parseMarketplaceList: our market absent → not registered', () => {
+  assert.deepStrictEqual(
+    uninst.parseMarketplaceList([{ name: 'other-market', source: 'github' }]),
+    { registered: false, source: null, path: null });
+});
+check('parseMarketplaceList: null / non-array → not registered', () => {
+  assert.deepStrictEqual(uninst.parseMarketplaceList(null), { registered: false, source: null, path: null });
+});
+
 // ── hasTpmDependency ────────────────────────────────────────────────────────────────────────────────
 check('hasTpmDependency: dependencies → true', () => {
   assert.strictEqual(uninst.hasTpmDependency({ dependencies: { [TPM_PKG_NAME]: '1.0.0' } }), true);
@@ -150,6 +180,144 @@ check('readPackageJson: exists + invalid JSON → error string, null value', () 
 });
 check('readPackageJson: absent → {exists:false, value:null, error:null}', () => {
   assert.deepStrictEqual(uninst.readPackageJson(mkTmp()), { exists: false, value: null, error: null });
+});
+
+// ── classifySpawn / EACCES-blind-spot fix — PARITY with the install tool (lifted verbatim). The bug: a
+// non-runnable `claude` on PATH (a directory or non-exec file shadowing the real bin) makes spawnSync
+// return EACCES, not ENOENT — the OLD `!(r.error && r.error.code==='ENOENT')` check called it AVAILABLE.
+// These feed fake spawn result shapes to the pure helper so the misdetection is caught deterministically.
+check('classifySpawn: clean run (status 0) → ok + ran, no errorCode', () => {
+  assert.deepStrictEqual(uninst.classifySpawn({ status: 0, signal: null }),
+    { ok: true, ran: true, status: 0, signal: null, errorCode: null });
+});
+check('classifySpawn: ENOENT (absent bin) → not ok, not ran, errorCode ENOENT', () => {
+  const c = uninst.classifySpawn({ error: { code: 'ENOENT' }, status: null });
+  assert.strictEqual(c.ok, false); assert.strictEqual(c.ran, false); assert.strictEqual(c.errorCode, 'ENOENT');
+});
+check('classifySpawn: EACCES (dir/non-exec shadow on PATH) → not ok, not ran, errorCode EACCES (the blind spot)', () => {
+  const c = uninst.classifySpawn({ error: { code: 'EACCES' }, status: null });
+  assert.strictEqual(c.ok, false); assert.strictEqual(c.ran, false); assert.strictEqual(c.errorCode, 'EACCES');
+});
+check('classifySpawn: ran but exited non-zero → not ok, ran true, no errorCode', () => {
+  const c = uninst.classifySpawn({ status: 3, signal: null });
+  assert.strictEqual(c.ok, false); assert.strictEqual(c.ran, true); assert.strictEqual(c.errorCode, null);
+});
+check('classifySpawn: signal-killed (status null, no error) → ran true, status null, no errorCode', () => {
+  const c = uninst.classifySpawn({ status: null, signal: 'SIGTTIN' });
+  assert.strictEqual(c.ran, true); assert.strictEqual(c.status, null);
+  assert.strictEqual(c.signal, 'SIGTTIN'); assert.strictEqual(c.errorCode, null);
+});
+
+// ── formatChildExit — spawn-error vs status vs signal (drives the ✗ failure line + the --debug `←` line) ──
+check('formatChildExit: a spawn error → "could not run (CODE: reason)", NOT a signal branch', () => {
+  assert.strictEqual(uninst.formatChildExit({ error: { code: 'EACCES' } }), 'could not run (EACCES: permission denied)');
+  assert.strictEqual(uninst.formatChildExit({ error: { code: 'ENOENT' } }), 'could not run (ENOENT: not found on PATH)');
+  assert.strictEqual(uninst.formatChildExit({ errorCode: 'EACCES', status: null, signal: null }),
+    'could not run (EACCES: permission denied)');
+});
+check('formatChildExit: status 0 → "ok"; status>0 → "exited N"', () => {
+  assert.strictEqual(uninst.formatChildExit({ status: 0, signal: null }), 'ok');
+  assert.strictEqual(uninst.formatChildExit({ status: 3, signal: null }), 'exited 3');
+});
+check('formatChildExit: status null names the killing signal (the exit-null case)', () => {
+  assert.strictEqual(uninst.formatChildExit({ status: null, signal: 'SIGTTIN' }),
+    'exited null (killed by signal SIGTTIN)');
+  assert.strictEqual(uninst.formatChildExit({ status: null, signal: null }),
+    'exited null (killed by signal unknown)');
+});
+
+// ── spawnErrorReason / preflightMessage — the honest ENOENT-vs-EACCES uninstall preflight lines ──
+check('spawnErrorReason: known errno mapped, unknown → generic', () => {
+  assert.strictEqual(uninst.spawnErrorReason('ENOENT'), 'not found on PATH');
+  assert.strictEqual(uninst.spawnErrorReason('EACCES'), 'permission denied');
+  assert.strictEqual(uninst.spawnErrorReason('EWHATEVER'), 'spawn error');
+});
+check('preflightMessage: ENOENT → "not found on PATH" + install hint', () => {
+  const m = uninst.preflightMessage('claude', uninst.classifySpawn({ error: { code: 'ENOENT' } }), 'install Claude Code first.');
+  assert.ok(/not found on PATH/.test(m) && /install Claude Code first\./.test(m));
+});
+check('preflightMessage: EACCES → "found but not executable" + host-vs-VM hint', () => {
+  const m = uninst.preflightMessage('claude', uninst.classifySpawn({ error: { code: 'EACCES' } }), 'install Claude Code first.');
+  assert.ok(/not executable \(EACCES\)/.test(m) && /THIS host/.test(m) && /VM/.test(m));
+});
+check('claudeCliAvailable: returns a classifySpawn verdict object (callers read .ok/.errorCode)', () => {
+  const v = uninst.claudeCliAvailable();
+  assert.strictEqual(typeof v, 'object');
+  assert.ok('ok' in v && 'ran' in v && 'errorCode' in v);
+});
+
+// ── --debug operation-trace flag (parity: --debug / TPM_DEBUG / [tpm-debug] prefix) ──
+check('parseArgs: --debug sets opts.debug (default false, order-independent)', () => {
+  assert.strictEqual(uninst.parseArgs(['--debug']).debug, true);
+  assert.strictEqual(uninst.parseArgs([]).debug, false);
+  assert.strictEqual(uninst.parseArgs(['../proj', '--debug', '--system']).debug, true);
+});
+check('debugEnabled: true from opts.debug OR a non-empty TPM_DEBUG env', () => {
+  assert.strictEqual(uninst.debugEnabled({ debug: true }), true);
+  const saved = process.env.TPM_DEBUG;
+  delete process.env.TPM_DEBUG;
+  assert.strictEqual(uninst.debugEnabled({ debug: false }), false);
+  process.env.TPM_DEBUG = '1';
+  assert.strictEqual(uninst.debugEnabled({ debug: false }), true);
+  if (saved === undefined) delete process.env.TPM_DEBUG; else process.env.TPM_DEBUG = saved;
+});
+check('makeDbg: disabled → no-op; enabled → one [tpm-debug]-prefixed stdout line', () => {
+  assert.strictEqual(typeof uninst.makeDbg(false), 'function');
+  const orig = process.stdout.write; let buf = '';
+  process.stdout.write = (chunk) => { buf += chunk; return true; };
+  try { uninst.makeDbg(false)('hidden'); uninst.makeDbg(true)('→ spawn:', 'claude', 'x'); }
+  finally { process.stdout.write = orig; }
+  assert.ok(!/hidden/.test(buf), 'disabled dbg writes nothing');
+  assert.ok(/^\[tpm-debug\] → spawn: claude x\n$/.test(buf), 'enabled dbg writes one prefixed line');
+});
+
+// ── honest ENOENT-vs-EACCES preflight (isolated PATH; child process; no host mutation) ──
+// A fake `claude` shim (answers --version + list verbs with empty arrays; no-op for mutations) lets the
+// real run path exercise without touching the real registry. The EACCES/ENOENT cases plant a
+// non-executable / absent `claude` so the preflight sees the exact spawn errno.
+const FAKE_CLAUDE_SHIM = "#!/usr/bin/env node\n'use strict';\nvar a=process.argv.slice(2);\nif(a[0]==='--version'){process.stdout.write('9.9.9 (fake)\\n');process.exit(0);} \nif(a[0]==='plugin'&&a[1]==='marketplace'&&a[2]==='list'){process.stdout.write('[]');process.exit(0);} \nif(a[0]==='plugin'&&a[1]==='list'){process.stdout.write('[]');process.exit(0);} \nprocess.exit(0);\n";
+function runToolWithClaude(args, plant, envExtra) {
+  // plant: 'fake' → runnable fake claude; 'noexec' → non-exec file (EACCES); 'absent' → no claude (ENOENT).
+  const dir = mkTmp();
+  const bin = path.join(dir, 'bin');
+  fs.mkdirSync(bin, { recursive: true });
+  if (plant === 'fake') { fs.writeFileSync(path.join(bin, 'claude'), FAKE_CLAUDE_SHIM); fs.chmodSync(path.join(bin, 'claude'), 0o755); }
+  else if (plant === 'noexec') { fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\necho nope\n'); fs.chmodSync(path.join(bin, 'claude'), 0o644); }
+  const env = Object.assign({}, envExtra, { PATH: plant === 'fake' ? (bin + path.delimiter + process.env.PATH) : bin });
+  // Launch via process.execPath (absolute node), NOT `node` — env.PATH is restricted for the noexec/absent
+  // cases, so relying on PATH to find node would ENOENT on the tool launch itself before its preflight runs.
+  const r = spawnSync(process.execPath, [TOOL, ...args], { encoding: 'utf8', env, timeout: 15000 });
+  return { status: r.status, out: r.stdout || '', err: r.stderr || '' };
+}
+check('preflight: non-exec `claude` shadowing PATH (EACCES) → honest message + exit 1 (the blind spot)', () => {
+  const r = runToolWithClaude([mkTmp(), '--project', '--quiet'], 'noexec');
+  assert.strictEqual(r.status, 1);
+  assert.ok(/not executable \(EACCES\)/.test(r.err), r.err);
+  assert.ok(/THIS host/.test(r.err));
+  assert.ok(!/removed from this project/i.test(r.out + r.err));
+});
+check('preflight: no `claude` on PATH (ENOENT) → honest "not found on PATH" + exit 1', () => {
+  const r = runToolWithClaude([mkTmp(), '--project', '--quiet'], 'absent');
+  assert.strictEqual(r.status, 1);
+  assert.ok(/`claude` not found on PATH/.test(r.err), r.err);
+  assert.ok(/install Claude Code first/.test(r.err));
+});
+check('--debug: emits [tpm-debug] trace lines to STDOUT on a real run path (fake claude, no host mutation)', () => {
+  const r = runToolWithClaude([mkTmp(), '--project', '--quiet', '--debug'], 'fake');
+  assert.strictEqual(r.status, 0, r.err);
+  assert.ok(/\[tpm-debug\]/.test(r.out), r.out.slice(0, 400));
+  assert.ok(/\[tpm-debug\] scope: system=false/.test(r.out));
+  assert.ok(/\[tpm-debug\] probe:/.test(r.out));
+});
+check('--debug: TPM_DEBUG=1 env enables the trace without the flag', () => {
+  const r = runToolWithClaude([mkTmp(), '--project', '--quiet'], 'fake', { TPM_DEBUG: '1' });
+  assert.strictEqual(r.status, 0, r.err);
+  assert.ok(/\[tpm-debug\]/.test(r.out));
+});
+check('--help lists the --debug row', () => {
+  const r = spawnSync('node', [TOOL, '--help'], { encoding: 'utf8' });
+  assert.strictEqual(r.status, 0);
+  assert.ok(/--debug/.test(r.stdout || ''));
 });
 
 cleanup();

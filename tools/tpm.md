@@ -14,8 +14,8 @@ verbatim to that suite's own router (`tools/<suite>/tpm-<suite>-router.js`). Eac
 its short-verb table and maps a verb to a sibling script. Both levels dispatch by child process
 (`spawnSync('node', …, {stdio:'inherit'})`) and propagate the child's exit code.
 
-Adding, renaming, or removing a verb touches only that suite's router — never `tpm.js`. Design
-rationale + history: `claude-context/dev/tpm-cli-design.md` (§0 is the current shape).
+Adding, renaming, or removing a verb touches only that suite's router — never `tpm.js`. The canonical
+tool ledger is [`tools/README.md`](README.md).
 
 **No `${TPM_HOME}` / env needed.** Every router self-locates its scripts from its own `__dirname`, so a
 `tpm …` invocation resolves the bundle on its own. This is why skill prose can call `npx tpm <suite>
@@ -29,13 +29,14 @@ rationale + history: `claude-context/dev/tpm-cli-design.md` (§0 is the current 
 | `session` | `config` · `current` · `notes` · `review` | `tools/session/` |
 | `task` | any `tpm-task.js` subcommand (`add`/`list`/`show`/…) passes through; `config` → the resolver | `tools/task/` |
 | `workflow` | `audit` · `compose` · `lint` · `scaffold` · `cost` · `signoff` · `doctor` · `config` · `check-filename` | `tools/workflow/` |
+| `hooks` | `gate-spawn` · `expand-tpm-home` | `tools/hooks/` (+ each suite's hook script) |
 
 Verbs are **short** — the suite name namespaces them (e.g. `tpm workflow scaffold`, not
 `scaffold-subagent`). `tpm <suite> --help` (or bare `tpm <suite>`) lists that suite's verbs.
 
 **Not exposed as verbs:** the skill *modes* (`/tpm-session open|close`, `/tpm-workflow plan|verify|
-reconcile`) — those are orchestration the model drives (reading chains, MOTD), not scripts; and the
-harness-invoked hooks (`expand-tpm-home`, `tpm-workflow-gate-spawn`).
+reconcile`) — those are orchestration the model drives (reading chains, MOTD), not scripts. The `hooks`
+verbs exist for the harness to invoke, not for a human to type.
 
 ## Consumer-adoption aliases (flat, no suite)
 
@@ -43,6 +44,7 @@ harness-invoked hooks (`expand-tpm-home`, `tpm-workflow-gate-spawn`).
 |---|---|
 | `tpm install [dir] [options]` | `tools/consumer/tpm-consumer-install.js` |
 | `tpm uninstall [dir] [options]` | `tools/consumer/tpm-consumer-uninstall.js` |
+| `tpm doctor [dir]` | `tools/consumer/tpm-consumer-install.js` (with `--check` appended: `doctor` *is* `install --check`) |
 
 These are the human porcelain for adoption (`npx tpm install .`), so they stay top-level rather than
 under a `consumer` suite.
@@ -60,7 +62,7 @@ under a `consumer` suite.
 ```
 npx tpm                                      # top menu
 npx tpm session notes resume --where "…" --next "…"
-npx tpm session current --sessions-dir claude-context/sessions --open
+npx tpm session current --sessions-dir .claude/claude-tpm/sessions --open
 npx tpm task add --from ./tmp/tpm-task/add-foo.md
 npx tpm task config --tasks-dir
 npx tpm workflow scaffold add-phase dev/<epic> --slug <slug> --team <team>

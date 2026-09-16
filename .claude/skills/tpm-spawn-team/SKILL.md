@@ -53,7 +53,7 @@ ambiguous between a team and a freeform role (e.g. bare `test` could mean the `t
 
 **The verify↔bug-fixer loop is NOT this skill's job.** Every team above except `research`/`build` ends with
 a verifier, and on a kickback the orchestrator may loop verifier↔bug-fixer up to `verifyLoopCap`. That loop
-is **orchestrator-owned and wired in `tpm-workflow`'s `modes-verify` (phase 13), not here.** This skill
+is **orchestrator-owned and wired in `tpm-workflow`'s `modes-verify`, not here.** This skill
 spawns the team's roster in order; it does not spawn the bug-fixer, run the loop, or reason about its count.
 
 ## Interpreting the roster (forgiving)

@@ -174,8 +174,8 @@ function printHelp() {
       '  --help                Show this message.',
       '',
       'Examples:',
-      '  npx tpm session current --sessions-dir claude-context/sessions --state',
-      '  npx tpm session current --sessions-dir claude-context/sessions --open',
+      '  npx tpm session current --sessions-dir .claude/claude-tpm/sessions --state',
+      '  npx tpm session current --sessions-dir .claude/claude-tpm/sessions --open',
       '',
     ].join('\n'),
   );

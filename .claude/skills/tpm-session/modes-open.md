@@ -63,17 +63,18 @@ model. If the wiring is unclear, **ASK** — don't invent a resolution mechanism
 
 - **If a task was already dropped this session**, read the docs relevant to it first, then backfill
   the rest as you go. Don't stall on reading if there's actionable work — but the module-gated
-  pre-flight gates each module still owns (e.g. the workflow module's self-quiz, if that module is
+  pre-flight gates each module still owns (e.g. the workflow module's pre-flight gate, if that module is
   in play) still apply before anything load-bearing in that module.
 - **Don't skip the reading chain silently.** If you're mid-turn and realize you skipped a step, say so
   and read it before proceeding.
 
 ## What this step does NOT do (moved elsewhere, not silently dropped)
 
-- **The self-quiz** — relocated to the workflow module's pre-flight gate (fires before spawn/plan/
-  scaffold, not at boot).
+- **The pre-flight gate** — the workflow module walks the pre-task questions
+  (`${TPM_HOME}/claude-context/methodology/orchestrator/pre-task-questions.md`) before spawn/plan/
+  scaffold, not at boot.
 - **Drift detection** (methodology docs unreachable from a reading list; operational paths named but
-  missing on disk) — moved to the hygiene checklist (`${TPM_HOME}/claude-context/methodology/hygiene/checks.md`
-  check #23), run on a periodic sweep, not every boot.
+  missing on disk) — planned for the hygiene module (enabled in config by default, but not yet built —
+  no `hygiene/` methodology docs ship yet), to run on a periodic sweep rather than every boot.
 - **The CLAUDE.md-vs-skill tiebreaker** — obsolete: the reading-list manifest is the single source of
   truth and this skill no longer duplicates its content, so there is nothing left to disagree with.

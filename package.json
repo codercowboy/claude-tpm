@@ -5,11 +5,14 @@
   "license": "MIT",
   "author": "Jason Baker <jason@onejasonforsale.com>",
   "contributors": [
-    "Claude (Anthropic) — code, docs, and tools"
+    {
+      "name": "Claude",
+      "url": "Anthropic"
+    }
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/codercowboy/claude-tpm"
+    "url": "git+https://github.com/codercowboy/claude-tpm.git"
   },
   "homepage": "https://github.com/codercowboy/claude-tpm",
   "bin": {
@@ -27,5 +30,14 @@
   ],
   "scripts": {
     "test": "node tools/tests/run-all.js"
+  },
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/codercowboy/claude-tpm/issues"
   }
 }

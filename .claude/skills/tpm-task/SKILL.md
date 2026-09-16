@@ -36,10 +36,6 @@ the tool.
 All of `${TPM_HOME}/tools/task/` is self-contained (zero shared imports, per `tool-conventions.md` Part I §2).
 Run every invocation from the project root; `--tasks-dir` is the resolved absolute store path.
 
-> **Path note (staged phase only):** while this module is staged under a phase's `out/`, run the
-> `out/`-prefixed copies (`out/tools/task/tpm-task.js`, `--tasks-dir <sandbox>`). The text above names the
-> PROMOTED paths (like `tpm-session`'s SKILL.md) because that is what's correct once promoted (G11).
-
 ## Config gate
 
 Read `tasks.enabled` via `npx tpm task config --get enabled` (or `--json`).

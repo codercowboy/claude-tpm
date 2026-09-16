@@ -49,7 +49,6 @@ follow your spawn prompt instead.
   goes through the enumerate → choice → double-confirm dialogue for anything found running.
 - The old skill minted a **new** `session-NNN` folder on every close — the "always create a new
   folder" rule was stated directly in `CLAUDE.md`'s pre-rewrite boot ritual, which pointed at an
-  `orchestrator/session-process.md` that was never actually written (confirmed missing from
-  `${TPM_HOME}/claude-context/methodology/orchestrator/` — not "retired," just never created until this build's
-  staged `out/promote/session-process.md`). `close` now updates the SAME folder
+  `orchestrator/session-process.md` that is now written and live at
+  `${TPM_HOME}/claude-context/methodology/orchestrator/session-process.md`. `close` now updates the SAME folder
   `open` established this session (step 2–3 above) — the bug this whole redesign exists to fix.

@@ -49,7 +49,7 @@ fixes a verifier's verdict called out (the orchestrator hands it that verdict's 
 fresh scope. `/tpm-spawn bug-fixer` is the correct front door for a **one-off manual fix** — you have a
 verdict in hand and want a single fixer pass. The **automated verify↔bug-fixer loop** (spawn a fixer on a
 kickback, re-verify, repeat up to `verifyLoopCap`) is orchestrator-owned and its wiring lives in
-`tpm-workflow`'s `modes-verify` (phase 13) — NOT here. This skill only resolves the role and runs the one
+`tpm-workflow`'s `modes-verify` — NOT here. This skill only resolves the role and runs the one
 spawn; it does not run or reason about the loop.
 
 ## The spawn flow — scaffold → compose → lint → Agent
@@ -78,8 +78,8 @@ Reference the tools by their promoted path (`${TPM_HOME}/tools/workflow/…`); a
    which the tool SELF-LOCATES from its own bundle; it owns the base chain and the per-persona blocks
    (`--test-writer` / `--documentarian` / `--bug-fixer` gate their block in that same file). `--manifest`
    stays an OPTIONAL override for a consumer that wants a different one; if the manifest is found nowhere
-   (a broken bundle) the lint FAILS LOUD (exit 2) rather than silently skipping. The workflow reading-list
-   is orchestrator round-machinery and carries no duplicate of this chain.
+   (a broken bundle) the lint FAILS LOUD (exit 2) rather than silently skipping. The orchestrator's
+   round-machinery docs carry no duplicate of this chain.
 5. **Spawn** — the `Agent` call, in the **background** (the orchestrator always backgrounds
    subagents), with the composed prompt and the resolved **model** on the `model` param.
 

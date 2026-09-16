@@ -109,6 +109,50 @@ check('parsePluginList: a local-scope entry is NOT matched (install.js manages p
     { installed: false, enabled: false });
 });
 
+// ── parseMarketplaceList — the "marketplace registered but points at the wrong place" shape ────────────
+// VERIFIED live shape (claude 2.1.272): array of { name, source, path?, repo?, installLocation }.
+// marketplaceSourceHealth (the reader) then fs.existsSync()-checks a directory source's `path`; the
+// registered-but-source-gone case (dead-source) is the failure this guards. Pure mapping tested here.
+const MK = inst.MARKETPLACE_NAME;
+check('parseMarketplaceList: directory-source entry → {registered, source:"directory", path}', () => {
+  assert.deepStrictEqual(
+    inst.parseMarketplaceList([{ name: MK, source: 'directory', path: '/some/dir', installLocation: '/some/dir' }]),
+    { registered: true, source: 'directory', path: '/some/dir' });
+});
+check('parseMarketplaceList: github-source entry → registered, no local path', () => {
+  assert.deepStrictEqual(
+    inst.parseMarketplaceList([{ name: MK, source: 'github', repo: 'owner/repo', installLocation: '/cache' }]),
+    { registered: true, source: 'github', path: null });
+});
+check('parseMarketplaceList: our market absent (only others) → not registered', () => {
+  assert.deepStrictEqual(
+    inst.parseMarketplaceList([{ name: 'claude-plugins-official', source: 'github', repo: 'a/b' }]),
+    { registered: false, source: null, path: null });
+});
+check('parseMarketplaceList: null / non-array → not registered', () => {
+  assert.deepStrictEqual(inst.parseMarketplaceList(null), { registered: false, source: null, path: null });
+  assert.deepStrictEqual(inst.parseMarketplaceList({ nope: 1 }), { registered: false, source: null, path: null });
+});
+
+// ── parsePluginInstallPath — the "plugin version registered but it's not there" (cache-miss) shape ─────
+// The installed RECORD carries installPath (its cache dir); pluginCacheHealth (the reader) fs.existsSync()-
+// checks it — a record whose cache dir is gone is the cache-miss failure. Pure extraction tested here.
+check('parsePluginInstallPath: our project-scope entry → its installPath', () => {
+  assert.strictEqual(
+    inst.parsePluginInstallPath([{ id: PLUGIN_ID, scope: 'project', installPath: '/cache/x/0.1.0' }]),
+    '/cache/x/0.1.0');
+});
+check('parsePluginInstallPath: entry present but no installPath field → null', () => {
+  assert.strictEqual(inst.parsePluginInstallPath([{ id: PLUGIN_ID, scope: 'project' }]), null);
+});
+check('parsePluginInstallPath: a local-scope entry is NOT matched → null', () => {
+  assert.strictEqual(inst.parsePluginInstallPath([{ id: PLUGIN_ID, scope: 'local', installPath: '/c' }]), null);
+});
+check('parsePluginInstallPath: no matching id / null → null', () => {
+  assert.strictEqual(inst.parsePluginInstallPath([{ id: 'other@m', installPath: '/c' }]), null);
+  assert.strictEqual(inst.parsePluginInstallPath(null), null);
+});
+
 // ── parseArgs flag-guard (fix c) ────────────────────────────────────────────────────────────────────
 // Happy paths run in-process (no exit). Reject paths call process.exit(2), so exercise them via a child.
 function runTool(args) {
@@ -137,6 +181,97 @@ check('flag-guard: `--dir` with no value → exit 2', () => {
 });
 check('flag-guard: `--dir --from ...` (--dir swallows a flag) → exit 2', () => {
   assert.strictEqual(runTool(['--dir', '--from', 'file:x']).status, 2);
+});
+
+// ── --debug operation-trace flag + formatChildExit (the instrumentation rows) ─────────────────────────
+check('parseArgs: --debug sets opts.debug (default false, order-independent)', () => {
+  assert.strictEqual(inst.parseArgs(['--debug']).debug, true);
+  assert.strictEqual(inst.parseArgs([]).debug, false);
+  assert.strictEqual(inst.parseArgs(['../proj', '--debug', '--quiet']).debug, true);
+});
+check('debugEnabled: true from opts.debug OR a non-empty TPM_DEBUG env', () => {
+  assert.strictEqual(inst.debugEnabled({ debug: true }), true);
+  const saved = process.env.TPM_DEBUG;
+  delete process.env.TPM_DEBUG;
+  assert.strictEqual(inst.debugEnabled({ debug: false }), false);
+  process.env.TPM_DEBUG = '1';
+  assert.strictEqual(inst.debugEnabled({ debug: false }), true);
+  if (saved === undefined) delete process.env.TPM_DEBUG; else process.env.TPM_DEBUG = saved;
+});
+check('formatChildExit: status 0 → "ok"', () => {
+  assert.strictEqual(inst.formatChildExit({ status: 0, signal: null }), 'ok');
+});
+check('formatChildExit: status>0 → "exited N"', () => {
+  assert.strictEqual(inst.formatChildExit({ status: 3, signal: null }), 'exited 3');
+  assert.strictEqual(inst.formatChildExit({ status: 127, signal: null }), 'exited 127');
+});
+check('formatChildExit: status null names the killing signal (the exit-null case)', () => {
+  assert.strictEqual(inst.formatChildExit({ status: null, signal: 'SIGTTIN' }),
+    'exited null (killed by signal SIGTTIN)');
+});
+check('formatChildExit: status null with no signal → "…unknown"', () => {
+  assert.strictEqual(inst.formatChildExit({ status: null, signal: null }),
+    'exited null (killed by signal unknown)');
+});
+check('makeDbg: disabled → no-op; enabled → one [tpm-debug]-prefixed stdout line', () => {
+  assert.strictEqual(typeof inst.makeDbg(false), 'function');
+  const orig = process.stdout.write; let buf = '';
+  process.stdout.write = (chunk) => { buf += chunk; return true; };
+  try { inst.makeDbg(false)('hidden'); inst.makeDbg(true)('→ spawn:', 'claude', 'x'); }
+  finally { process.stdout.write = orig; }
+  assert.ok(!/hidden/.test(buf), 'disabled dbg writes nothing');
+  assert.ok(/^\[tpm-debug\] → spawn: claude x\n$/.test(buf), 'enabled dbg writes one prefixed line');
+});
+
+// ── classifySpawn / EACCES-blind-spot fix (the honest-availability primitive) ─────────────────────────
+// The bug: a non-runnable `claude` on PATH (a directory or non-exec file shadowing the real bin) makes
+// spawnSync return EACCES, not ENOENT — the old ENOENT-only checks called it AVAILABLE and preflight
+// wrongly passed. These feed fake spawn result shapes to the pure helpers so the misdetection is caught
+// deterministically, without depending on the ambient `claude` being runnable or not.
+check('classifySpawn: clean run (status 0) → ok + ran, no errorCode', () => {
+  assert.deepStrictEqual(inst.classifySpawn({ status: 0, signal: null }),
+    { ok: true, ran: true, status: 0, signal: null, errorCode: null });
+});
+check('classifySpawn: ENOENT (absent bin) → not ok, not ran, errorCode ENOENT', () => {
+  const c = inst.classifySpawn({ error: { code: 'ENOENT' }, status: null });
+  assert.strictEqual(c.ok, false); assert.strictEqual(c.ran, false); assert.strictEqual(c.errorCode, 'ENOENT');
+});
+check('classifySpawn: EACCES (dir/non-exec shadow on PATH) → not ok, not ran, errorCode EACCES (the blind spot)', () => {
+  const c = inst.classifySpawn({ error: { code: 'EACCES' }, status: null });
+  assert.strictEqual(c.ok, false); assert.strictEqual(c.ran, false); assert.strictEqual(c.errorCode, 'EACCES');
+});
+check('classifySpawn: ran but exited non-zero → not ok, ran true, no errorCode', () => {
+  const c = inst.classifySpawn({ status: 3, signal: null });
+  assert.strictEqual(c.ok, false); assert.strictEqual(c.ran, true);
+  assert.strictEqual(c.errorCode, null); assert.strictEqual(c.status, 3);
+});
+check('classifySpawn: signal-killed (status null, no error) → ran true, status null, no errorCode', () => {
+  const c = inst.classifySpawn({ status: null, signal: 'SIGTTIN' });
+  assert.strictEqual(c.ran, true); assert.strictEqual(c.status, null);
+  assert.strictEqual(c.signal, 'SIGTTIN'); assert.strictEqual(c.errorCode, null);
+});
+check('formatChildExit: a spawn error → "could not run (CODE: reason)", NOT a signal branch', () => {
+  assert.strictEqual(inst.formatChildExit({ error: { code: 'EACCES' } }), 'could not run (EACCES: permission denied)');
+  assert.strictEqual(inst.formatChildExit({ error: { code: 'ENOENT' } }), 'could not run (ENOENT: not found on PATH)');
+  // a runChild-shaped result (carries errorCode, not error) renders identically
+  assert.strictEqual(inst.formatChildExit({ errorCode: 'EACCES', status: null, signal: null }),
+    'could not run (EACCES: permission denied)');
+});
+check('preflightMessage: ENOENT → "not found on PATH" + install hint', () => {
+  const m = inst.preflightMessage('claude', inst.classifySpawn({ error: { code: 'ENOENT' } }), 'install Claude Code first.');
+  assert.ok(/not found on PATH/.test(m));
+  assert.ok(/install Claude Code first\./.test(m));
+});
+check('preflightMessage: EACCES → "found but not executable" + host-vs-VM hint', () => {
+  const m = inst.preflightMessage('claude', inst.classifySpawn({ error: { code: 'EACCES' } }), 'install Claude Code first.');
+  assert.ok(/not executable \(EACCES\)/.test(m));
+  assert.ok(/THIS host/.test(m));
+  assert.ok(/VM/.test(m));
+});
+check('spawnErrorReason: known errno mapped, unknown → generic', () => {
+  assert.strictEqual(inst.spawnErrorReason('ENOENT'), 'not found on PATH');
+  assert.strictEqual(inst.spawnErrorReason('EACCES'), 'permission denied');
+  assert.strictEqual(inst.spawnErrorReason('EWHATEVER'), 'spawn error');
 });
 
 // ── hasTpmDependency ────────────────────────────────────────────────────────────────────────────────
@@ -305,6 +440,166 @@ check('configJsonValidity: present + malformed → present:true, valid:false + e
   assert.strictEqual(r.present, true);
   assert.strictEqual(r.valid, false);
   assert.ok(typeof r.error === 'string' && r.error.length > 0);
+});
+
+// ── doDependencyStep — the NEW interactive, consent-gated dependency recorder (branch logic) ──────────
+// Driven as a CHILD PROCESS so the REAL piped stdin + shared prompter path is exercised, with a FAKE
+// `npm` first on PATH (it records its argv + simulates the install) so no real npm/registry is touched.
+const FAKE_NPM = `#!/usr/bin/env node
+'use strict';
+const fs=require('fs'),path=require('path');
+const a=process.argv.slice(2);
+try{fs.appendFileSync(process.env.NPM_LOG,JSON.stringify(a)+'\\n')}catch(e){}
+if(a[0]==='--version'){process.stdout.write('9.9.9\\n');process.exit(0)}
+if(a[0]==='install'){
+  const flag=a[a.length-1];
+  const bucket=flag==='--save'?'dependencies':(flag==='--save-optional'?'optionalDependencies':'dependencies');
+  const pj=path.join(process.cwd(),'package.json');
+  const pkg=JSON.parse(fs.readFileSync(pj,'utf8'));
+  pkg[bucket]=pkg[bucket]||{}; pkg[bucket][process.env.FAKE_PKG]=a[1];
+  fs.writeFileSync(pj,JSON.stringify(pkg,null,2));
+  const nm=path.join(process.cwd(),'node_modules',process.env.FAKE_PKG);
+  fs.mkdirSync(nm,{recursive:true});
+  fs.writeFileSync(path.join(nm,'package.json'),JSON.stringify({name:process.env.FAKE_PKG}));
+  process.exit(0);
+}
+process.exit(0);
+`;
+const DEP_DRIVER = `'use strict';
+const inst=require(process.env.DEP_TOOL);
+(async()=>{
+  const r=await inst.doDependencyStep(
+    {quiet:process.env.DEP_QUIET==='1',force:process.env.DEP_FORCE==='1'},
+    {already:process.env.DEP_ALREADY==='1',describe:'Step 2/5 — add the claude-tpm dependency',targetDir:process.env.DEP_DIR,fromSpec:process.env.DEP_SPEC});
+  process.stdout.write('\\n<<RESULT>>'+JSON.stringify(r));
+  inst.closePrompter();
+  process.exit(0);
+})().catch(e=>{process.stderr.write('DRIVER-ERR:'+(e&&e.stack||e));process.exit(3)});
+`;
+function runDepStep({ answers, quiet, force, already }) {
+  const work = mkTmp();
+  const binDir = path.join(work, 'bin'); fs.mkdirSync(binDir, { recursive: true });
+  const npmShim = path.join(binDir, 'npm'); fs.writeFileSync(npmShim, FAKE_NPM); fs.chmodSync(npmShim, 0o755);
+  const driver = path.join(work, 'driver.js'); fs.writeFileSync(driver, DEP_DRIVER);
+  const consumer = path.join(work, 'consumer'); fs.mkdirSync(consumer, { recursive: true });
+  fs.writeFileSync(path.join(consumer, 'package.json'), JSON.stringify({ name: 'c', version: '1.0.0' }, null, 2));
+  const npmLog = path.join(work, 'npm.log');
+  const env = Object.assign({}, process.env, {
+    PATH: binDir + path.delimiter + process.env.PATH,
+    NPM_LOG: npmLog, FAKE_PKG: TPM_PKG_NAME,
+    DEP_TOOL: TOOL, DEP_DIR: consumer, DEP_SPEC: 'file:../bundle',
+    DEP_QUIET: quiet ? '1' : '0', DEP_FORCE: force ? '1' : '0', DEP_ALREADY: already ? '1' : '0',
+  });
+  const r = spawnSync('node', [driver], { encoding: 'utf8', env, input: answers || '', timeout: 15000 });
+  const out = (r.stdout || '') + (r.stderr || '');
+  const m = (r.stdout || '').match(/<<RESULT>>([\s\S]*)$/);
+  const result = m ? JSON.parse(m[1].trim()) : null;
+  const installCalls = fs.existsSync(npmLog)
+    ? fs.readFileSync(npmLog, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse).filter((c) => c[0] === 'install') : [];
+  const pkg = JSON.parse(fs.readFileSync(path.join(consumer, 'package.json'), 'utf8'));
+  return { status: r.status, out, result, installCalls, pkg };
+}
+
+check('doDependencyStep: interactive OPTIONAL (y / enter / y) → --save-optional, dep in optionalDependencies', () => {
+  const r = runDepStep({ answers: 'y\n\ny\n' });
+  assert.strictEqual(r.result.ok, true);
+  assert.deepStrictEqual(r.installCalls[0], ['install', 'file:../bundle', '--save-optional']);
+  assert.ok(r.pkg.optionalDependencies && r.pkg.optionalDependencies[TPM_PKG_NAME], 'dep in optionalDependencies');
+  assert.ok(!r.pkg.dependencies || !r.pkg.dependencies[TPM_PKG_NAME], 'not in dependencies');
+  assert.ok(/Install .*into this project's package.json via npm\? \(y\/n\)/.test(r.out), 'asks the add-at-all question');
+  assert.ok(/\(1\) regular dependency or \(2\) optional dependency\? \[default 2\]/.test(r.out), 'asks regular vs optional');
+  assert.ok(/About to run: npm install .* --save-optional\. Proceed\? \(y\/n\)/.test(r.out), 'confirms the exact command');
+});
+check('doDependencyStep: interactive REGULAR (y / 1 / y) → --save, dep in dependencies', () => {
+  const r = runDepStep({ answers: 'y\n1\ny\n' });
+  assert.strictEqual(r.result.ok, true);
+  assert.deepStrictEqual(r.installCalls[0], ['install', 'file:../bundle', '--save']);
+  assert.ok(r.pkg.dependencies && r.pkg.dependencies[TPM_PKG_NAME], 'dep in dependencies');
+  assert.ok(!r.pkg.optionalDependencies || !r.pkg.optionalDependencies[TPM_PKG_NAME], 'not in optionalDependencies');
+});
+check('doDependencyStep: DECLINE add-at-all (n) → skip, no npm, package.json untouched', () => {
+  const r = runDepStep({ answers: 'n\n' });
+  assert.strictEqual(r.result.ok, true);
+  assert.strictEqual(r.result.skippedDep, true);
+  assert.strictEqual(r.installCalls.length, 0, 'npm install never runs');
+  assert.ok(!r.pkg.dependencies && !r.pkg.optionalDependencies, 'no dependency buckets added');
+  assert.ok(/skipped — NOT recording/.test(r.out));
+});
+check('doDependencyStep: DECLINE the command confirm (y / 2 / n) → clean abort, nothing installed', () => {
+  const r = runDepStep({ answers: 'y\n2\nn\n' });
+  assert.strictEqual(r.result.ok, false);
+  assert.strictEqual(r.result.declined, true);
+  assert.strictEqual(r.installCalls.length, 0, 'npm install never runs');
+  assert.ok(/declined — stopping/.test(r.out));
+});
+check('doDependencyStep: --quiet → NO prompts, records as OPTIONAL (unchanged headless behavior)', () => {
+  const r = runDepStep({ quiet: true, answers: '' });
+  assert.strictEqual(r.result.ok, true);
+  assert.deepStrictEqual(r.installCalls[0], ['install', 'file:../bundle', '--save-optional']);
+  assert.ok(r.pkg.optionalDependencies && r.pkg.optionalDependencies[TPM_PKG_NAME]);
+  assert.ok(!/Install .*via npm\?/.test(r.out), 'quiet mode asks nothing');
+});
+check('doDependencyStep: already declared+present → skip without prompting or running npm', () => {
+  const r = runDepStep({ already: true, answers: '' });
+  assert.strictEqual(r.result.ok, true);
+  assert.strictEqual(r.result.skipped, true);
+  assert.strictEqual(r.installCalls.length, 0);
+  assert.ok(/already done, skipping/.test(r.out));
+});
+
+// ── runInstall idempotency regression (marketplace already registered / plugin already installed) ─────
+// Driven as a child process with a FAKE `claude` first on PATH (canned `--json` output); the mutating
+// verbs are no-ops. Guards the "exited null / crash when already present" failure the coordinator flagged.
+const TPM_BUNDLE_ROOT = inst.findBundleRoot(__dirname);
+const CLAUDE_SHIM = `#!/usr/bin/env node
+'use strict';
+var scn={};try{scn=JSON.parse(process.env.TPM_FAKE||'{}')}catch(e){}
+var a=process.argv.slice(2);
+function emit(x){process.stdout.write(JSON.stringify(x));process.exit(0)}
+if(a[0]==='--version'){process.stdout.write('9.9.9\\n');process.exit(0)}
+if(a[0]==='plugin'&&a[1]==='marketplace'&&a[2]==='list'){emit(scn.marketplaceList||[])}
+if(a[0]==='plugin'&&a[1]==='list'){emit(scn.pluginList||[])}
+process.exit(0);
+`;
+function makeInstalledConsumer() {
+  const dir = mkTmp();
+  fs.writeFileSync(path.join(dir, 'package.json'),
+    JSON.stringify({ name: 'fixture', version: '1.0.0', optionalDependencies: { [TPM_PKG_NAME]: 'file:../x' } }, null, 2));
+  const scope = path.join(dir, 'node_modules', '@codercowboy');
+  fs.mkdirSync(scope, { recursive: true });
+  fs.symlinkSync(TPM_BUNDLE_ROOT, path.join(scope, 'claude-tpm'));
+  return dir;
+}
+function runInstallWithFakeClaude(dir, args, scenario) {
+  const work = mkTmp();
+  const shim = path.join(work, 'claude'); fs.writeFileSync(shim, CLAUDE_SHIM); fs.chmodSync(shim, 0o755);
+  const env = Object.assign({}, process.env, {
+    PATH: work + path.delimiter + process.env.PATH, TPM_FAKE: JSON.stringify(scenario || {}),
+  });
+  const r = spawnSync('node', [TOOL, dir].concat(args || []), { encoding: 'utf8', env, timeout: 20000 });
+  return { status: r.status, out: (r.stdout || '') + (r.stderr || '') };
+}
+check('runInstall idempotent: marketplace registered + plugin installed+enabled → all steps skip, doctor clean, exit 0', () => {
+  const dir = makeInstalledConsumer();
+  const r = runInstallWithFakeClaude(dir, ['--quiet'], {
+    marketplaceList: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: TPM_BUNDLE_ROOT }],
+    pluginList: [{ id: PLUGIN_ID, scope: 'project', enabled: true, installPath: TPM_BUNDLE_ROOT }],
+  });
+  assert.strictEqual(r.status, 0, 'clean idempotent re-install exits 0');
+  assert.ok(!/exited null/.test(r.out), 'never prints "exited null"');
+  assert.ok(/Step 3\/5 — register the claude-tpm marketplace — already done, skipping/.test(r.out), 'marketplace register skips');
+  assert.ok(/Step 4\/5 — install the claude-tpm plugin — already done, skipping/.test(r.out), 'plugin install skips');
+  assert.ok(/doctor clean/.test(r.out));
+});
+check('runInstall: marketplace already registered but plugin NOT installed → register skips, install runs, exits with an integer code (no crash/null)', () => {
+  const dir = makeInstalledConsumer();
+  const r = runInstallWithFakeClaude(dir, ['--quiet'], {
+    marketplaceList: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: TPM_BUNDLE_ROOT }],
+    pluginList: [],
+  });
+  assert.strictEqual(typeof r.status, 'number', 'exits with a real integer code, never null');
+  assert.ok(!/exited null/.test(r.out), 'never prints "exited null"');
+  assert.ok(/Step 3\/5 — register the claude-tpm marketplace — already done, skipping/.test(r.out), 'marketplace register skips cleanly');
 });
 
 cleanup();

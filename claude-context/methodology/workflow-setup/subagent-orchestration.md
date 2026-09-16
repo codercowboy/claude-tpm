@@ -22,7 +22,7 @@ authority funnels **orchestrator → and the orchestrator clears the kickoff wit
 3. **Fill** `{{TASK_CONTEXT}}` with this round's specifics.
 4. **`tpm-workflow-lint-subagent-prompt.js`** `--file <prompt> [--verifier|--test-writer|--documentarian|--bug-fixer]` — the
    poka-yoke: rejects unfilled sentinels, placeholder charters, leaked orchestrator notes, missing base-chain/HARD-RULE
-   reads, and a bad `--manifest`. Pass `--manifest claude-context/methodology/subagent/reading-list.md` explicitly.
+   reads, and a bad `--manifest`. No `--manifest` needed — it self-locates the canonical `claude-context/methodology/subagent/reading-list.md`; pass it only to override.
 5. **Spawn** via the Agent tool with the role's `defaultModel` — in the background.
 
 ## The loop — delivery once, then verify ↔ bug-fixer
@@ -54,4 +54,4 @@ After each round, update `00-epic-plan/punchlist.md` + `decisions.md`. Multiple 
 to each other** (`multiCountMode: blind-pair`); reconcile their independent verdicts yourself. A failed reconciliation
 (verifiers disagree, or the cap is hit without PASS) is surfaced to the user, not force-shipped.
 
-Authoritative model: the workflow design §"Persona / team / loop model — EXPANDED & RESOLVED".
+Authoritative model: this file plus `npx tpm workflow config --json` (the resolved persona / team / loop model).

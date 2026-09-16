@@ -1,4 +1,4 @@
-# claude-admin methodology docs
+# claude-tpm methodology docs
 
 Generic subagent-harness + investigation methodology. Project-agnostic by rule — consumer-specific
 evidence belongs in a consumer's own supplement, never here.
@@ -39,10 +39,9 @@ Every doc in this folder, by role. The reading lists say *when* to read them; th
 
 | Doc | What it covers |
 |---|---|
-| [`orchestrator/handbook.md`](./orchestrator/handbook.md) | Plan-review gate, prompt-template registry, model selection, promotion criteria, cost tracking, disaster recovery. |
+| [`orchestrator/handbook.md`](./orchestrator/handbook.md) | The orchestrator's general operating identity — project-wide state ownership, reading order, disaster recovery. (Formal-round machinery lives in the `workflow` module.) |
 | [`orchestrator/reading-list.md`](./orchestrator/reading-list.md) | The orchestrator's session-open reading chain; the orchestrator-only doc set. |
-| [`orchestrator/pre-task-questions.md`](./orchestrator/pre-task-questions.md) | The pre-task question ritual. Load into memory at session open. |
-| [`orchestrator/session-open-questions.md`](./orchestrator/session-open-questions.md) | Self-quiz gate — the last step before real work. |
+| [`orchestrator/pre-task-questions.md`](./orchestrator/pre-task-questions.md) | The pre-task question ritual (workflow module). Load into memory before a round. |
 | [`orchestrator/session-process.md`](./orchestrator/session-process.md) | Session-notes process — where session notes live and how they're written. |
 
 **Subagent**
@@ -52,13 +51,9 @@ Every doc in this folder, by role. The reading lists say *when* to read them; th
 | [`subagent/handbook.md`](./subagent/handbook.md) | How a subagent operates — step-zero env ritual, scope, reporting. |
 | [`subagent/reading-list.md`](./subagent/reading-list.md) | The subagent's step-zero reading chain; parsed by the lint. |
 
-**Hygiene — periodic project-wide drift sweeps**
+**Hygiene — periodic project-wide drift sweeps** *(planned module — not yet shipped)*
 
-| Doc | What it covers |
-|---|---|
-| [`hygiene/checks.md`](./hygiene/checks.md) | The hygiene-run checklist — doc rot, stale tool indexes, superseded research. |
-| [`hygiene/living-documents.md`](./hygiene/living-documents.md) | Framework for declaring + maintaining living reference docs. |
-| [`hygiene/research-consolidation.md`](./hygiene/research-consolidation.md) | The periodic map-reduce harvest that sweeps a scattered corpus into canonical per-entity reference docs. |
+The `hygiene` module (periodic drift sweeps: doc rot, stale tool indexes, superseded research; living-document maintenance; research-consolidation harvests) is on the roadmap but has no skill, tools, or docs on disk yet. It is listed here so the module set is complete; there is nothing to load until it ships.
 
 **Workflow-setup — planning, spawning, and charters**
 
@@ -66,8 +61,8 @@ Every doc in this folder, by role. The reading lists say *when* to read them; th
 |---|---|
 | [`workflow-setup/plan-template.md`](./workflow-setup/plan-template.md) | Skeleton for `plan.md`. Don't hand-roll. |
 | [`workflow-setup/subagent-orchestration.md`](./workflow-setup/subagent-orchestration.md) | Orchestrator-side, how to spawn & run a subagent: prompt composition (inline rationale, non-doc payload, negative directive, supplements), the prompt-template registry, the pre-spawn lint, model selection, and cost tracking. |
-| [`workflow-setup/shipping-charter.md`](./workflow-setup/shipping-charter.md) / [`workflow-setup/research-charter.md`](./workflow-setup/research-charter.md) | Exactly one is pasted into every `plan.md`. Never both; never let a worker learn the other exists. |
-| [`workflow-setup/prompt-templates/`](./workflow-setup/prompt-templates/) | Reusable spawn-prompt skeletons with `{{SLOT}}` placeholders — see its [`README.md`](./workflow-setup/prompt-templates/README.md) ([`docs-synthesis.md`](./workflow-setup/prompt-templates/docs-synthesis.md), [`static-analysis.md`](./workflow-setup/prompt-templates/static-analysis.md), [`verification-subagent-no-live-system.md`](./workflow-setup/prompt-templates/verification-subagent-no-live-system.md)). |
+| [`workflow-setup/charters/shipping-charter.md`](./workflow-setup/charters/shipping-charter.md) / [`workflow-setup/charters/research-charter.md`](./workflow-setup/charters/research-charter.md) | The two round *postures*. Exactly one is pasted into every `plan.md`. Never both; never let a worker learn the other exists. |
+| [`workflow-setup/charters/`](./workflow-setup/charters/) | The full per-role charter set — beyond the shipping/research postures above, `charters/` ships role charters for `bug-fixer`, `documentarian`, `planning`, `test-writer`, and `verifier` (plus the orphaned `mvp`). One is pasted per persona in a multi-role round. |
 
 <!-- PORT-NOTE: the release line (release-methodology.md, release-shipping-charter.md, release-design-charter.md) is DEFERRED to Phase 2 per LOCKED-DECISIONS; its "assembling a release from many small rounds" addenda are not yet ported and are intentionally omitted from this index. -->
 
@@ -80,12 +75,11 @@ Every doc in this folder, by role. The reading lists say *when* to read them; th
 ## Consumers
 
 Consumer projects reach these docs via the CLAUDE.md chain-composition pattern documented in the
-consumer project's own adoption docs (see `docs/CONSUMER-QUICKSTART.md`). A consumer's own
-`claude-context/methodology/` folder holds supplements that extend — never contradict — these
-canonical docs. See [`docs/CONSUMER-QUICKSTART.md`](../../docs/CONSUMER-QUICKSTART.md) for the
-adoption path.
+adoption guide. A consumer's own `claude-context/methodology/` folder holds supplements that
+extend — never contradict — these canonical docs. See [`docs/INSTALL.md`](../../docs/INSTALL.md)
+for the adoption path.
 
 **Status of a well-adopted consumer (illustrative shape):** supplement-only — its
 `claude-context/methodology/` holds a handful of `-<consumer-slug>` supplements plus the
 project-owned `reference-resources.md`, with no full-fat copies of the canonical docs. Its CLAUDE.md
-reads this library's docs directly from a sibling checkout (e.g. `../claude-admin/`).
+reads this library's docs directly from a sibling checkout (e.g. `../claude-tpm/`).

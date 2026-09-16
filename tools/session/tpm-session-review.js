@@ -34,10 +34,10 @@
  * containing "foo".
  *
  * EXAMPLES
- *   npx tpm session review --sessions-dir claude-context/sessions --last 5
- *   npx tpm session review --sessions-dir claude-context/sessions --last 10 --open-items
- *   npx tpm session review --sessions-dir claude-context/sessions --last 20 --grep "sessionId"
- *   npx tpm session review --sessions-dir claude-context/sessions --last 5 --json
+ *   npx tpm session review --sessions-dir .claude/claude-tpm/sessions --last 5
+ *   npx tpm session review --sessions-dir .claude/claude-tpm/sessions --last 10 --open-items
+ *   npx tpm session review --sessions-dir .claude/claude-tpm/sessions --last 20 --grep "sessionId"
+ *   npx tpm session review --sessions-dir .claude/claude-tpm/sessions --last 5 --json
  */
 
 'use strict';

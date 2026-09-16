@@ -3,12 +3,13 @@
 Module-agnostic conventions both the orchestrator and subagents follow: default communication style, when
 to grep vs. full-read. These hold regardless of which claude-tpm modules are enabled.
 
-> **⚠️ Carve note (2026-08-27).** The round-specific conventions that used to live here — "your charter
+> **⚠️ Carve note.** The round-specific conventions that used to live here — "your charter
 > governs your round", the **resumption protocol / `findings/HANDOFF.md`** format, the **findings-doc**
-> format, and the **acceptance-test catalog** — were `workflow`-module machinery and have been **carved out
-> to the workflow module** (staged at `tmp/workflow-redesign/legacy/docs/shared-conventions.md` until the
-> module is built). Per the **module-opacity principle** ([`./overview.md`](./overview.md) §"Module
-> opacity"), a project with `workflow` disabled shouldn't read round machinery here.
+> format, and the **acceptance-test catalog** — were `workflow`-module machinery and live in the
+> **`workflow` module** now (the `tpm-workflow`/`tpm-spawn` skills and the docs under
+> [`workflow-setup/`](./workflow-setup/)). Per the **module-opacity principle**
+> ([`./overview.md`](./overview.md) §"Module opacity"), a project with `workflow` disabled shouldn't read
+> round machinery here.
 
 > **Reading order on first encounter:**
 > - **Orchestrator:** see [`reading-list.md`](./orchestrator/reading-list.md).
@@ -31,6 +32,22 @@ Specifically:
   a prose-bullet hybrid.
 
 Applies equally to subagent output reports.
+
+---
+
+## Documentation deliverables — voice & anti-pattern check
+
+When a round delivers **prose** for humans (a README, a guide, any human-facing doc), writing
+quality is part of the definition of done — and the verifier gets an explicit **voice remit**: read
+the delivered doc against the **consuming project's own writing-style + anti-pattern guidance** (if
+it has a house voice / "tells to avoid" doc), and flag off-voice phrasing and generic LLM-tells —
+meta-editorializing ("the interesting part"), over-hedged sincerity ("basically / honestly"), the
+"not just X — it's Y" reframe, em-dash overuse — for removal before the doc is promoted. Pull those
+out of the delivered document; don't ship them.
+
+claude-tpm ships **no house voice of its own** (it's project-agnostic) — this convention is the
+*hook* that lets a consuming project enforce theirs. Absent such a guide, the verifier still flags
+obvious LLM-isms.
 
 ---
 

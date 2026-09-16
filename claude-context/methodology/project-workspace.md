@@ -4,13 +4,12 @@ Where each actor (orchestrator, subagent) is allowed to read and write. **Applie
 and apply it everywhere. These boundaries are module-agnostic: they hold whether or not the `workflow`
 module is enabled.
 
-> **⚠️ Carve note (2026-08-27).** The **`dev/<task>/` canonical layout**, "what each folder is for", the
+> **⚠️ Carve note.** The **`dev/<task>/` canonical layout**, "what each folder is for", the
 > `questions.md` format, task-folder **scaffolding**, and the file-**naming conventions** were workflow-round
-> machinery and have been **carved out to the `workflow` module** (staged at
-> `tmp/workflow-redesign/legacy/docs/project-workspace.md` until the module is built). Per the
-> **module-opacity principle** ([`./overview.md`](./overview.md) §"Module opacity"), a project with
-> `workflow` disabled shouldn't read the task-folder layout here. What remains below is the general
-> read/write boundary contract.
+> machinery and live in the **`workflow` module** now (the `tpm-workflow`/`tpm-spawn` skills and the docs
+> under [`workflow-setup/`](./workflow-setup/)). Per the **module-opacity principle**
+> ([`./overview.md`](./overview.md) §"Module opacity"), a project with `workflow` disabled shouldn't read
+> the task-folder layout here. What remains below is the general read/write boundary contract.
 
 ---
 
@@ -36,8 +35,9 @@ work. The carve-outs below are **never written without the user's explicit per-o
 | Inside an actively-running subagent's working folder | ❌ no | The orchestrator does NOT edit a subagent's folder while it runs. After it finishes, the folder is read-only until reconciliation. Even during reconciliation, the orchestrator does NOT silently rewrite a subagent's findings — wrong findings get a follow-up subagent or a user escalation; the original stays so the audit trail is honest. |
 | Another actor's live-system session dir, if the project has one | ❌ never | If the project provisions a live system per actor, each instance owns its own session dir. Writing to a sibling's corrupts their state. Own only your own session. |
 
-**Writes the orchestrator routinely owns:** `tools/` (product tools + promotions), the `docs/` / task-queue /
-project-history it keeps current, `claude-context/sessions/session-NNN/notes.md`, `claude-context/methodology/*`,
+**Writes the orchestrator routinely owns:** `tools/` (product tools + promotions), the task ledger under
+`.claude/claude-tpm/tasks/` (read/written via `npx tpm task`), the `docs/` / project-history it keeps
+current, `claude-context/sessions/session-NNN/session-notes.md`, `claude-context/methodology/*`,
 `CLAUDE.md` (sparingly), `tmp/` (scratch), `output/` (regenerable, git-ignored). When the orchestrator runs
 a task itself, it owns that working folder directly.
 

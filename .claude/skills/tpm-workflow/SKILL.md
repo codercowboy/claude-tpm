@@ -32,7 +32,7 @@ Use `AskUserQuestion` for each gate so the answer is genuinely the user's, not y
 
 **Mechanical backstops (poka-yoke — they hold even if the prose above is rationalized):**
 - Scaffolding is blocked without a pre-task-ack receipt (`tpm-workflow-scaffold-subagent --pretask-ack`) — Gate A.
-- **Spawning is blocked by a `PreToolUse` hook** (`${TPM_HOME}/tools/workflow/hooks/tpm-workflow-gate-spawn.js`) unless a **fresh**
+- **Spawning is blocked by a `PreToolUse` hook** (`npx tpm hooks gate-spawn`, plugin-delivered) unless a **fresh**
   `spawn` sign-off token exists — Gate B. On each gate, record the user's actual confirmation:
   `npx tpm workflow signoff questions --roster "<one-line>"` (Gate A) and
   `npx tpm workflow signoff spawn --round "<phase-dir>" --roster "<one-line>"` (Gate B — `--round`
@@ -76,18 +76,18 @@ The **mode is the first token**; the rest of the line is freeform, interpreted b
 `plan` asks 3 big-rock questions in full and collapses the secondary set to one line by default;
 `-v`/`--verbose` expands the secondary set to full questions. See `modes-plan.md`.
 
-## Pre-flight self-quiz (anti-skip gate)
+## Pre-flight gate (anti-skip)
 
-Before you spawn / plan / scaffold, silently answer the pre-workflow self-quiz
-(`${TPM_HOME}/claude-context/methodology/workflow-setup/`, the pre-spawn questions). If any answer is fuzzy, follow its
+Before you spawn / plan / scaffold, silently walk the pre-task questions
+(`${TPM_HOME}/claude-context/methodology/orchestrator/pre-task-questions.md`). If any answer is fuzzy, follow its
 pointer and re-read before proceeding. This is a *workflow* gate, not a boot gate — when you are
 just operating, there is nothing to gate.
 
 ## Where the deep reference + tools live
 
-- **Deep shared reference** (read on demand): `${TPM_HOME}/claude-context/methodology/workflow-setup/` — charters,
-  `plan-template`, spawn-mechanics, verify-and-reconcile, `prompt-templates/`, the pre-task
-  questions, the self-quiz.
+- **Deep shared reference** (read on demand): `${TPM_HOME}/claude-context/methodology/workflow-setup/` — `charters/`,
+  `plan-template.md`, and `subagent-orchestration.md` (the spawn → verify → loop round machinery).
+  The pre-task questions live at `${TPM_HOME}/claude-context/methodology/orchestrator/pre-task-questions.md`.
 - **Tools** (mechanics — reference by their promoted path, all under `${TPM_HOME}/tools/workflow/`):
   `tpm-workflow-config-resolver.js` · `tpm-workflow-scaffold-subagent.js` · `tpm-workflow-compose-spawn-prompt.js` ·
   `tpm-workflow-lint-subagent-prompt.js` · `tpm-workflow-audit.js` · `tpm-workflow-cost-ledger.js` · `tpm-workflow-check-filename.js`.

@@ -68,13 +68,13 @@
  *   --help
  *
  * EXAMPLES
- *   npx tpm session notes --sessions-dir claude-context/sessions resume \
+ *   npx tpm session notes --sessions-dir .claude/claude-tpm/sessions resume \
  *     --where "Built the tools/session suite" --next "write tests" --in-flight "none"
- *   npx tpm session notes --sessions-dir claude-context/sessions open add --owner jason "review the config-guide patch"
- *   npx tpm session notes --sessions-dir claude-context/sessions open done 1
- *   npx tpm session notes --sessions-dir claude-context/sessions log --status WIP "wrote tpm-session-format.js"
- *   npx tpm session notes --sessions-dir claude-context/sessions decide "single pointer, not a sessionId map" --why "env var unreliable outside subagents"
- *   npx tpm session notes --sessions-dir claude-context/sessions seal
+ *   npx tpm session notes --sessions-dir .claude/claude-tpm/sessions open add --owner jason "review the config-guide patch"
+ *   npx tpm session notes --sessions-dir .claude/claude-tpm/sessions open done 1
+ *   npx tpm session notes --sessions-dir .claude/claude-tpm/sessions log --status WIP "wrote tpm-session-format.js"
+ *   npx tpm session notes --sessions-dir .claude/claude-tpm/sessions decide "single pointer, not a sessionId map" --why "env var unreliable outside subagents"
+ *   npx tpm session notes --sessions-dir .claude/claude-tpm/sessions seal
  */
 
 'use strict';
