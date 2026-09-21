@@ -7,14 +7,6 @@
           { "type": "command", "command": "npx tpm hooks gate-spawn" }
         ]
       }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Read|Grep|Glob",
-        "hooks": [
-          { "type": "command", "command": "npx tpm hooks expand-tpm-home-content" }
-        ]
-      }
     ]
   }
 }

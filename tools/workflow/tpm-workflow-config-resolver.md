@@ -28,7 +28,7 @@ It is both a CLI and a `require()`-able module.
 ## Usage
 
 ```
-node config-resolver.js [--config <path>] (--json | --get <dotted.key> | --validate) [--help]
+npx tpm workflow config [--config <path>] (--json | --get <dotted.key> | --validate) [--help]
 ```
 
 Exactly one action (`--json` / `--get` / `--validate` / `--help`) is expected. Omitting all of them
@@ -116,26 +116,26 @@ with the canonical tool at `../12-model-config/tools/config-resolver.js`. There 
 default location, so these resolve to the built-in defaults:
 
 ```console
-$ node config-resolver.js --get verifier.loopFixer
+$ npx tpm workflow config --get verifier.loopFixer
 "bug-fixer"
 
-$ node config-resolver.js --config sample-config.json --get verifier
+$ npx tpm workflow config --config sample-config.json --get verifier
 {"requireAllPass":true,"multiCountMode":"blind-pair","loopFixer":"custom-fixer"}
 
-$ node config-resolver.js --get verifyLoopCap
+$ npx tpm workflow config --get verifyLoopCap
 5
 
-$ node config-resolver.js --validate                              # against a tree WITHOUT the promoted charters
+$ npx tpm workflow config --validate                              # against a tree WITHOUT the promoted charters
 config-resolver: referenced file(s) do not exist:
   - subagentConfigs[planning].charterFile -> /.../workflow-setup/charters/planning-charter.md
   - subagentConfigs[builder].charterFile  -> /.../workflow-setup/charters/shipping-charter.md
   ... (one row per wired charter home) ...                         # exit 1 — EXPECTED forward reference (fix #1);
                                                                     # passes once the charters land at promotion
 
-$ node config-resolver.js --get verifier.nope
+$ npx tpm workflow config --get verifier.nope
 config-resolver: no such key "verifier.nope" in resolved config.  # exit 1
 
-$ node config-resolver.js               # no action flag
+$ npx tpm workflow config               # no action flag
 config-resolver.js: nothing to do — pass one of --json / --get / --validate.
 ...usage...                                                        # exit 1
 ```
@@ -159,20 +159,20 @@ With a sample config `sample-config.json`:
 ```console
 # by-name merge: builder's model overridden to "sonnet" (its wired charterFile home preserved),
 # new custom-role appended:
-$ node config-resolver.js --config sample-config.json --get subagentConfigs
+$ npx tpm workflow config --config sample-config.json --get subagentConfigs
 [... ,{"name":"builder","defaultModel":"sonnet","charterFile":"claude-context/methodology/workflow-setup/charters/shipping-charter.md","retryCount":5}, ...
  {"name":"custom-role","defaultModel":"haiku","charterFile":"charters/custom.md","retryCount":2}]
 
 # scalar override:
-$ node config-resolver.js --config sample-config.json --get verifyLoopCap
+$ npx tpm workflow config --config sample-config.json --get verifyLoopCap
 3
 
 # shallow-merge: loopFixer overridden, requireAllPass/multiCountMode kept from defaults:
-$ node config-resolver.js --config sample-config.json --get verifier
+$ npx tpm workflow config --config sample-config.json --get verifier
 {"requireAllPass":true,"multiCountMode":"blind-pair","loopFixer":"custom-fixer"}
 
 # --validate fails: custom-role.charterFile references a file that doesn't exist:
-$ node config-resolver.js --config sample-config.json --validate
+$ npx tpm workflow config --config sample-config.json --validate
 config-resolver: referenced file(s) do not exist:
   - subagentConfigs[custom-role].charterFile -> /.../charters/custom.md    # exit 1
 ```
@@ -181,15 +181,15 @@ Error / edge behavior (all verified):
 
 ```console
 # explicit --config pointing nowhere -> loud error:
-$ node config-resolver.js --config ./nope.json --json
+$ npx tpm workflow config --config ./nope.json --json
 config-resolver: --config path does not exist: /.../nope.json     # exit 1
 
 # unrecognized version -> stderr warning, best-effort resolve continues:
-$ node config-resolver.js --config badversion.json --get verifyLoopCap
+$ npx tpm workflow config --config badversion.json --get verifyLoopCap
 config-resolver: warning — config.json declares version 99, this resolver understands version 1. Resolving best-effort.
 2                                                                  # exit 0
 
 # unparseable JSON in an explicit config -> error:
-$ node config-resolver.js --config badjson.json --json
+$ npx tpm workflow config --config badjson.json --json
 config-resolver: could not parse /.../badjson.json as JSON: Expected property name or '}' ...   # exit 1
 ```

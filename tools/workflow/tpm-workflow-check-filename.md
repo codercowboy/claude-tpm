@@ -16,7 +16,7 @@ It is both a CLI and a `require()`-able module.
 ## Usage
 
 ```
-node check-filename.js <filename> [--patterns a,b,c] [--config <path>] [--help]
+npx tpm workflow check-filename <filename> [--patterns a,b,c] [--config <path>] [--help]
 ```
 
 `<filename>` is a required positional argument. Only the **basename** is inspected — directory
@@ -60,12 +60,12 @@ Verified run (Node v24.16.0), invoked from `dev/workflow-module-build/18-shipdoc
 with the canonical tool at `../01-foundational-tools/tools/check-filename.js`:
 
 ```console
-$ node check-filename.js my-findings.md
+$ npx tpm workflow check-filename my-findings.md
 BLOCKED: "my-findings.md" contains blocked pattern "findings". Rename it (avoid: report, summary, analysis, findings).
 $ echo $?
 1
 
-$ node check-filename.js plan.md
+$ npx tpm workflow check-filename plan.md
 OK: "plan.md" does not match any blocked pattern.
 $ echo $?
 0
@@ -75,36 +75,36 @@ More verified behavior:
 
 ```console
 # --patterns replaces the defaults entirely (a normally-blocked name now passes):
-$ node check-filename.js my-findings.md --patterns notes
+$ npx tpm workflow check-filename my-findings.md --patterns notes
 OK: "my-findings.md" does not match any blocked pattern.          # exit 0
 
 # ...and blocks its own list:
-$ node check-filename.js notes.md --patterns notes,scratch
+$ npx tpm workflow check-filename notes.md --patterns notes,scratch
 BLOCKED: "notes.md" contains blocked pattern "notes". Rename it (avoid: notes, scratch).   # exit 1
 
 # --patterns wins when --config is also present:
-$ node check-filename.js wip-notes.md --config custom.json --patterns notes
+$ npx tpm workflow check-filename wip-notes.md --config custom.json --patterns notes
 BLOCKED: "wip-notes.md" contains blocked pattern "notes". Rename it (avoid: notes).   # exit 1
 
 # case-insensitive:
-$ node check-filename.js MySummaryDoc.md
+$ npx tpm workflow check-filename MySummaryDoc.md
 BLOCKED: "MySummaryDoc.md" contains blocked pattern "summary". ...   # exit 1
 
 # only the basename is inspected (a "findings" directory does not trip it):
-$ node check-filename.js some/findings-dir/plan.md
+$ npx tpm workflow check-filename some/findings-dir/plan.md
 OK: "plan.md" does not match any blocked pattern.                 # exit 0
 
 # missing/unreadable/malformed --config silently falls back to defaults (no crash):
-$ node check-filename.js my-findings.md --config does-not-exist.json
+$ npx tpm workflow check-filename my-findings.md --config does-not-exist.json
 BLOCKED: "my-findings.md" contains blocked pattern "findings". ...   # exit 1
 ```
 
 Where `custom.json` is `{ "workflow": { "blockedFilenamePatterns": ["draft", "wip"] } }`:
 
 ```console
-$ node check-filename.js draft-doc.md --config custom.json
+$ npx tpm workflow check-filename draft-doc.md --config custom.json
 BLOCKED: "draft-doc.md" contains blocked pattern "draft". Rename it (avoid: draft, wip).   # exit 1
 
-$ node check-filename.js my-findings.md --config custom.json
+$ npx tpm workflow check-filename my-findings.md --config custom.json
 OK: "my-findings.md" does not match any blocked pattern.          # exit 0 (defaults replaced)
 ```

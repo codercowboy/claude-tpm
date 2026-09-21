@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * tpm-workflow-scaffold-subagent.js (v2, epic-aware) — scaffold epic + phase folders for the
+ * npx tpm workflow scaffold (v2, epic-aware) — scaffold epic + phase folders for the
  * claude-tpm workflow module.
  *
  * PURPOSE
@@ -85,7 +85,7 @@
  *   ./tpm-workflow-check-filename.js   — guards emitted filenames against the blocked patterns.
  *
  * CONVENTIONS
- *   Zero runtime deps (Node built-ins only). Portable: `node tpm-workflow-scaffold-subagent.js …`.
+ *   Zero runtime deps (Node built-ins only). Run via `npx tpm workflow scaffold …`.
  *   Every subcommand supports --help; the bare tool prints usage. Value flags fail
  *   loudly if their value is missing. This file is ALSO a module (see module.exports)
  *   so the test can drive the pure helpers directly.

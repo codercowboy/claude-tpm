@@ -1,55 +1,27 @@
-#!/usr/bin/env node
-/**
- * tests/session/run-all.js — runs every tests/session/<tool>/test.js suite in one shot.
- *
- * PURPOSE
- *   One entry point for "does the tools/session suite pass". Runs each suite as a real
- *   subprocess (so one suite's crash can't corrupt another's process state), prints a
- *   per-suite PASS/FAIL line, and exits non-zero if anything failed.
- *
- * HOW TO RUN
- *   node tests/session/run-all.js
- */
-
 'use strict';
-
+/**
+ * run-all.js — the base-lib test entrypoint. Runs every *.test.js in this dir as its own
+ * `node <file>` process (so each stays independently runnable) and aggregates exit codes.
+ * Exits 0 only if ALL suites pass; non-zero otherwise (ship-tool bar).
+ *
+ * Run: node tests/run-all.js
+ */
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
-const { ensureRunSlug } = require('../../tests/lib/scratch');
+const { spawnSync } = require('child_process');
 
-const SUITES = [
-  'lib-format/test.js',
-  'lib-config/test.js',
-  'lib-current-session/test.js',
-  'tpm-session-notes/test.js',
-  'tpm-session-review/test.js',
-  'tpm-session-save/test.js',
-  'tpm-session-punchlist/test.js',
-  'tpm-session-boot-read/test.js',
-];
+const here = __dirname;
+const suites = fs.readdirSync(here)
+  .filter((f) => f.endsWith('.test.js'))
+  .sort();
 
-function main() {
-  ensureRunSlug(); // share one scratch slug across this group's child suites
-  let failures = 0;
-  for (const rel of SUITES) {
-    const p = path.join(__dirname, rel);
-    if (!fs.existsSync(p)) {
-      process.stderr.write(`✗ MISSING — ${rel}\n`);
-      failures += 1;
-      continue;
-    }
-    try {
-      const out = execFileSync('node', [p], { encoding: 'utf8' });
-      const lastLine = out.trim().split('\n').pop();
-      process.stdout.write(`✓ ${rel} — ${lastLine}\n`);
-    } catch (err) {
-      process.stderr.write(`✗ FAIL — ${rel}\n${err.stdout || ''}${err.stderr || ''}\n`);
-      failures += 1;
-    }
-  }
-  process.stdout.write(`\n${failures ? 'FAIL' : 'PASS'} — ${SUITES.length - failures}/${SUITES.length} suites green\n`);
-  process.exit(failures ? 1 : 0);
+let failed = 0;
+for (const suite of suites) {
+  console.log(`\n=== ${suite} ===`);
+  const res = spawnSync(process.execPath, [path.join(here, suite)], { stdio: 'inherit' });
+  if (res.status !== 0) failed++;
 }
 
-main();
+console.log(`\n──────────────────────────────`);
+console.log(`${suites.length} suites run, ${failed} failed`);
+process.exit(failed === 0 ? 0 : 1);

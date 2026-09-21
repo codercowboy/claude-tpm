@@ -4,8 +4,8 @@
  *
  * PURPOSE
  *   Exercises the reusable module API AND the CLI (as a real subprocess, asserting exit codes +
- *   stdout/stderr). Builds a scratch fake "project" under os.tmpdir() (its own CLAUDE.md marker,
- *   .claude/claude-tpm/config.json, and charter files) so project-root resolution and file
+ *   stdout/stderr). Builds a scratch fake "project" under <bundle>/tmp/scratch (its own
+ *   .claude/claude-tpm/ marker dir + config.json, and charter files) so project-root resolution and file
  *   existence checks are fully self-contained — no dependency on the real repo's layout.
  *
  * HOW TO RUN
@@ -228,7 +228,7 @@ function main() {
 
   check('absent config → loopFixer default survives (resolveConfig with no config)', () => {
     const isolatedRoot = mkScratch('config-resolver-loopfixer');
-    fs.writeFileSync(path.join(isolatedRoot, 'CLAUDE.md'), '# marker\n');
+    fs.mkdirSync(path.join(isolatedRoot, '.claude', 'claude-tpm'), { recursive: true }); // #1133 marker (was CLAUDE.md)
     const { resolved } = resolveConfig(undefined, { startDir: isolatedRoot });
     assert.strictEqual(resolved.verifier.loopFixer, 'bug-fixer');
     fs.rmSync(isolatedRoot, { recursive: true, force: true });
@@ -302,15 +302,15 @@ function main() {
   });
 
   // --- module API: findProjectRoot ---
-  check('findProjectRoot finds the CLAUDE.md marker walking up from a nested dir', () => {
+  check('findProjectRoot finds the .claude/claude-tpm marker walking up from a nested dir', () => {
     const nested = path.join(root, 'charters');
     assert.strictEqual(findProjectRoot(nested), root);
   });
 
   check('findProjectRoot falls back to startDir when no marker exists anywhere up the tree', () => {
     const isolatedRoot = mkScratch('config-resolver-noroot');
-    // os.tmpdir() itself won't have a CLAUDE.md, so this should bottom out at isolatedRoot's
-    // own ancestry without throwing.
+    // No .claude/claude-tpm marker is seeded here; findRoot walks up and either hits the bundle's
+    // own footprint or bottoms out at startDir — either way it returns a non-empty path, never throws.
     const found = findProjectRoot(isolatedRoot);
     assert.ok(typeof found === 'string' && found.length > 0);
     fs.rmSync(isolatedRoot, { recursive: true, force: true });
@@ -319,7 +319,7 @@ function main() {
   // --- module API: resolveConfig + validateResolved ---
   check('resolveConfig on a missing default location returns defaults, no throw', () => {
     const isolatedRoot = mkScratch('config-resolver-nodefault');
-    fs.writeFileSync(path.join(isolatedRoot, 'CLAUDE.md'), '# marker\n');
+    fs.mkdirSync(path.join(isolatedRoot, '.claude', 'claude-tpm'), { recursive: true }); // #1133 marker (was CLAUDE.md)
     const { resolved, usedDefaultLocation, configExists } = resolveConfig(undefined, { startDir: isolatedRoot });
     assert.strictEqual(usedDefaultLocation, true);
     assert.strictEqual(configExists, false);
@@ -361,7 +361,7 @@ function main() {
     const savedBundle = process.env.TPM_BUNDLE_ROOT;
     try {
       process.env.TPM_BUNDLE_ROOT = isolatedRoot;
-      fs.writeFileSync(path.join(isolatedRoot, 'CLAUDE.md'), '# marker\n');
+      fs.mkdirSync(path.join(isolatedRoot, '.claude', 'claude-tpm'), { recursive: true }); // #1133 marker (was CLAUDE.md)
       const { resolved } = resolveConfig(undefined, { startDir: isolatedRoot });
       const { ok, missing } = validateResolved(resolved, isolatedRoot);
       assert.strictEqual(ok, false, 'bundle has no charters yet → not ok');
@@ -417,7 +417,7 @@ function main() {
 
   check('CLI: absent config (no --config, empty default location) -> built-in defaults', () => {
     const isolatedRoot = mkScratch('config-resolver-cli-nodefault');
-    fs.writeFileSync(path.join(isolatedRoot, 'CLAUDE.md'), '# marker\n');
+    fs.mkdirSync(path.join(isolatedRoot, '.claude', 'claude-tpm'), { recursive: true }); // #1133 marker (was CLAUDE.md)
     const r = runCLI(['--json'], { cwd: isolatedRoot });
     assert.strictEqual(r.code, 0);
     const parsed = JSON.parse(r.stdout);

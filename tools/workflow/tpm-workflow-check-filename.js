@@ -135,7 +135,7 @@ function main() {
 
   const filename = args._[0];
   if (!filename) {
-    process.stderr.write('tpm-workflow-check-filename.js: missing required <filename> argument.\n\n');
+    process.stderr.write('tpm workflow check-filename: missing required <filename> argument.\n\n');
     printHelp();
     process.exit(1);
   }

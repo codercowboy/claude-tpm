@@ -29,7 +29,7 @@ tool ledger is [`tools/README.md`](README.md).
 | `session` | `config` · `current` · `notes` · `review` | `tools/session/` |
 | `task` | any `tpm-task.js` subcommand (`add`/`list`/`show`/…) passes through; `config` → the resolver | `tools/task/` |
 | `workflow` | `audit` · `compose` · `lint` · `scaffold` · `cost` · `signoff` · `doctor` · `config` · `check-filename` | `tools/workflow/` |
-| `hooks` | `gate-spawn` · `expand-tpm-home` | `tools/hooks/` (+ each suite's hook script) |
+| `hooks` | `gate-spawn` | `tools/hooks/` (+ each suite's hook script) |
 
 Verbs are **short** — the suite name namespaces them (e.g. `tpm workflow scaffold`, not
 `scaffold-subagent`). `tpm <suite> --help` (or bare `tpm <suite>`) lists that suite's verbs.
@@ -48,6 +48,18 @@ verbs exist for the harness to invoke, not for a human to type.
 
 These are the human porcelain for adoption (`npx tpm install .`), so they stay top-level rather than
 under a `consumer` suite.
+
+## Bundle primitives (self-locating; work in every permission mode)
+
+| Command | → script |
+|---|---|
+| `tpm resolve-home` | `tools/tpm-home.js` — print the absolute bundle root; **its output IS `%TPM_HOME%`** |
+| `tpm home` | `tools/tpm-home.js` — alias of `resolve-home` |
+| `tpm doc <bundle-relative-path>` | `tools/tpm-doc.js` — print a bundle doc with in-content tokens resolved |
+
+`resolve-home` is the self-documenting name for the **anchor-first** doctrine: a reader runs
+`npx tpm resolve-home` once, treats the printed absolute path as `%TPM_HOME%`, and resolves any
+`%TPM_HOME%/…` reference against it — no token-resolving hook required. `home` remains as a working alias.
 
 ## Exit codes
 

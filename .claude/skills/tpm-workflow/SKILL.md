@@ -3,6 +3,9 @@ name: tpm-workflow
 description: Use when running a formal multi-agent round or epic in claude-tpm — planning a round, spawning workers/verifiers, verifying an artifact, or reconciling/closing an epic. The single front door over the round lifecycle. Invoke when the user explicitly asks to plan a round, run the epic, set up a phase, verify the artifact, or close the epic — never auto-fire; the user directs every kickoff (see the HARD RULE). Thin router: it routes a mode token to a sibling mode body and delegates spawning to tpm-spawn / tpm-spawn-team. For a one-off single subagent with no round, use tpm-spawn directly. Orchestrator-only — a subagent never invokes this (a worker follows its spawn prompt + plan.md, never the round lifecycle).
 ---
 
+> In this file, `%TPM_HOME%` is the claude-tpm **installation home** — it is NOT always
+> `<project>/node_modules/@codercowboy/claude-tpm`. If you need its actual value, run `npx tpm resolve-home`.
+
 `/tpm-workflow` is the front door for **running a formal round** — the HIGH-ceremony path
 (scaffold `dev/<task>/` → charter + `plan.md` → spawn builder(s) → verify → reconcile).
 "Just operating" (a light edit, a quick answer, a direct script) does NOT come through here
@@ -51,8 +54,8 @@ The **mode is the first token**; the rest of the line is freeform, interpreted b
 | **`verify`** | Spawn verifier(s) + the verify↔bug-fixer loop (on FAIL only). A per-round DECISION, not a reflex | `modes-verify.md` |
 | **`reconcile`** | Judge the verdict + log the call → reconcile delivery+verifier output → update `00-epic-plan/` → epic-close (promotion + cost rollup) | `modes-reconcile.md` |
 | **`reap`** | Stray subagent/subshell cleanup | **delegates to `tpm-reap`** |
-| **`status`** | Report round/epic state — read `00-epic-plan/` (phase map · punchlist · decisions), phase `findings/HANDOFF.md`, and `tpm-workflow-audit.js` output; summarize. No spawn | (inline, below) |
-| **`doctor`** | Fail-loud PREFLIGHT before a round: checks charters resolve, signoff is writable, compose emits a marker + `%TPM_HOME%` paths. No spawn | (inline, below) |
+| **`status`** | Report round/epic state — read `00-epic-plan/` (phase map · punchlist · decisions), phase `findings/HANDOFF.md`, and `npx tpm workflow audit` output; summarize. No spawn | (inline, below) |
+| **`doctor`** | Fail-loud PREFLIGHT before a round: checks charters resolve, signoff is writable, compose emits a marker + the `resolve-home` anchor + `%TPM_HOME%` paths. No spawn | (inline, below) |
 
 ## Interpreting the mode token (forgiving)
 
@@ -88,9 +91,8 @@ just operating, there is nothing to gate.
 - **Deep shared reference** (read on demand — fetch a file with `npx tpm doc claude-context/methodology/workflow-setup/<file>`): `charters/`,
   `plan-template.md`, and `subagent-orchestration.md` (the spawn → verify → loop round machinery).
   Read the pre-task questions with `npx tpm doc claude-context/methodology/orchestrator/pre-task-questions.md`.
-- **Tools** (mechanics — reference by their promoted path, all under `%TPM_HOME%/tools/workflow/`):
-  `tpm-workflow-config-resolver.js` · `tpm-workflow-scaffold-subagent.js` · `tpm-workflow-compose-spawn-prompt.js` ·
-  `tpm-workflow-lint-subagent-prompt.js` · `tpm-workflow-audit.js` · `tpm-workflow-cost-ledger.js` · `tpm-workflow-check-filename.js`.
+- **Tools** (mechanics — run the workflow suite via `npx tpm workflow <verb>`, self-locating; no path needed):
+  `config` · `scaffold` · `compose` · `lint` · `audit` · `cost` · `check-filename`.
   A skill never bundles its own tool copy — tools are shared project infra.
 
 ## `status` mode (inline)
@@ -102,7 +104,7 @@ No spawn. Report the current picture:
    raise-to-user decision queue.
 3. Read each active phase's `findings/HANDOFF.md` for current state (the single rolling doc).
 4. Summarize: phases done / in-flight / pending, open punchlist items, decisions awaiting the
-   user, and cost-to-date (`tpm-workflow-cost-ledger.js --rollup <epic>` if a ledger exists). Surface, don't act.
+   user, and cost-to-date (`npx tpm workflow cost --rollup <epic>` if a ledger exists). Surface, don't act.
 
 ## `doctor` mode (inline)
 

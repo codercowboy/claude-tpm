@@ -25,8 +25,7 @@
  *   Deliberately NOT handled here: writing env.TPM_HOME or hooks into any settings.json. The plugin
  *   delivers its hooks itself, via the bundle-root hooks/hooks.json (auto-discovered on plugin enable
  *   — confirmed firing end-to-end, session 013), and env.TPM_HOME is retired (zero consumers: skills
- *   call `npx tpm …` and in-content %TPM_HOME% resolves through the plugin's PostToolUse
- *   expand-tpm-home-content hook).
+ *   call `npx tpm …` and %TPM_HOME% is resolved anchor-first via `npx tpm resolve-home`, not a hook).
  *   `claude plugin … --scope project` performs its own in-repo settings declaration; this tool never
  *   touches settings.json directly.
  *
@@ -61,10 +60,10 @@
  *                      SOURCE resolves (catches a registration whose source path is gone — "points at
  *                      the wrong place") · plugin installed · plugin enabled for the project · plugin
  *                      CACHE present (catches an installed record whose cache dir is gone — "registered
- *                      but not there" / cache-miss) · the bundle delivers its hooks (gate-spawn
- *                      PreToolUse + expand-tpm-home-content PostToolUse) · any consumer config.json parses as JSON. (There
+ *                      but not there" / cache-miss) · the bundle delivers its hook (gate-spawn
+ *                      PreToolUse) · any consumer config.json parses as JSON. (There
  *                      is NO env.TPM_HOME / settings.json hook wiring to check — the plugin delivers the
- *                      hooks itself; env.TPM_HOME is retired.) A normal install runs this same doctor as
+ *                      hook itself; env.TPM_HOME is retired.) A normal install runs this same doctor as
  *                      a final step, and SELF-HEALS a dead-source marketplace (removes + re-adds it).
  *     -h, --help
  *
@@ -277,18 +276,19 @@ function pluginState(cwd) {
   return parsePluginList(runClaudeJson(['plugin', 'list', '--json'], cwd));
 }
 
-// ── hooks-delivery health (the plugin ships its hooks itself, via the bundle-root hooks/hooks.json;
+// ── hooks-delivery health (the plugin ships its hook itself, via the bundle-root hooks/hooks.json;
 // there is NO env.TPM_HOME / settings.json hook wiring to check — that was retired). The doctor verifies
 // the delivered artifact is intact: the bundle in the target's node_modules carries a hooks/hooks.json
-// that declares gate-spawn (PreToolUse) and expand-tpm-home-content (PostToolUse). Split pure-parse /
-// disk-read like parsePluginList above. ─
+// that declares gate-spawn (PreToolUse) — the sole auto-wired hook after #1126 retired the %TPM_HOME%
+// resolution hooks. Split pure-parse / disk-read like parsePluginList above. ─
 
-// Pure: given a parsed hooks.json object, report whether it declares the two hooks the plugin delivers:
-// `gate-spawn` (PreToolUse) and `expand-tpm-home-content` (PostToolUse — the bypass-safe %TPM_HOME%
-// CONTENT resolver that replaced the old PreToolUse path hook). Matched by the command string CONTAINING
-// `hooks <name>`, so it survives a `node …`→`npx tpm` rewording and doesn't pin to one invocation form.
+// Pure: given a parsed hooks.json object, report whether it declares the sole hook the plugin delivers:
+// `gate-spawn` (PreToolUse). The %TPM_HOME% resolution hooks were retired in #1126 (anchor-first
+// resolution via `npx tpm resolve-home` replaced them), so gate-spawn is now the only auto-wired hook.
+// Matched by the command string CONTAINING `hooks <name>`, so it survives a `node …`→`npx tpm`
+// rewording and doesn't pin to one invocation form.
 function parseHooksManifest(manifest) {
-  const result = { gateSpawn: false, expandContent: false };
+  const result = { gateSpawn: false };
   if (!manifest || typeof manifest !== 'object' || !manifest.hooks) return result;
   const scan = (groups, pred) => {
     if (!Array.isArray(groups)) return;
@@ -298,7 +298,6 @@ function parseHooksManifest(manifest) {
     }
   };
   scan(manifest.hooks.PreToolUse, (cmd) => { if (/hooks\s+gate-spawn/.test(cmd)) result.gateSpawn = true; });
-  scan(manifest.hooks.PostToolUse, (cmd) => { if (/hooks\s+expand-tpm-home-content/.test(cmd)) result.expandContent = true; });
   return result;
 }
 
@@ -307,10 +306,10 @@ function parseHooksManifest(manifest) {
 // check row degrades to a skip rather than a hard fail when node_modules has no bundle.
 function bundleHooksHealth(targetDir) {
   const p = path.join(targetDir, 'node_modules', TPM_PKG_NAME, 'hooks', 'hooks.json');
-  if (!fs.existsSync(p)) return { present: false, error: null, gateSpawn: false, expandContent: false };
+  if (!fs.existsSync(p)) return { present: false, error: null, gateSpawn: false };
   let manifest;
   try { manifest = JSON.parse(fs.readFileSync(p, 'utf8')); }
-  catch (e) { return { present: true, error: e.message, gateSpawn: false, expandContent: false }; }
+  catch (e) { return { present: true, error: e.message, gateSpawn: false }; }
   return Object.assign({ present: true, error: null }, parseHooksManifest(manifest));
 }
 
@@ -322,6 +321,37 @@ function configJsonValidity(targetDir) {
   if (!fs.existsSync(p)) return { present: false, valid: true, error: null };
   try { JSON.parse(fs.readFileSync(p, 'utf8')); return { present: true, valid: true, error: null }; }
   catch (e) { return { present: true, valid: false, error: e.message }; }
+}
+
+// ── consumer config.json seed (#1132.C) ──────────────────────────────────────────────────────────
+// The default config.json a fresh install lays down: the two store-dir keys the task/session
+// resolvers read, pre-populated with the project-relative defaults so `npx tpm task|session config
+// --tasks-dir|--sessions-dir` (and every verb) resolve without the operator hand-authoring a config.
+// The values MIRROR the resolvers' getDefaults() so the seeded file is behaviourally identical to
+// the built-in project-local default — it just makes that default EXPLICIT + hand-editable.
+function seedConfigDefaults() {
+  return {
+    version: 1,
+    tasks: { tasksDir: '.claude/claude-tpm/tasks' },
+    session: { notes: { sessionsDir: '.claude/claude-tpm/sessions' } },
+  };
+}
+
+// ensureConsumerConfig(targetDir) -> { wrote, path, reason }
+// IDEMPOTENT: writes <targetDir>/.claude/claude-tpm/config.json with seedConfigDefaults() ONLY when
+// no config.json is already present — an existing user config is NEVER clobbered (reason 'exists').
+// Atomic write (tmp + rename) so a crash mid-write can't leave a half-written config the resolvers
+// would choke on. Returns what it did so the caller can print an honest one-liner.
+function ensureConsumerConfig(targetDir) {
+  const dir = path.join(targetDir, '.claude', 'claude-tpm');
+  const p = path.join(dir, 'config.json');
+  if (fs.existsSync(p)) return { wrote: false, path: p, reason: 'exists' };
+  fs.mkdirSync(dir, { recursive: true });
+  const body = JSON.stringify(seedConfigDefaults(), null, 2) + '\n';
+  const tmp = p + '.tmp-' + process.pid;
+  fs.writeFileSync(tmp, body);
+  fs.renameSync(tmp, p);
+  return { wrote: true, path: p, reason: 'created' };
 }
 
 // ── marketplace SOURCE health (the "registered but points at the wrong place" shape) ────────────────────
@@ -615,11 +645,10 @@ function runCheck(targetDir) {
   const hooksNote = !nmHasTpm ? '(skipped — dependency not installed in node_modules)'
     : hh.error ? `(bundle hooks.json invalid JSON: ${hh.error})`
     : !hh.present ? '(bundle carries no hooks/hooks.json)'
-    : (!hh.gateSpawn || !hh.expandContent)
-      ? `(missing: ${[!hh.gateSpawn && 'gate-spawn', !hh.expandContent && 'expand-tpm-home-content'].filter(Boolean).join(' + ')})`
+    : !hh.gateSpawn ? '(missing: gate-spawn)'
       : '';
-  rows.push({ label: 'plugin delivers its hooks (gate-spawn PreToolUse + expand-tpm-home-content PostToolUse)',
-    pass: !nmHasTpm ? true : (hh.present && !hh.error && hh.gateSpawn && hh.expandContent), note: hooksNote });
+  rows.push({ label: 'plugin delivers its hook (gate-spawn PreToolUse)',
+    pass: !nmHasTpm ? true : (hh.present && !hh.error && hh.gateSpawn), note: hooksNote });
 
   // Consumer override config (optional): if present, it must be valid JSON — a malformed one silently
   // degrades every resolver to defaults. Absent is fine (defaults); present-and-malformed FAILS.
@@ -679,6 +708,16 @@ async function runInstall(opts) {
   }
   const pkg = pkgRead.value;
   process.stdout.write('Step 1/5 — ✓ preflight passed (npm, package.json, claude).\n');
+
+  // Config seed (#1132.C) — lay down a default .claude/claude-tpm/config.json (tasks.tasksDir +
+  // session.notes.sessionsDir) so the task/session verbs resolve their store without a hand-authored
+  // config. Idempotent: an existing user config is left untouched (never clobbered). Not a numbered
+  // step — it is a local filesystem write that needs no `claude` CLI and can't fail the install flow.
+  const cfgSeed = ensureConsumerConfig(targetDir);
+  const cfgRel = path.relative(targetDir, cfgSeed.path) || cfgSeed.path;
+  process.stdout.write(cfgSeed.wrote
+    ? `Config — wrote ${cfgRel} (tasks.tasksDir + session.notes.sessionsDir defaults).\n`
+    : `Config — ${cfgRel} already present, left as-is.\n`);
 
   // Step 2 — claude-tpm dependency. Idempotent: skip `npm install` (unless --force) when the dep is both
   // declared in package.json AND already present in node_modules.
@@ -843,5 +882,6 @@ module.exports = {
   marketplaceRegistered, pluginState, parsePluginList,
   parseMarketplaceList, marketplaceSourceHealth, parsePluginInstallPath, pluginCacheHealth,
   parseHooksManifest, bundleHooksHealth, configJsonValidity,
+  ensureConsumerConfig, seedConfigDefaults,
   TPM_PKG_NAME, MARKETPLACE_NAME, PLUGIN_NAME, PLUGIN_ID, MARKETPLACE_SOURCE,
 };

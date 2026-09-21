@@ -10,12 +10,17 @@
  *
  * EXPORTS
  *   findRoot({ startDir, marker }) -> absolute path to the project root (walks upward from
- *     startDir looking for `marker`; falls back to startDir if no marker is found anywhere
- *     up the tree).
+ *     startDir looking for `marker`, default `.claude/claude-tpm` — the claude-tpm install
+ *     footprint directory; falls back to startDir if no marker is found anywhere up the tree).
+ *     `marker` may be a nested relative path (checked via path.join).
+ *
+ * MARKER — the project root is the nearest ancestor CONTAINING a `.claude/claude-tpm/` directory
+ *   (the install footprint every `tpm install`-ed project has). This REPLACED the earlier
+ *   `CLAUDE.md` marker so a consumer with the footprint but no CLAUDE.md is still a project.
  *
  * EXAMPLE
  *   const { findRoot } = require('./tpm-session-paths');
- *   const root = findRoot({ startDir: __dirname, marker: 'CLAUDE.md' });
+ *   const root = findRoot({ startDir: __dirname, marker: '.claude/claude-tpm' });
  */
 
 'use strict';
@@ -23,7 +28,7 @@
 const fs = require('fs');
 const path = require('path');
 
-function findRoot({ startDir, marker = 'CLAUDE.md' } = {}) {
+function findRoot({ startDir, marker = path.join('.claude', 'claude-tpm') } = {}) {
   let dir = path.resolve(startDir || process.cwd());
   // eslint-disable-next-line no-constant-condition
   while (true) {

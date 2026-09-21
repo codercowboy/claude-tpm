@@ -46,13 +46,13 @@ behavior is on, where notes live and what the boot/close messages say.
   - `session.notes.enabled` gates ONLY the notes-writing behavior, independent of the outer flag:
     "bootstrap TPM's session lifecycle but keep my own notes system." `open`/`close`/`save` still run
     their non-notes steps (reading chain, boot-read pickup, reap, MOTD, sign-off) when this is `false`;
-    they just skip every write to the session's three files (`session-NNN/handoff.md`, `punchlist.md`,
-    `session-notes.md`).
+    they just skip every write to the session's record (`session-NNNN/session-NNNN.json` + its derived
+    `session-NNNN.md`).
   - Both default `true`; setting neither changes nothing for an existing project. (This is the fix for
     a self-contradictory single flag whose own prose used to claim "keep the lifecycle, disable the
     notes." A boolean cannot express that; nesting `notes.enabled` can.)
-- Full design: `claude-context/methodology/session-notes-format.md` (the three-file session-memory
-  format — `handoff.md` + `punchlist.md` + `session-notes.md`).
+- Full design: `claude-context/methodology/session-notes-format.md` (the JSON-first session-memory
+  format — one canonical `session-NNNN.json` + a derived `session-NNNN.md`).
 
 ---
 
@@ -176,10 +176,10 @@ the defaults," and the system is ON.
   "tasksDir": ".claude/claude-tpm/tasks",        // store location; a project may repoint it (e.g. "claude-context/tasks")
   "startId": 1000,                              // first task number (monotonic, never reused)
   "bucketSize": 1000,                           // body-folder bucketing (bodies/1000-1999/, …)
-  "defaultOrder": "newest",                     // list sort when --order omitted: newest|oldest|id|state
+  "defaultOrder": "newest",                     // fixed list sort (newest|oldest|id|state); there is no --order flag
   "defaultListState": ["open", "in-progress"],  // the pool `list` shows by default
   "timezone": "local",                          // created/ended stamps + age computation
-  "exportDir": "tmp",                           // default destination dir for `export` (auto-timestamped file)
+  "exportDir": "tmp",                           // resolved but NOT read by the export tool — export defaults to stdout; pass --out
   "allowHardDelete": true,                      // false ⇒ `remove` can only stash, never hard-delete
   "maxOpenWarn": 50,                            // soft stderr nudge when the open list exceeds this
   "autoConfirm": { "finish": false, "drop": false }, // may skip the confirm dialogue for these two only

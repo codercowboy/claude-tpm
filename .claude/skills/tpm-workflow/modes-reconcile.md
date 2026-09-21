@@ -1,5 +1,8 @@
 # `reconcile` mode — per-phase reconcile → `00-epic-plan/` update → epic-close
 
+> In this file, `%TPM_HOME%` is the claude-tpm **installation home** — it is NOT always
+> `<project>/node_modules/@codercowboy/claude-tpm`. If you need its actual value, run `npx tpm resolve-home`.
+
 Two scopes: the **per-phase reconcile** (after each phase's verify settles — the natural
 auto-checkpoint) and the **epic-close ritual** (the one user-gated hand-back at the end of the train).
 **NOTHING promotes mid-epic** — promotion happens only at epic-close.

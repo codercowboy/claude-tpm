@@ -205,7 +205,7 @@ function cleanEpicPlan(root) {
   try { stdout = execFileSync('node', [TOOL, '--help'], { encoding: 'utf8' }); }
   catch (e) { status = e.status; }
   ok(status === 0, `--help exits 0 (got ${status})`);
-  ok(/usage: tpm-workflow-audit\.js/.test(stdout), '--help prints usage');
+  ok(/usage: npx tpm workflow audit/.test(stdout), '--help prints usage');
 })();
 
 // ===========================================================================

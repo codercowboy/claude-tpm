@@ -11,7 +11,7 @@ run it as a formal round, see below).
 > copy-then-modify, no hardcoded paths) — read that too.
 
 claude-tpm is the reference implementation of everything below; when a detail is unclear, open the real
-files (`tools/tpm.js`, `.claude-plugin/{plugin,marketplace}.json`, `.claude/skills/*/SKILL.md`,
+files (the `tpm` bin dispatcher under `tools/`, `.claude-plugin/{plugin,marketplace}.json`, `.claude/skills/*/SKILL.md`,
 `package.json`) and mirror them.
 
 ---
@@ -378,7 +378,7 @@ Route the trace through STDOUT deliberately (see 10.4) and keep the writer a no-
 Install bugs are exquisitely sensitive to *how* the tool was invoked. These are not interchangeable, and a
 green run on one proves nothing about another:
 
-- **`node tool.js` vs `npx <cli> …` vs a dispatcher.** A `jbc`/`tpm`-style bin dispatches to the installer
+- **A bare script invocation vs `npx <cli> …` vs a dispatcher.** A `jbc`/`tpm`-style bin dispatches to the installer
   via `spawnSync('node', [installer], { stdio:'inherit' })`, and `npx` adds yet another node layer. The
   installer then runs as a *child* that inherits the terminal — a different process/TTY topology than
   running the script directly. Reproduce the invocation the user actually typed.

@@ -82,7 +82,7 @@ function arg(name, def) {
 if (arg('help') === true || arg('h') === true ||
     process.argv.includes('--help') || process.argv.includes('-h')) {
   // Print the header docstring's usage block.
-  console.log('tpm-workflow-cost-ledger.js (v2) — append a subagent cost row, print a total, or roll up an epic.');
+  console.log('npx tpm workflow cost (v2) — append a subagent cost row, print a total, or roll up an epic.');
   console.log('');
   console.log('Targets (exactly one required):');
   console.log('  --dir <path>        flat round ledger at <path>/tmp/cost-ledger.md');

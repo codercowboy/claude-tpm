@@ -118,7 +118,7 @@ When you invoke the session open skill, claude will show you what it's doing:
 > 
 > Task queue: ~40 open, newest #1090 (GitHub-ready publish prep, 3/6) and #1088 (node xyz.js → npx docs).
 > 
-> You are in session 019 — claude-context/sessions/session-019/ (no session-notes.md yet; written on first save). SessionId 296ac893. 19 sessions total.
+> You are in session 019 — claude-context/sessions/session-019/ (no session-0019.json yet; written on first save). SessionId 296ac893. 19 sessions total.
 > 
 > What are we working on?
 
@@ -126,7 +126,7 @@ Once claude is finished loading the `claude-tpm` framework, just talk to claude 
 
 > hey claude, pretend i'm a brand new user who's never used claude-tpm before, can you tell me why I'd use it? what does it do?
 
-Claude will respond hapilly and help you understand how to use `claude-tpm`, here's a typical response:
+Claude will respond happily and help you understand how to use `claude-tpm`, here's a typical response:
 
 > Happy to. Here's the newcomer pitch for claude-tpm (TPM = Technical Program Manager).
 > 
@@ -144,7 +144,7 @@ Claude will respond hapilly and help you understand how to use `claude-tpm`, her
 > 
 > What it gives you:
 > 
-> Session lifecycle & memory (tpm-session) — open boots and loads prior state; save checkpoints durable notes; close wraps up. Your "where we are / what's next" survives across sessions in session-notes.md. This is the backbone.
+> Session lifecycle & memory (tpm-session) — open boots and loads prior state; save checkpoints durable notes; close wraps up. Your "where we are / what's next" survives across sessions in the canonical session-NNNN.json (+ derived .md). This is the backbone.
 > 
 > A task ledger (tpm-task) — a lightweight, hand-editable shared to-do list you and Claude both read (add, list, start, finish, subtasks). Not a heavyweight issue tracker — just skimmable shared memory of work.
 > 

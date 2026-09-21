@@ -67,28 +67,21 @@
 
 const fs = require('fs');
 const path = require('path');
+// #1133 — shared root resolver (deliberate cross-suite exception; see findProjectRoot below).
+const { findRoot } = require('../lib/paths');
 
 const SUPPORTED_VERSION = 1;
 
 // ---------------------------------------------------------------------------
-// Root resolution (suite-local helper, duplicated per tool-conventions.md —
-// no shared project-paths module). Walks upward from startDir looking for a
-// CLAUDE.md marker file; falls back to startDir if none is found anywhere
-// up the tree.
+// Root resolution. DELIBERATE shared-lib exception (#1133): root/marker
+// detection is shared via tools/lib/paths.js so ALL suites (task, session,
+// workflow) resolve the project root identically and cannot drift on the
+// marker — it keys on the `.claude/claude-tpm/` install footprint. This one
+// safety-relevant primitive overrides tool-conventions §6's "no shared tool
+// lib" guidance (a scoped, documented break — the convention stays as-is).
 // ---------------------------------------------------------------------------
-function findProjectRoot(startDir, marker = 'CLAUDE.md') {
-  let dir = path.resolve(startDir);
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    if (fs.existsSync(path.join(dir, marker))) {
-      return dir;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) {
-      return path.resolve(startDir); // no marker found anywhere up the tree
-    }
-    dir = parent;
-  }
+function findProjectRoot(startDir) {
+  return findRoot({ startDir });
 }
 
 // ---------------------------------------------------------------------------
@@ -107,7 +100,7 @@ function findProjectRoot(startDir, marker = 'CLAUDE.md') {
 //
 // RELOCATABLE: the DEFAULT charter home resolves to an ABSOLUTE path anchored at the
 // BUNDLE (this file lives at `<bundle>/tools/workflow/tpm-workflow-config-resolver.js`, so up 2 =
-// bundle root — same self-location trick as tools/consumer/hooks/expand-tpm-home.js).
+// bundle root — same self-location trick as tools/tpm-home.js).
 // Why: a CONSUMER install vendors the bundle under node_modules/@codercowboy/claude-tpm/,
 // and scaffold-subagent resolves a RELATIVE charterFile against the CONSUMER's projectRoot
 // — where the charters don't exist → a placeholder charter for every phase (found live in
@@ -423,7 +416,7 @@ function main() {
   }
 
   if (!args.json && !args.validate && !args.get) {
-    process.stderr.write('tpm-workflow-config-resolver.js: nothing to do — pass one of --json / --get / --validate.\n\n');
+    process.stderr.write('tpm workflow config: nothing to do — pass one of --json / --get / --validate.\n\n');
     printHelp();
     process.exit(1);
   }

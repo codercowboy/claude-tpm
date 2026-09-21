@@ -34,8 +34,8 @@
  *
  * CLI
  *   --config <path>   Optional. Defaults to <projectRoot>/.claude/claude-tpm/config.json,
- *                      where <projectRoot> is found by walking up from cwd for a CLAUDE.md
- *                      marker. A default location that doesn't exist resolves to defaults,
+ *                      where <projectRoot> is found by walking up from cwd for a
+ *                      `.claude/claude-tpm/` marker. A default location that doesn't exist resolves to defaults,
  *                      not an error. An EXPLICIT --config path that doesn't exist IS a
  *                      friendly error + exit 1.
  *   --json             Print the resolved `session` config as JSON.
@@ -68,6 +68,11 @@
 const fs = require('fs');
 const path = require('path');
 const { findRoot } = require('./tpm-session-paths');
+
+// The project-root MARKER: the `.claude/claude-tpm/` install-footprint DIRECTORY (created by the
+// installer's ensureConsumerConfig). REPLACED the earlier CLAUDE.md marker (#02-marker-scope) so a
+// consumer with the footprint but no CLAUDE.md is still recognised as a project root.
+const PROJECT_MARKER = path.join('.claude', 'claude-tpm');
 
 // The claude-tpm modules that carry a top-level `<module>.enabled` flag in config.json.
 // Every module is ON by default (config-guide.md §"Turning a module OFF"): an absent section,
@@ -141,7 +146,7 @@ function mergeSessionConfig(rawSession) {
  */
 function resolveSessionConfig(configPathArg, opts = {}) {
   const startDir = opts.startDir || process.cwd();
-  const projectRoot = findRoot({ startDir, marker: 'CLAUDE.md' });
+  const projectRoot = findRoot({ startDir, marker: PROJECT_MARKER });
   const usedDefaultLocation = !configPathArg;
   const configPath = configPathArg
     ? path.resolve(configPathArg)
@@ -192,7 +197,7 @@ function resolveSessionConfig(configPathArg, opts = {}) {
  */
 function readModuleEnablement(configPathArg, opts = {}) {
   const startDir = opts.startDir || process.cwd();
-  const projectRoot = findRoot({ startDir, marker: 'CLAUDE.md' });
+  const projectRoot = findRoot({ startDir, marker: PROJECT_MARKER });
   const usedDefaultLocation = !configPathArg;
   const configPath = configPathArg
     ? path.resolve(configPathArg)
@@ -232,6 +237,59 @@ function readModuleEnablement(configPathArg, opts = {}) {
 function sessionsDirAbs(resolved, projectRoot) {
   const dir = (resolved && resolved.notes && resolved.notes.sessionsDir) || getDefaults().notes.sessionsDir;
   return path.isAbsolute(dir) ? dir : path.join(projectRoot, dir);
+}
+
+/**
+ * resolveSessionsDir(flagValue, configPathArg, opts) -> { sessionsDir, source, configPath }  (F4 / #1132)
+ *
+ * The ONE store-dir resolver every session VERB uses so `--sessions-dir` can be OMITTED. Precedence
+ * (#1132 — arg > env > local config > project-local default; matches #1078's resolve() spec):
+ *   1. explicit `--sessions-dir` flag         (source: 'flag')    — always wins.
+ *   2. `TPM_SESSIONS_DIR` environment variable (source: 'env')    — an explicit operator opt-in.
+ *   3. the LOCAL project's config.json          (source: 'config') — a `.claude/claude-tpm/`-marked
+ *      project root whose `.claude/claude-tpm/config.json` exists; its `session.notes.sessionsDir` is used.
+ *   4. project-local DEFAULT                     (source: 'default')— inside a `.claude/claude-tpm/`-marked
+ *      project with no config.json: `<root>/.claude/claude-tpm/sessions` (getDefaults().notes.sessionsDir under root).
+ *   5. FAIL LOUD                                                   — no flag, no env, AND no project marker.
+ *
+ * SAFETY — why `--sessions-dir` used to be mandatory: we NEVER silently fall back to a global/home/
+ * live store. The `default` (item 4) is only permitted when a real project marker (the
+ * `.claude/claude-tpm/` install footprint) is present, and it is a PROJECT-RELATIVE path resolved UNDER
+ * that marked root — inherently scoped to this project, never an absolute/global/live path. `findRoot`
+ * FALLS BACK to cwd when no `.claude/claude-tpm/` marker is found, so a bare cwd that merely happens to
+ * hold a stray config.json is NOT a project —
+ * the marker must be present (unless an explicit `--config` was passed by hand). `TPM_SESSIONS_DIR`
+ * and `--sessions-dir` MAY point anywhere because setting them is a deliberate operator act.
+ */
+function resolveSessionsDir(flagValue, configPathArg, opts) {
+  const options = opts || {};
+  // 1. explicit flag — always wins.
+  if (flagValue) return { sessionsDir: flagValue, source: 'flag', configPath: null };
+  // 2. environment variable — an explicit operator opt-in (like the flag); may point anywhere.
+  const env = options.env || process.env;
+  if (env && env.TPM_SESSIONS_DIR) return { sessionsDir: env.TPM_SESSIONS_DIR, source: 'env', configPath: null };
+
+  // 3/4 → resolve from the local project (throws ENOENT for an explicit missing --config).
+  const res = resolveSessionConfig(configPathArg, options);
+  const markerFound = configPathArg
+    ? true
+    : fs.existsSync(path.join(res.projectRoot, PROJECT_MARKER));
+  if (res.configExists && markerFound) {
+    // 3. a local project config.json → its resolved sessionsDir (a user value, or the built-in default).
+    return { sessionsDir: sessionsDirAbs(res.resolved, res.projectRoot), source: 'config', configPath: res.configPath };
+  }
+  if (markerFound) {
+    // 4. inside a real project (`.claude/claude-tpm/` marker) but no config.json → SAFE project-local default.
+    return { sessionsDir: sessionsDirAbs(getDefaults(), res.projectRoot), source: 'default', configPath: null };
+  }
+  // 5. no flag, no env, no project marker → FAIL LOUD. NEVER default to a live store.
+  const err = new Error(
+    '--sessions-dir is required: pass --sessions-dir <dir>, set TPM_SESSIONS_DIR, or run inside a ' +
+    'project (a `.claude/claude-tpm/`-marked root, optionally with a local .claude/claude-tpm/config.json). ' +
+    'Refusing to default to a live store outside any project.',
+  );
+  err.storeResolveFail = true;
+  throw err;
 }
 
 function getDotted(obj, dottedKey) {
@@ -299,7 +357,7 @@ function main() {
   }
 
   if (!args.json && !args.get && !args.sessionsDir && !args.modules) {
-    process.stderr.write('tpm-session-config.js: nothing to do — pass one of --json / --get / --sessions-dir / --modules.\n\n');
+    process.stderr.write('tpm session config: nothing to do — pass one of --json / --get / --sessions-dir / --modules.\n\n');
     printHelp();
     process.exit(1);
   }
@@ -355,6 +413,7 @@ if (require.main === module) {
 
 module.exports = {
   resolveSessionConfig,
+  resolveSessionsDir,
   readModuleEnablement,
   mergeSessionConfig,
   getDefaults,

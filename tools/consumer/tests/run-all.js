@@ -8,8 +8,7 @@
  *   and exits non-zero if anything failed. Mirrors tools/session/tests/run-all.js.
  *
  *   None of these suites spawn the real `claude`/`npm` binaries — they drive the tools' pure helpers
- *   and (for the expand-tpm-home hook / arg flag-guards) pipe payloads or child-process the tool — so
- *   this is safe to run anywhere.
+ *   and (for arg flag-guards) child-process the tool — so this is safe to run anywhere.
  *
  * HOW TO RUN
  *   node tools/consumer/tests/run-all.js
@@ -26,8 +25,8 @@ const SUITES = [
   'tpm-consumer-install/test.js',
   'tpm-consumer-uninstall/test.js',
   'tpm-consumer-lint-skill-refs/test.js',
-  'expand-hook/unit.js',
-  'expand-hook/content-unit.js',
+  // expand-hook/{unit,content-unit}.js retired in #1126 — the %TPM_HOME% resolution hooks they tested
+  // were removed (anchor-first resolution via `npx tpm resolve-home` replaced them).
 ];
 
 function main() {

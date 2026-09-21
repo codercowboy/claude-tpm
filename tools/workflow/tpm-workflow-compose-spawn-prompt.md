@@ -73,17 +73,17 @@ this round a composed verifier prompt FAILed that check.
 ## Usage
 
 ```bash
-node compose-spawn-prompt.js --role builder \
+npx tpm workflow compose --role builder \
   --phase-dir 'dev/epic/02b-lint-compose' \
   --plan plan.md --charter charter-builder.md
 
 # bug-fixer: --verdict is REQUIRED and becomes read-order item 1:
-node compose-spawn-prompt.js --role bug-fixer --phase-dir <p> \
+npx tpm workflow compose --role bug-fixer --phase-dir <p> \
   --plan plan.md --charter charter-bug-fixer.md \
   --verdict findings/verifier-r1-v1-verdict.md
 
 # with optional round/model/env-ritual + write to a file:
-node compose-spawn-prompt.js --role verifier --phase-dir <p> \
+npx tpm workflow compose --role verifier --phase-dir <p> \
   --plan plan.md --charter charter-verifier.md --round 1 --variant 2 \
   --model opus --project-root '/abs/repo/root' --out spawn-prompt-verifier-r1-v2.md
 ```
@@ -137,7 +137,7 @@ Verified: missing `--charter` → `Missing required flag --charter. Run --help f
 ### Minimal builder → stdout
 
 ```bash
-node compose-spawn-prompt.js --role builder \
+npx tpm workflow compose --role builder \
   --phase-dir 'dev/epic/01-thing' --plan plan.md --charter charter-builder.md
 ```
 ```
@@ -163,7 +163,7 @@ Exit `0`.
 ### Bug-fixer → the verdict is read-order item 1 (mechanical handoff)
 
 ```bash
-node compose-spawn-prompt.js --role bug-fixer \
+npx tpm workflow compose --role bug-fixer \
   --phase-dir 'dev/epic/01-thing' --plan plan.md --charter charter-bug-fixer.md \
   --verdict findings/verifier-r1-v1-verdict.md
 ```
@@ -192,7 +192,7 @@ Exit `0`. Omit `--verdict` here and it fails loudly: `Missing required flag --ve
 ### Verifier with round/variant/model/epic/project-root → `--out` file
 
 ```bash
-node compose-spawn-prompt.js --role verifier --phase-dir 'dev/epic/01-thing' \
+npx tpm workflow compose --role verifier --phase-dir 'dev/epic/01-thing' \
   --plan plan.md --charter charter-verifier.md --round 1 --variant 2 \
   --model opus --epic 'demo epic' --project-root '/abs/root' --out composed-verifier.md
 ```
@@ -205,9 +205,9 @@ stderr: `Wrote spawn prompt to composed-verifier.md`. The file contains the head
 ### The poka-yoke round-trip with the linter
 
 ```bash
-node compose-spawn-prompt.js --role builder --phase-dir 'dev/epic/01-thing' \
+npx tpm workflow compose --role builder --phase-dir 'dev/epic/01-thing' \
   --plan plan.md --charter charter-builder.md --out composed-raw.md
-node lint-subagent-prompt.js --file composed-raw.md --sentinels-only
+npx tpm workflow lint --file composed-raw.md --sentinels-only
 ```
 ```
 FAIL: 1 of 3 required directives missing:
@@ -235,7 +235,7 @@ methodology reading chain (`project-workspace.md`, `shared-conventions.md`, `han
 
 ```bash
 # composed WITHOUT --project-root, {{TASK_CONTEXT}} filled with plain task text:
-node lint-subagent-prompt.js --file composed-filled.md \
+npx tpm workflow lint --file composed-filled.md \
   --manifest claude-context/methodology/subagent/reading-list.md --charter-dir <dir>
 ```
 ```

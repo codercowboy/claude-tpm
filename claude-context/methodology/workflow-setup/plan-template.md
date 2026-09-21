@@ -72,7 +72,7 @@ Read only what this list names — it is token-scoped on purpose. Standard ancho
 
 ### Task-specific deliverables
 
-{{DELIVERABLES — a bulleted list of the concrete files + paths this round MUST produce. Every item a specific file (e.g. `tools/foo.js`, `findings/01-xyz.md`), never vague ("some analysis"). Every shipped generated artifact must be regenerable from base inputs by a script in `tools/` — no manual steps.}}
+{{DELIVERABLES — a bulleted list of the concrete files + paths this round MUST produce. Every item a specific file (e.g. `tools/foo` tool, `findings/01-xyz.md`), never vague ("some analysis"). Every shipped generated artifact must be regenerable from base inputs by a script in `tools/` — no manual steps.}}
 
 ### Standing deliverables — required on every task
 

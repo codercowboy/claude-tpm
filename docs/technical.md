@@ -179,7 +179,7 @@ The skills are the brains; the `tpm` command-line tool is the hands. It's a Node
           ├── session   → tools/session/tpm-session-router.js   (config · current · notes · review)
           ├── task      → tools/task/tpm-task-router.js          (add · list · show · … · config)
           ├── workflow  → tools/workflow/tpm-workflow-router.js   (scaffold · compose · lint · audit · cost · signoff · doctor · …)
-          └── hooks     → tools/hooks/tpm-hooks-router.js         (gate-spawn · expand-tpm-home)
+          └── hooks     → tools/hooks/tpm-hooks-router.js         (gate-spawn)
 
    flat consumer aliases (NOT suites — they map straight to a script):
           ├── install    → tools/consumer/tpm-consumer-install.js
@@ -195,7 +195,7 @@ The four suites are `session`, `task`, `workflow`, and `hooks`. On top of those 
 
 ### Self-locating, no environment variables
 
-The design goal that shapes all of this: **nothing in the `tpm …` chain needs `%TPM_HOME%` or any env var.** Every router self-locates its own scripts relative to `__dirname`. You can run `npx tpm …` from anywhere, in any consumer project, and it finds its own pieces. No setup step, no shell rc edits, no "did you export the path?" support questions. The one place a `%TPM_HOME%` placeholder *does* appear is in read-tool paths inside spawn prompts, and there's a hook that resolves it (see [Hooks](#hooks) below).
+The design goal that shapes all of this: **nothing in the `tpm …` chain needs `%TPM_HOME%` or any env var.** Every router self-locates its own scripts relative to `__dirname`. You can run `npx tpm …` from anywhere, in any consumer project, and it finds its own pieces. No setup step, no shell rc edits, no "did you export the path?" support questions. The one place a `%TPM_HOME%` placeholder *does* appear is in read-path references inside spawn prompts and skills, and resolution there is **anchor-first**: a reader runs `npx tpm resolve-home` once, treats the printed absolute path as `%TPM_HOME%`, and resolves any `%TPM_HOME%/…` reference against it — no hook required (see [Hooks](#hooks) below).
 
 ---
 
@@ -254,12 +254,11 @@ The `tpm uninstall` reverses all of it (plugin uninstall → marketplace remove 
 
 ## Hooks
 
-claude-tpm auto-wires two [PreToolUse hooks](https://docs.claude.com/en/docs/claude-code/hooks) through `hooks/hooks.json` - no hand-wiring in the consumer's `settings.json`. Both are invoked by the harness under stable, path-independent `npx tpm hooks <verb>` commands, and the `hooks` suite router forwards the harness's payload/stdout/exit-code through unchanged.
+claude-tpm auto-wires a single [PreToolUse hook](https://docs.claude.com/en/docs/claude-code/hooks) through `hooks/hooks.json` - no hand-wiring in the consumer's `settings.json`. It's invoked by the harness under a stable, path-independent `npx tpm hooks <verb>` command, and the `hooks` suite router forwards the harness's payload/stdout/exit-code through unchanged.
 
 - **`gate-spawn`** - matches `Agent|Task` (the spawn tools). It's the **spawn gate**: it blocks a marked subagent spawn that fails the sign-off check. This is the enforcement behind "you can't fire off a formal round without the recorded two-token sign-off." The gate reads the sign-off ledger (`tpm-workflow-signoff.js`) and refuses a marked spawn that hasn't been signed off. Script: `tools/workflow/hooks/tpm-workflow-gate-spawn.js`.
-- **`expand-tpm-home`** - matches `Read|Glob|Grep|NotebookRead` (the read family). It resolves the `%TPM_HOME%/…` bundle placeholder in read-tool paths to the real bundle location, self-located from `__dirname`. It's **read-family only**, does containment checking, and **fails open**: if anything goes sideways, it gets out of the way rather than blocking your read. Script: `tools/consumer/hooks/expand-tpm-home.js`.
 
-That `%TPM_HOME%` placeholder is how spawn prompts can reference bundle docs without knowing where the bundle physically lives: the prompt says `%TPM_HOME%/claude-context/methodology/…`, and the hook rewrites it to the real path at read time. It's the one env-var-shaped thing in the system, and it exists so the *rest* of the system can stay env-var-free.
+**`%TPM_HOME%` resolution is anchor-first, not hooked.** Earlier builds resolved the `%TPM_HOME%/…` bundle placeholder with a token-rewriting hook on the read family; those hooks were **retired in #1126**. Today a reader resolves the bundle explicitly: run **`npx tpm resolve-home`** (an alias of `tpm home`; self-locating from `__dirname`, works in every permission mode including `--dangerously-skip-permissions`) — the printed absolute path **is** `%TPM_HOME%`, and any `%TPM_HOME%/…` path resolves against it. `npx tpm doc <bundle-relative-path>` stays as a convenience that prints a bundle doc with its in-content tokens already resolved. This keeps the *rest* of the system env-var-free without a hook firing on every read.
 
 ---
 

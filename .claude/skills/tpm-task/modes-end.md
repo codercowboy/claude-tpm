@@ -10,7 +10,7 @@ before mutating. The tool moves the index line and stamps the body; you own the 
 add → [ OPEN #N ] ──start──▶ in-progress   (stays in task-index.md; State flips)
            │  ──finish──▶ finished-tasks-index.md  (state finished, +End action)
            │  ──drop────▶ finished-tasks-index.md  (state dropped, +reason)
-           │  ──remove──▶ removed-tasks-index.md   (non-destructive)  ──(--hard, confirmed)──▶ gone
+           │  ──remove──▶ removed-tasks-index.md   (non-destructive)  ──(--hard: config-gated, off by default, confirmed)──▶ gone
   any ended/removed ──reopen──▶ back to OPEN (keeps Created; strips Ended/End action)
 ```
 
@@ -22,9 +22,10 @@ add → [ OPEN #N ] ──start──▶ in-progress   (stays in task-index.md; 
 
 ## Safety rules (enforce BEFORE calling the tool) — §7
 
-1. **Resolve → CONFIRM.** Turn any fuzzy/semantic selector into concrete ids (`tpm-task.js resolve …` for
-   deterministic selectors; read `list`/`show` for semantic ones). **Echo the exact `#`s + headlines**
-   and get a yes before mutating. Never act on a fuzzy selector unconfirmed.
+1. **Resolve → CONFIRM.** Turn any fuzzy/semantic selector into concrete ids — hand a deterministic
+   `<id>`/`<lo>-<hi>` selector straight to the verb; use `tpm task search`/`list`/`show` to resolve
+   fuzzy or semantic asks (there is no `resolve` verb). **Echo the exact `#`s + headlines** and get a
+   yes before mutating. Never act on a fuzzy selector unconfirmed.
 2. **Multi-target selectors** (`last 5`, a range) are ALWAYS listed before acting.
 3. **Echo before mutate** — a mis-parse then surfaces as a visible line to correct, not a silent wrong
    action.
@@ -34,28 +35,30 @@ add → [ OPEN #N ] ──start──▶ in-progress   (stays in task-index.md; 
 
 ## `finish`
 
-`tpm-task.js … finish <id> --action "<what was done>"`. The `--action` text is required (it becomes the
+`npx tpm task finish <id> --action "<what was done>"`. The `--action` text is required (it becomes the
 `End action:` line) — draft a one-line "what was actually done / where it shipped" from the user's
 words. Confirm the id + headline first unless `autoConfirm.finish` is true.
 
 ## `drop`
 
-`tpm-task.js … drop <id> --reason "<why>"`. Stamps `dropped` + `End action: WON'T DO — <reason>`. Draft the
+`npx tpm task drop <id> --reason "<why>"`. Stamps `dropped` + `End action: WON'T DO — <reason>`. Draft the
 reason from the user. Confirm unless `autoConfirm.drop` is true.
 
 ## `remove` — non-destructive by default
 
-- **Default (`tpm-task.js … remove <id>`)** moves the task to the removed stash — say *"stashed to removed,
+- **Default (`npx tpm task remove <id>`)** moves the task to the removed stash — say *"stashed to removed,
   recoverable via `reopen`."* This is the safe default; prefer it.
 - **Hard delete (`--hard`)** only when the user EXPLICITLY says not to stash / to delete permanently.
   First warn, verbatim intent: *"This permanently deletes #<id> with NO stash — unrecoverable. Confirm?"*
-  Only on an explicit yes call `tpm-task.js … remove <id> --hard`. Hard delete is **always** confirmed,
-  regardless of any `autoConfirm`, and is **blocked entirely** when `allowHardDelete: false` (the tool
-  refuses — relay that).
+  Only on an explicit yes call `npx tpm task remove <id> --hard`. Hard delete is **always** confirmed,
+  regardless of any `autoConfirm`. It is also **config-gated and OFF by default**: the tool purges only
+  when `tasks.allowHardDelete: true` — otherwise it **refuses (exit 1), names the key, and touches
+  nothing** (relay that). So on a default-config project `--hard` is unavailable; soft `remove` (stash)
+  is the recoverable path.
 
 ## `reopen`
 
-`tpm-task.js … reopen <id>`. Any ended/removed task → back to `open` (keeps its Created date; strips the now
+`npx tpm task reopen <id>`. Any ended/removed task → back to `open` (keeps its Created date; strips the now
 -stale `Ended:` / `End action:` lines; stamps `Reopened:` as history — G4). Reopening an already-active
 task is a no-op notice. Use `reopen` before re-`finish`/`start`/`drop` on a task the tool refused as a
 nonsensical transition.

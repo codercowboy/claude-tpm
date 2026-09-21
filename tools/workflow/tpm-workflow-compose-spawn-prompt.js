@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * tpm-workflow-compose-spawn-prompt.js - mechanically emit the standard subagent
+ * npx tpm workflow compose - mechanically emit the standard subagent
  * spawn-prompt boilerplate so the orchestrator supplies only the ONE
  * task-specific bit (a `{{TASK_CONTEXT}}` fill sentinel it fills in before
  * spawning). A token-saver + a consistency guard: every prompt gets the same
@@ -25,7 +25,7 @@
  *     that defers entirely to the charter (never the builder default).
  *
  * The emitted `{{TASK_CONTEXT}}` is a real FILL sentinel: run the output back
- * through `tpm-workflow-lint-subagent-prompt.js --sentinels-only` and it will FLAG the
+ * through `npx tpm workflow lint --sentinels-only` and it will FLAG the
  * unfilled placeholder until the orchestrator fills it. That is the poka-yoke
  * loop working as intended.
  *
@@ -244,11 +244,12 @@ function compose(opts) {
   L.push(`${n++}. Your charter: \`${opts.charter}\` — ${profile.charterCue}`);
   L.push(`${n++}. Your plan: \`${opts.plan}\` — the task, the Definition of Done, the specs, the constraints.`);
   L.push(`${n++}. The curated context files the plan's "Context" section names.`);
-  // %TPM_HOME%/ so these resolve for a WORKER in a consumer install too (the content hook / `tpm doc`
-  // resolve the token in the worker's Read; in claude-tpm TPM_HOME="." so it reads the repo root). Bare
-  // paths here dead-ended at the consumer root — every spawned worker got an unresolvable reading chain.
+  // ANCHOR-FIRST resolution (#1126): the token-resolving hooks are retired, so the worker resolves
+  // %TPM_HOME% itself — run `npx tpm resolve-home` once (self-locating, bypass-safe), treat the printed
+  // absolute path AS %TPM_HOME%, then resolve each %TPM_HOME%/… methodology path against it. Bare paths
+  // dead-end at the consumer root; the anchor keeps the chain resolvable in a consumer install too.
   // Shell-inert spelling `%TPM_HOME%` (not `${TPM_HOME}`, which bash would expand to empty on a command line).
-  L.push('Also always read your base methodology chain (always-on conventions): `%TPM_HOME%/claude-context/methodology/project-workspace.md`, `%TPM_HOME%/claude-context/methodology/subagent/handbook.md`, `%TPM_HOME%/claude-context/methodology/shared-conventions.md`, `%TPM_HOME%/claude-context/methodology/tool-conventions.md`, `%TPM_HOME%/claude-context/methodology/troubleshooting.md`, `%TPM_HOME%/claude-context/methodology/verification.md`.');
+  L.push('Also always read your base methodology chain (always-on conventions). FIRST run `npx tpm resolve-home` — its printed absolute path IS `%TPM_HOME%` (the claude-tpm bundle root). THEN read each of these, resolving `%TPM_HOME%` against that path: `%TPM_HOME%/claude-context/methodology/project-workspace.md`, `%TPM_HOME%/claude-context/methodology/subagent/handbook.md`, `%TPM_HOME%/claude-context/methodology/shared-conventions.md`, `%TPM_HOME%/claude-context/methodology/tool-conventions.md`, `%TPM_HOME%/claude-context/methodology/troubleshooting.md`, `%TPM_HOME%/claude-context/methodology/verification.md`.');
   L.push('');
 
   // Verifier carries an explicit HARD RULE independence line (verdict-not-repair).

@@ -33,7 +33,7 @@ roster and ask to confirm rather than inferring it.
 Before treating the argument as a freeform roster, check whether it names one of the **6 shipped teams**.
 If the (normalized) argument is a single team name, expand it to the fixed roster below. **Array order IS
 run order** — the delivery agents each run ONCE, in the listed order, then the verifier checks. These
-rosters + their order are authoritative from `tpm-workflow-config-resolver.js` `getDefaults().teams`; do not reorder or
+rosters + their order are authoritative from the resolved config (`npx tpm workflow config`, the `teams` defaults); do not reorder or
 re-roster them.
 
 | Team | Roster (run order) | Notes |
@@ -131,4 +131,4 @@ own numbered phase folder — no stomping). Do NOT silently pick one.
 
 For each roster slot, run the `tpm-spawn` flow (scaffold → fill `plan.md` → compose → lint → Agent),
 respecting the stage barriers and the intra-stage `--mode`, all in the **background**. Roles + charters
-+ models resolve from `tpm-workflow-config-resolver.js`; each subagent writes ONLY in its own folder.
++ models resolve from the config (`npx tpm workflow config`); each subagent writes ONLY in its own folder.

@@ -363,18 +363,17 @@ check('readPackageJson: absent → {exists:false, value:null, error:null}', () =
 });
 
 // ── parseHooksManifest (2a: hooks-delivery health, pure) ─────────────────────────────────────────────
+// After #1126 gate-spawn is the SOLE auto-wired hook (the %TPM_HOME% resolution hooks were retired), so
+// the real delivered manifest carries only a PreToolUse gate-spawn entry.
 const REAL_MANIFEST = {
   hooks: {
     PreToolUse: [
       { matcher: 'Agent|Task', hooks: [{ type: 'command', command: 'npx tpm hooks gate-spawn' }] },
     ],
-    PostToolUse: [
-      { matcher: 'Read|Grep|Glob', hooks: [{ type: 'command', command: 'npx tpm hooks expand-tpm-home-content' }] },
-    ],
   },
 };
-check('parseHooksManifest: the real hooks.json → both hooks detected', () => {
-  assert.deepStrictEqual(inst.parseHooksManifest(REAL_MANIFEST), { gateSpawn: true, expandContent: true });
+check('parseHooksManifest: the real hooks.json → gate-spawn detected', () => {
+  assert.deepStrictEqual(inst.parseHooksManifest(REAL_MANIFEST), { gateSpawn: true });
 });
 check('parseHooksManifest: matches by substring so a `node …` command form still detects', () => {
   const legacy = { hooks: { PreToolUse: [
@@ -385,19 +384,19 @@ check('parseHooksManifest: matches by substring so a `node …` command form sti
   const routed = { hooks: { PreToolUse: [{ hooks: [{ command: 'tpm hooks gate-spawn' }] }] } };
   assert.strictEqual(inst.parseHooksManifest(routed).gateSpawn, true);
 });
-check('parseHooksManifest: only one hook present → the other stays false', () => {
+check('parseHooksManifest: gate-spawn present in PreToolUse → detected', () => {
   const partial = { hooks: { PreToolUse: [{ hooks: [{ command: 'npx tpm hooks gate-spawn' }] }] } };
-  assert.deepStrictEqual(inst.parseHooksManifest(partial), { gateSpawn: true, expandContent: false });
+  assert.deepStrictEqual(inst.parseHooksManifest(partial), { gateSpawn: true });
 });
-check('parseHooksManifest: the content hook is only detected in PostToolUse, not PreToolUse', () => {
-  // A stray content-hook wired under PreToolUse must NOT count — resolution is a PostToolUse concern.
-  const misplaced = { hooks: { PreToolUse: [{ hooks: [{ command: 'npx tpm hooks expand-tpm-home-content' }] }] } };
-  assert.strictEqual(inst.parseHooksManifest(misplaced).expandContent, false);
+check('parseHooksManifest: the retired %TPM_HOME% content hook is NOT detected (no such field)', () => {
+  // The content hook was retired in #1126 — a stray one must not resurrect any field or affect gate-spawn.
+  const stray = { hooks: { PostToolUse: [{ hooks: [{ command: 'npx tpm hooks expand-tpm-home-content' }] }] } };
+  assert.deepStrictEqual(inst.parseHooksManifest(stray), { gateSpawn: false });
 });
-check('parseHooksManifest: garbage/empty input → both false, no throw', () => {
-  assert.deepStrictEqual(inst.parseHooksManifest(null), { gateSpawn: false, expandContent: false });
-  assert.deepStrictEqual(inst.parseHooksManifest({}), { gateSpawn: false, expandContent: false });
-  assert.deepStrictEqual(inst.parseHooksManifest({ hooks: { PreToolUse: 'nope' } }), { gateSpawn: false, expandContent: false });
+check('parseHooksManifest: garbage/empty input → gate-spawn false, no throw', () => {
+  assert.deepStrictEqual(inst.parseHooksManifest(null), { gateSpawn: false });
+  assert.deepStrictEqual(inst.parseHooksManifest({}), { gateSpawn: false });
+  assert.deepStrictEqual(inst.parseHooksManifest({ hooks: { PreToolUse: 'nope' } }), { gateSpawn: false });
 });
 
 // ── bundleHooksHealth (2a: disk read from the target's node_modules) ─────────────────────────────────
@@ -409,13 +408,13 @@ function writeBundleHooks(dir, manifestOrRaw) {
 }
 check('bundleHooksHealth: absent manifest → present:false (degrades to skip)', () => {
   assert.deepStrictEqual(inst.bundleHooksHealth(mkTmp()),
-    { present: false, error: null, gateSpawn: false, expandContent: false });
+    { present: false, error: null, gateSpawn: false });
 });
-check('bundleHooksHealth: real delivered manifest → present + both hooks', () => {
+check('bundleHooksHealth: real delivered manifest → present + gate-spawn', () => {
   const dir = mkTmp();
   writeBundleHooks(dir, REAL_MANIFEST);
   assert.deepStrictEqual(inst.bundleHooksHealth(dir),
-    { present: true, error: null, gateSpawn: true, expandContent: true });
+    { present: true, error: null, gateSpawn: true });
 });
 check('bundleHooksHealth: malformed manifest JSON → present:true + error, hooks false', () => {
   const dir = mkTmp();
@@ -607,6 +606,50 @@ check('runInstall: marketplace already registered but plugin NOT installed → r
   assert.strictEqual(typeof r.status, 'number', 'exits with a real integer code, never null');
   assert.ok(!/exited null/.test(r.out), 'never prints "exited null"');
   assert.ok(/Step 3\/5 — register the claude-tpm marketplace — already done, skipping/.test(r.out), 'marketplace register skips cleanly');
+});
+
+// ── #1132.C: the installer seeds a default config.json (idempotent, never clobbers) ─────────────────
+check('#1132.C: ensureConsumerConfig writes .claude/claude-tpm/config.json with both store-dir keys', () => {
+  const dir = mkTmp();
+  const r = inst.ensureConsumerConfig(dir);
+  assert.strictEqual(r.wrote, true, 'a fresh consumer gets a seeded config');
+  assert.strictEqual(r.reason, 'created');
+  const p = path.join(dir, '.claude', 'claude-tpm', 'config.json');
+  assert.ok(fs.existsSync(p), 'config.json exists at .claude/claude-tpm/');
+  const body = JSON.parse(fs.readFileSync(p, 'utf8'));
+  assert.strictEqual(body.tasks.tasksDir, '.claude/claude-tpm/tasks', 'tasks.tasksDir default');
+  assert.strictEqual(body.session.notes.sessionsDir, '.claude/claude-tpm/sessions', 'session.notes.sessionsDir default');
+});
+
+check('#1132.C: re-install is idempotent — an existing user config is NEVER clobbered', () => {
+  const dir = mkTmp();
+  const cdir = path.join(dir, '.claude', 'claude-tpm');
+  fs.mkdirSync(cdir, { recursive: true });
+  fs.writeFileSync(path.join(cdir, 'config.json'), JSON.stringify({ version: 1, tasks: { tasksDir: 'USER-EDIT' } }, null, 2));
+  const r = inst.ensureConsumerConfig(dir);
+  assert.strictEqual(r.wrote, false, 'does not overwrite');
+  assert.strictEqual(r.reason, 'exists');
+  const body = JSON.parse(fs.readFileSync(path.join(cdir, 'config.json'), 'utf8'));
+  assert.strictEqual(body.tasks.tasksDir, 'USER-EDIT', 'the user value is preserved verbatim');
+});
+
+check('#1132.C: seedConfigDefaults mirrors the resolvers\' project-local defaults', () => {
+  const seed = inst.seedConfigDefaults();
+  assert.strictEqual(seed.tasks.tasksDir, '.claude/claude-tpm/tasks');
+  assert.strictEqual(seed.session.notes.sessionsDir, '.claude/claude-tpm/sessions');
+});
+
+// ── marker-swap: the installer→marker contract — a fresh install produces the `.claude/claude-tpm/`
+// DIRECTORY that the task/session dir-resolvers now detect as the project-root marker. This locks the
+// contract: if ensureConsumerConfig's mkdir were removed, the writeFileSync would ENOENT and this throws.
+check('marker-swap: a fresh install creates the `.claude/claude-tpm/` marker DIRECTORY (detectable by the resolvers)', () => {
+  const dir = mkTmp();
+  const r = inst.ensureConsumerConfig(dir);
+  assert.strictEqual(r.wrote, true, 'a fresh consumer is seeded');
+  const markerDir = path.join(dir, '.claude', 'claude-tpm');
+  assert.ok(fs.existsSync(markerDir), 'the `.claude/claude-tpm/` marker path exists after install');
+  assert.ok(fs.statSync(markerDir).isDirectory(),
+    'the marker is a DIRECTORY (the install footprint the project-root finder keys off)');
 });
 
 cleanup();

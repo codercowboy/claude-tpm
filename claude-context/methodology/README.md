@@ -11,7 +11,7 @@ Which docs you read depends on which actor you are. Two lists own that:
   session-open order. Includes the orchestrator-only docs.
 - **[`subagent/reading-list.md`](./subagent/reading-list.md)** — the subagent's set: a base chain
   plus conditional blocks per spawn flavor (resume / shipping / live-system / verifier). This is the
-  single source of truth for the step-zero reading chain, and `tools/workflow/tpm-workflow-lint-subagent-prompt.js`
+  single source of truth for the step-zero reading chain, and the subagent-prompt lint (`npx tpm workflow lint`)
   parses it directly, so the two cannot drift.
 
 > ⚠️ **Subagents read only the subagent list.** The orchestrator list carries project-management
@@ -30,7 +30,7 @@ Every doc in this folder, by role. The reading lists say *when* to read them; th
 | Doc | What it covers |
 |---|---|
 | [`project-workspace.md`](./project-workspace.md) | Read/write boundaries per actor, canonical `dev/<task>/` layout, scaffolder, naming conventions. |
-| [`shared-conventions.md`](./shared-conventions.md) | Findings-doc format, terse-default communication, resumption protocol, reading heuristics. |
+| [`shared-conventions.md`](./shared-conventions.md) | Findings-doc format, terse-default communication, reading heuristics. (Resumption protocol now lives in the workflow module — `tpm-workflow`/`tpm-spawn`.) |
 | [`tool-conventions.md`](./tool-conventions.md) | Copy-then-modify pattern, `tool-updates.md` / `tool-feedback.md` formats, no-hardcoded-paths directive. |
 | [`troubleshooting.md`](./troubleshooting.md) | What to try when stuck; disaster recovery. |
 | [`verification.md`](./verification.md) | Verifier ground rules (HARD RULE — verifiers never touch the live system under test), on-disk-only inspection, PASS/FAIL evidence format, reproducibility bar, decision logging. |
