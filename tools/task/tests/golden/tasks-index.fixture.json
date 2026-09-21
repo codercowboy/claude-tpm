@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1.0.0",
+  "kind": "task-index",
+  "generatedAt": "2026-09-20T12:40:00-07:00",
+  "nextId": "1124",
+  "startId": "1000",
+  "counts": { "open": 2, "in-progress": 1, "finished": 1, "dropped": 0, "removed": 1 },
+  "tasks": [
+    { "id": "1121", "state": "open", "headline": "Old open task from last week", "labels": ["backlog"],
+      "createdAt": "2026-09-10T09:00:00-07:00", "updatedAt": "2026-09-11T09:00:00-07:00",
+      "subtasks": { "done": 0, "total": 0 }, "path": "bodies/1000-1999/task-1121.json" },
+    { "id": "1119", "state": "in-progress", "headline": "Build the task JSON→human converter", "labels": ["session", "tooling"],
+      "createdAt": "2026-09-19T09:12:00-07:00", "updatedAt": "2026-09-20T11:30:00-07:00",
+      "subtasks": { "done": 1, "total": 3 }, "path": "bodies/1000-1999/task-1119.json" },
+    { "id": "1120", "state": "open", "headline": "Wire the converter into save", "labels": [],
+      "createdAt": "2026-09-20T07:12:00-07:00", "updatedAt": "2026-09-20T07:12:00-07:00",
+      "subtasks": { "done": 0, "total": 2 }, "path": "bodies/1000-1999/task-1120.json" },
+    { "id": "1118", "state": "finished", "headline": "Land the task schema", "labels": ["schema"],
+      "createdAt": "2026-09-18T09:00:00-07:00", "updatedAt": "2026-09-19T18:00:00-07:00",
+      "subtasks": { "done": 4, "total": 4 }, "path": "bodies/1000-1999/task-1118.json" },
+    { "id": "1117", "state": "removed", "headline": "Abandoned experiment", "labels": [],
+      "createdAt": "2026-09-17T09:00:00-07:00", "updatedAt": "2026-09-18T09:00:00-07:00",
+      "subtasks": { "done": 0, "total": 0 }, "path": "bodies/1000-1999/task-1117.json" }
+  ]
+}

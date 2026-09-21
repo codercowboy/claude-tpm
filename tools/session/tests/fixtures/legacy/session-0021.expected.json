@@ -1,0 +1,381 @@
+{
+  "schemaVersion": "1.0.0",
+  "kind": "session",
+  "meta": {
+    "number": "0021",
+    "sessionIds": [],
+    "openedAt": "2026-09-19T09:40:33-07:00",
+    "closedAt": null,
+    "tpmVersion": "0.0.0-legacy"
+  },
+  "handoff": {
+    "where": "Session 0021. TWO epics on the session JSON-first work. EPIC 1 (dev/20260919-session-features/) = COMPLETE + verified: the JSON-first session-tooling is BUILT in the sandbox dev/20260919-session-features/session-tooling/ (12 lib modules + tpm-session-ops.js + tpm-session-export.js + README + refs + tests), 17 suites green, all phases adversarially verified + mutation-proven. It implements #1113 (storage+export), #1115 (import), #1116 (conventions) IN SANDBOX (tickets still open = not promoted). Post-epic this session: #1122.A (export.md wording) + #1122.B (test teardown) DONE (17 suites still green). EPIC 2 (dev/20260920-session-ship-prep/) = SCAFFOLDED, NOT RUN: 6 phases to take the tooling to ready-to-promote. Gate A done (pretask-01.md), ALL plan.md filled, P01 composed + lint PASS.",
+    "next": "RUN the session-ship-prep epic in THIS fresh window. Read dev/20260920-session-ship-prep/00-epic-plan/epic-plan.md FIRST — it has the phase map + a step-by-step RUN GUIDE + the locked decisions. Then run phases 01->06 in order, each: (for P01 the prompt is ALREADY composed+lint-PASS at 01-plan/spawn-prompt-builder-r1.md -> just Gate B + spawn) compose the spawn prompt (fill the surviving {{TASK_CONTEXT}} with the plan's Task para + a WRITE-BOUNDARY OVERRIDE naming dev/20260919-session-features/session-tooling/ as the deliverable), lint (must PASS), Gate B (explicit user go) -> `npx tpm workflow signoff spawn --round <phase-dir> --roster <one-line>` -> spawn via Agent (general-purpose, opus) with the composed prompt VERBATIM (carries the gate marker). Builder returns -> same for the verifier (--role verifier, --verifier lint) -> on PASS reconcile (code builds in-place in session-tooling/, so reconcile = update epic-plan status; no copy) -> on FAIL bug-fixer loop cap 5. Phases: 01-plan (planner) -> 02-number-filename-decouple (#1122.C) -> 03-session-migration (#1114) -> 04-doctor (#1119) -> 05-tests -> 06-docs. Signoff tokens are session-scoped, so THIS fresh session writes its own Gate B tokens (Gate A/scaffolding is already satisfied by the receipt file).",
+    "in_flight": [
+      "NOTHING running. The ship-prep epic is scaffolded but NO phase has been spawned. P01 is composed+lint-PASS and awaiting its Gate B in the fresh window.",
+      "Epic 1's session-tooling is complete + green (17 suites) in the sandbox",
+      "Epic 2 builds ON it."
+    ],
+    "must_not_redo": [
+      "Do NOT re-scaffold session-ship-prep or re-run Gate A — pretask-01.md receipt exists; add-phase is satisfied. Just compose->GateB->spawn per phase.",
+      "Do NOT re-run Epic 1 (dev/20260919-session-features) — it is DONE + verified (17 suites green).",
+      "Migration (#1114 / P03) is OPT-IN + convert-on-demand ONLY — NEVER auto-migrate; the doctor (#1119 / P04) is READ-ONLY (detect + SUGGEST only). This is Jason's explicit safety rule.",
+      "#1122.C (P02): the naive fix (normalize stored meta.number without decoupling the FILENAME) BROKE 4 suites - P02 MUST keep filenames zero-padded (session-<NNNN>.json) and normalize only the stored number. See dev/20260919-session-features/00-epic-plan/decisions.md #1122.C finding.",
+      "Sandbox-only: build into dev/20260919-session-features/session-tooling/; NEVER write ../claude-tpm/**, vendored node_modules/**, or live .claude/claude-tpm/sessions/** (P03 may READ live sessions to learn the old shape, never write). PROMOTION is a separate, explicit later gate (needs a verb-namespace decision + winding down other Claudes) - NOT in this epic.",
+      "Every subagent spawn still needs an explicit Gate B in the fresh window; the spawn hook enforces a fresh same-session token."
+    ],
+    "updatedAt": "2026-09-19T22:00:00-07:00"
+  },
+  "log": [
+    {
+      "seq": 1,
+      "ts": "2026-09-19T09:40:33-07:00",
+      "type": "log",
+      "status": "ADDED",
+      "text": "#21.1 [h5k0gb] Task-system redesign captured as #1106-#1112; #1112 (JSON-first dual-format storage: versioned JSON canonical, human-readable derived, legacy migration) is the BLOCKING foundation - sequence/prioritize before building dependents (#1106/#1107 import halves, #1109 history, #1111 subtasks)"
+    },
+    {
+      "seq": 2,
+      "ts": "2026-09-19T09:40:33-07:00",
+      "type": "log",
+      "status": "ADDED",
+      "text": "#21.2 [22wzfu] RESOLVE blocking discussion on #1106: which task fields are editable via JSON (candidates: title/headline, labels, body, subtasks; NOT lifecycle state) - gates #1106 import + #1112 thin/editable-fields export"
+    },
+    {
+      "seq": 3,
+      "ts": "2026-09-19T09:40:33-07:00",
+      "type": "log",
+      "status": "ADDED",
+      "text": "#21.3 [184udc] New non-task-system tickets this session: #1108 tpm-feedback subsystem (config-gated OFF, lifecycle hooks) + #1110 hygiene nudge to send feedback upstream to codercowboy"
+    },
+    {
+      "seq": 4,
+      "ts": "2026-09-19T09:40:34-07:00",
+      "type": "log",
+      "status": "ADDED",
+      "text": "#21.4 [gfzpwz] CARRY-FORWARD from session 0020 (untouched this session): #1105.B human-at-terminal content-hook test + commit the ../claude-tpm pile (#20.1) + the rest of the %TPM_HOME% investigation - see session-0020 handoff, not re-litigated here"
+    },
+    {
+      "seq": 5,
+      "ts": "2026-09-19T09:40:42-07:00",
+      "type": "decision",
+      "what": "JSON-first storage (#1112) is the foundation; the earlier per-ticket JSON/text EXPORT ideas were consolidated into it and #1106/#1107 re-scoped to IMPORT-only + blocked on #1112",
+      "why": "Avoids duplicated export/format logic across tickets; one versioned canonical JSON with derived human-readable bodies is mechanically cleaner and lets converters handle future format changes + legacy migration"
+    },
+    {
+      "seq": 6,
+      "ts": "2026-09-19T09:40:43-07:00",
+      "type": "decision",
+      "what": "Two SEPARATE per-task JSON sidecars: compact current-config (#1111/#1112 canonical) vs history/audit (#1109)",
+      "why": "Keeps the current-config JSON small/cheap for bulk export+search; history can grow unwieldy so it is only pulled into the FULL export, never thin/human-readable"
+    },
+    {
+      "seq": 7,
+      "ts": "2026-09-19T15:38:50-07:00",
+      "type": "log",
+      "status": "CLOSED",
+      "text": "#21.3 [184udc] New non-task-system tickets this session: #1108 tpm-feedback subsystem (config-gated OFF, lifecycle hooks) + #1110 hygiene nudge to send feedback upstream to codercowboy"
+    },
+    {
+      "seq": 8,
+      "ts": "2026-09-19T15:39:09-07:00",
+      "type": "log",
+      "status": "ADDED",
+      "text": "#21.5 [9i6kxi] EPIC RUNNING (tpm-workflow) 'session-json-tooling' at dev/20260919-session-features/ (8 phases; 00-epic-plan/ is source of truth). Done: P01 plan (build-plan.md), P02 base-lib (built+verified PASS, PROMOTED to session-tooling/lib+tests, 8 suites green). IN FLIGHT: P03 session-model builder (background subagent) building in session-tooling/. NEXT after P03: verify->reconcile->P04 converter, P05 export-router, P06 session-ops+import, P07 tests, P08 docs. Each phase needs its own Gate B (explicit user go); spawn hook enforces a fresh token. SANDBOX ONLY - never write ../claude-tpm, node_modules copy, or live sessions; PROMOTION to ../claude-tpm is a SEPARATE gated step, NOT in this epic."
+    },
+    {
+      "seq": 9,
+      "ts": "2026-09-19T15:39:09-07:00",
+      "type": "log",
+      "status": "ADDED",
+      "text": "#21.6 [0khckw] SPECS LOCKED for #1113: dev/20260919-session-features/json-format-spec.md (schema+editable-table) + export-spec.md (human render+export surface). Decisions O1-O4 + Q0-Q5 resolved; key ones: Q0 RUNTIME shared base lib (deliberate exception to tool-conventions -> #1121 documents it); meta rename (was 'session', kind-collision); arrays for multi-value (#1116); local-offset timestamps; C1 load path = read->migrate->validate; C2 dir-fsync-after-rename deferred to promote/#1117."
+    },
+    {
+      "seq": 10,
+      "ts": "2026-09-19T15:39:10-07:00",
+      "type": "log",
+      "status": "ADDED",
+      "text": "#21.7 [9zcmgg] Tickets this session: filed #1113-#1121 (session storage, migration, import, JSON conventions, tool-methodology durable-write+sweep, PRD sweep, doctor, concurrency, shared-lib exception); #1106/#1107 re-scoped to import-only + blocked on #1112; #1109/#1111 sidecar notes; #1092 REOPENED (search, too-narrow supersede undone); #1101 FINISHED (superseded by #1115)."
+    },
+    {
+      "seq": 11,
+      "ts": "2026-09-19T15:39:20-07:00",
+      "type": "decision",
+      "what": "Locked the #1113 session-storage specs and kicked off the 'session-json-tooling' tpm-workflow epic (8 phases, full team spread across trains, sandbox-only build)",
+      "why": "Big system change; nail the data-store format first, build incrementally with a builder+verifier per train, promote to ../claude-tpm only on explicit go so live sessions elsewhere don't break"
+    },
+    {
+      "seq": 12,
+      "ts": "2026-09-19T15:39:21-07:00",
+      "type": "decision",
+      "what": "Q0: a RUNTIME shared base lib between session (#1113) + task (#1112) suites, a deliberate exception to tool-conventions' no-shared-lib rule",
+      "why": "User chose true runtime sharing over copy-vendor; exception must be documented in tool-conventions (#1121). P02 base lib built+verified on this basis"
+    },
+    {
+      "seq": 13,
+      "ts": "2026-09-19T17:54:38-07:00",
+      "type": "log",
+      "status": "CLOSED",
+      "text": "#21.5 [9i6kxi] EPIC RUNNING (tpm-workflow) 'session-json-tooling' at dev/20260919-session-features/ (8 phases; 00-epic-plan/ is source of truth). Done: P01 plan (build-plan.md), P02 base-lib (built+verified PASS, PROMOTED to session-tooling/lib+tests, 8 suites green). IN FLIGHT: P03 session-model builder (background subagent) building in session-tooling/. NEXT after P03: verify->reconcile->P04 converter, P05 export-router, P06 session-ops+import, P07 tests, P08 docs. Each phase needs its own Gate B (explicit user go); spawn hook enforces a fresh token. SANDBOX ONLY - never write ../claude-tpm, node_modules copy, or live sessions; PROMOTION to ../claude-tpm is a SEPARATE gated step, NOT in this epic."
+    },
+    {
+      "seq": 14,
+      "ts": "2026-09-19T17:54:39-07:00",
+      "type": "log",
+      "status": "CLOSED",
+      "text": "#21.6 [0khckw] SPECS LOCKED for #1113: dev/20260919-session-features/json-format-spec.md (schema+editable-table) + export-spec.md (human render+export surface). Decisions O1-O4 + Q0-Q5 resolved; key ones: Q0 RUNTIME shared base lib (deliberate exception to tool-conventions -> #1121 documents it); meta rename (was 'session', kind-collision); arrays for multi-value (#1116); local-offset timestamps; C1 load path = read->migrate->validate; C2 dir-fsync-after-rename deferred to promote/#1117."
+    },
+    {
+      "seq": 15,
+      "ts": "2026-09-19T17:54:39-07:00",
+      "type": "log",
+      "status": "CLOSED",
+      "text": "#21.7 [9zcmgg] Tickets this session: filed #1113-#1121 (session storage, migration, import, JSON conventions, tool-methodology durable-write+sweep, PRD sweep, doctor, concurrency, shared-lib exception); #1106/#1107 re-scoped to import-only + blocked on #1112; #1109/#1111 sidecar notes; #1092 REOPENED (search, too-narrow supersede undone); #1101 FINISHED (superseded by #1115)."
+    },
+    {
+      "seq": 16,
+      "ts": "2026-09-19T17:54:39-07:00",
+      "type": "log",
+      "status": "ADDED",
+      "text": "#21.8 [hou5fm] EPIC COMPLETE: session-json-tooling delivered + verified (all 8 phases PASS, 17 test suites green, mutation-proven) in the SANDBOX dev/20260919-session-features/session-tooling/ (12 lib modules + ops/export tools + README + tests). RESERVED: promotion to ../claude-tpm is a separate gated step (NOT done). Full state in 00-epic-plan/{epic-plan,decisions}.md + each phase findings/HANDOFF.md."
+    },
+    {
+      "seq": 17,
+      "ts": "2026-09-19T17:54:40-07:00",
+      "type": "log",
+      "status": "ADDED",
+      "text": "#21.9 [3a6dz3] Small in-sandbox follow-ons to consider before promotion: (1) export.md zero-resolve wording fix [C1, tiny doc]; (2) version-tolerance test migrations-singleton teardown [tiny test-hygiene]; (3) meta.number normalize-on-open [#1119 subset, small code]. Larger/deferred: #1114 migration, #1120 concurrency, #1121 tool-conventions blessed-lib exception (promotion-coupled), #1119 full doctor."
+    },
+    {
+      "seq": 18,
+      "ts": "2026-09-19T17:54:50-07:00",
+      "type": "decision",
+      "what": "Delivered the JSON-first session-tooling as an 8-phase tpm-workflow epic (planner + 5 build trains + tests + docs), autonomously after Gate-B-per-phase then a blanket autonomous grant; 17 suites green, all sandboxed, promotion reserved",
+      "why": "Validated the full tpm-workflow round machinery end-to-end AND produced the #1113 tooling; each phase adversarially verified + mutation-proven so 'green' is meaningful; kept ../claude-tpm untouched so live sessions elsewhere are safe"
+    },
+    {
+      "seq": 19,
+      "ts": "2026-09-19T21:18:12-07:00",
+      "type": "log",
+      "status": "CLOSED",
+      "text": "#21.9 [3a6dz3] Small in-sandbox follow-ons to consider before promotion: (1) export.md zero-resolve wording fix [C1, tiny doc]; (2) version-tolerance test migrations-singleton teardown [tiny test-hygiene]; (3) meta.number normalize-on-open [#1119 subset, small code]. Larger/deferred: #1114 migration, #1120 concurrency, #1121 tool-conventions blessed-lib exception (promotion-coupled), #1119 full doctor."
+    },
+    {
+      "seq": 20,
+      "ts": "2026-09-19T21:18:12-07:00",
+      "type": "log",
+      "status": "ADDED",
+      "text": "#21.10 [c5eeg2] Follow-on polish formalized as task #1122 (session-tooling pre-promotion polish: A export.md wording, B migrations-singleton test teardown, C meta.number normalize-on-open) — user to decide whether/when to do it. Larger deferred: #1114 migration, #1120 concurrency, #1121 tool-conv exception, #1119 doctor."
+    },
+    {
+      "seq": 21,
+      "ts": "2026-09-19T21:44:06-07:00",
+      "type": "log",
+      "status": "CLOSED",
+      "text": "#21.10 [c5eeg2] Follow-on polish formalized as task #1122 (session-tooling pre-promotion polish: A export.md wording, B migrations-singleton test teardown, C meta.number normalize-on-open) — user to decide whether/when to do it. Larger deferred: #1114 migration, #1120 concurrency, #1121 tool-conv exception, #1119 doctor."
+    },
+    {
+      "seq": 22,
+      "ts": "2026-09-19T21:44:06-07:00",
+      "type": "log",
+      "status": "ADDED",
+      "text": "#21.11 [94r360] READY TO RUN (fresh window): 'session-ship-prep' epic SCAFFOLDED at dev/20260920-session-ship-prep/ (6 phases: 01-plan, 02-number-filename-decouple #1122.C, 03-session-migration #1114 sessions-only opt-in, 04-doctor #1119+detect/suggest, 05-tests, 06-docs). Gate A DONE (pretask-01.md receipt). ALL plan.md filled. P01 composed+lint PASS (spawn-prompt-builder-r1.md ready). RUN GUIDE + phase map + locked decisions in dev/20260920-session-ship-prep/00-epic-plan/epic-plan.md. Builds into dev/20260919-session-features/session-tooling/. NO promotion, sessions-only, migration is opt-in-never-auto, doctor is read-only detect+suggest."
+    },
+    {
+      "seq": 23,
+      "ts": "2026-09-19T21:44:06-07:00",
+      "type": "log",
+      "status": "ADDED",
+      "text": "#21.12 [skxxqw] #1122 status: A (docs) + B (test teardown) DONE this session (17 suites green); C (meta.number/filename decouple) folded into ship-prep P02 (the naive fix broke 4 suites - must decouple padded filename from stored number)."
+    },
+    {
+      "seq": 24,
+      "ts": "2026-09-19T21:44:19-07:00",
+      "type": "decision",
+      "what": "Scaffolded (not run) the 'session-ship-prep' epic to take the sandbox session-tooling to ready-to-promote; refined so #1114 migration is an opt-in tool and the #1119 doctor only detects+suggests (no auto-migration)",
+      "why": "User will compact tokens and RUN the trains in a fresh window; scaffolding + filled plans + a run guide in epic-plan.md let the fresh session just compose->GateB->spawn per phase. No-auto-migration + read-only-doctor is Jason's explicit safety preference"
+    }
+  ],
+  "punchlist": [
+    {
+      "id": "21.1",
+      "slug": "h5k0gb",
+      "text": "Task-system redesign captured as #1106-#1112; #1112 (JSON-first dual-format storage: versioned JSON canonical, human-readable derived, legacy migration) is the BLOCKING foundation - sequence/prioritize before building dependents (#1106/#1107 import halves, #1109 history, #1111 subtasks)",
+      "state": "open",
+      "createdAt": "2026-09-19T09:40:33-07:00",
+      "events": [
+        {
+          "ts": "2026-09-19T09:40:33-07:00",
+          "op": "add"
+        }
+      ]
+    },
+    {
+      "id": "21.2",
+      "slug": "22wzfu",
+      "text": "RESOLVE blocking discussion on #1106: which task fields are editable via JSON (candidates: title/headline, labels, body, subtasks; NOT lifecycle state) - gates #1106 import + #1112 thin/editable-fields export",
+      "state": "open",
+      "createdAt": "2026-09-19T09:40:33-07:00",
+      "events": [
+        {
+          "ts": "2026-09-19T09:40:33-07:00",
+          "op": "add"
+        }
+      ]
+    },
+    {
+      "id": "21.4",
+      "slug": "gfzpwz",
+      "text": "CARRY-FORWARD from session 0020 (untouched this session): #1105.B human-at-terminal content-hook test + commit the ../claude-tpm pile (#20.1) + the rest of the %TPM_HOME% investigation - see session-0020 handoff, not re-litigated here",
+      "state": "open",
+      "createdAt": "2026-09-19T09:40:34-07:00",
+      "events": [
+        {
+          "ts": "2026-09-19T09:40:34-07:00",
+          "op": "add"
+        }
+      ]
+    },
+    {
+      "id": "21.8",
+      "slug": "hou5fm",
+      "text": "EPIC COMPLETE: session-json-tooling delivered + verified (all 8 phases PASS, 17 test suites green, mutation-proven) in the SANDBOX dev/20260919-session-features/session-tooling/ (12 lib modules + ops/export tools + README + tests). RESERVED: promotion to ../claude-tpm is a separate gated step (NOT done). Full state in 00-epic-plan/{epic-plan,decisions}.md + each phase findings/HANDOFF.md.",
+      "state": "open",
+      "createdAt": "2026-09-19T17:54:39-07:00",
+      "events": [
+        {
+          "ts": "2026-09-19T17:54:39-07:00",
+          "op": "add"
+        }
+      ]
+    },
+    {
+      "id": "21.11",
+      "slug": "94r360",
+      "text": "READY TO RUN (fresh window): 'session-ship-prep' epic SCAFFOLDED at dev/20260920-session-ship-prep/ (6 phases: 01-plan, 02-number-filename-decouple #1122.C, 03-session-migration #1114 sessions-only opt-in, 04-doctor #1119+detect/suggest, 05-tests, 06-docs). Gate A DONE (pretask-01.md receipt). ALL plan.md filled. P01 composed+lint PASS (spawn-prompt-builder-r1.md ready). RUN GUIDE + phase map + locked decisions in dev/20260920-session-ship-prep/00-epic-plan/epic-plan.md. Builds into dev/20260919-session-features/session-tooling/. NO promotion, sessions-only, migration is opt-in-never-auto, doctor is read-only detect+suggest.",
+      "state": "open",
+      "createdAt": "2026-09-19T21:44:06-07:00",
+      "events": [
+        {
+          "ts": "2026-09-19T21:44:06-07:00",
+          "op": "add"
+        }
+      ]
+    },
+    {
+      "id": "21.12",
+      "slug": "skxxqw",
+      "text": "#1122 status: A (docs) + B (test teardown) DONE this session (17 suites green); C (meta.number/filename decouple) folded into ship-prep P02 (the naive fix broke 4 suites - must decouple padded filename from stored number).",
+      "state": "open",
+      "createdAt": "2026-09-19T21:44:06-07:00",
+      "events": [
+        {
+          "ts": "2026-09-19T21:44:06-07:00",
+          "op": "add"
+        }
+      ]
+    },
+    {
+      "id": "21.3",
+      "slug": "184udc",
+      "text": "New non-task-system tickets this session: #1108 tpm-feedback subsystem (config-gated OFF, lifecycle hooks) + #1110 hygiene nudge to send feedback upstream to codercowboy",
+      "state": "done",
+      "createdAt": "2026-09-19T09:40:33-07:00",
+      "events": [
+        {
+          "ts": "2026-09-19T09:40:33-07:00",
+          "op": "add"
+        },
+        {
+          "ts": "2026-09-19T15:38:50-07:00",
+          "op": "close"
+        }
+      ]
+    },
+    {
+      "id": "21.5",
+      "slug": "9i6kxi",
+      "text": "EPIC RUNNING (tpm-workflow) 'session-json-tooling' at dev/20260919-session-features/ (8 phases; 00-epic-plan/ is source of truth). Done: P01 plan (build-plan.md), P02 base-lib (built+verified PASS, PROMOTED to session-tooling/lib+tests, 8 suites green). IN FLIGHT: P03 session-model builder (background subagent) building in session-tooling/. NEXT after P03: verify->reconcile->P04 converter, P05 export-router, P06 session-ops+import, P07 tests, P08 docs. Each phase needs its own Gate B (explicit user go); spawn hook enforces a fresh token. SANDBOX ONLY - never write ../claude-tpm, node_modules copy, or live sessions; PROMOTION to ../claude-tpm is a SEPARATE gated step, NOT in this epic.",
+      "state": "done",
+      "createdAt": "2026-09-19T15:39:09-07:00",
+      "events": [
+        {
+          "ts": "2026-09-19T15:39:09-07:00",
+          "op": "add"
+        },
+        {
+          "ts": "2026-09-19T17:54:38-07:00",
+          "op": "close"
+        }
+      ]
+    },
+    {
+      "id": "21.6",
+      "slug": "0khckw",
+      "text": "SPECS LOCKED for #1113: dev/20260919-session-features/json-format-spec.md (schema+editable-table) + export-spec.md (human render+export surface). Decisions O1-O4 + Q0-Q5 resolved; key ones: Q0 RUNTIME shared base lib (deliberate exception to tool-conventions -> #1121 documents it); meta rename (was 'session', kind-collision); arrays for multi-value (#1116); local-offset timestamps; C1 load path = read->migrate->validate; C2 dir-fsync-after-rename deferred to promote/#1117.",
+      "state": "done",
+      "createdAt": "2026-09-19T15:39:09-07:00",
+      "events": [
+        {
+          "ts": "2026-09-19T15:39:09-07:00",
+          "op": "add"
+        },
+        {
+          "ts": "2026-09-19T17:54:39-07:00",
+          "op": "close"
+        }
+      ]
+    },
+    {
+      "id": "21.7",
+      "slug": "9zcmgg",
+      "text": "Tickets this session: filed #1113-#1121 (session storage, migration, import, JSON conventions, tool-methodology durable-write+sweep, PRD sweep, doctor, concurrency, shared-lib exception); #1106/#1107 re-scoped to import-only + blocked on #1112; #1109/#1111 sidecar notes; #1092 REOPENED (search, too-narrow supersede undone); #1101 FINISHED (superseded by #1115).",
+      "state": "done",
+      "createdAt": "2026-09-19T15:39:10-07:00",
+      "events": [
+        {
+          "ts": "2026-09-19T15:39:10-07:00",
+          "op": "add"
+        },
+        {
+          "ts": "2026-09-19T17:54:39-07:00",
+          "op": "close"
+        }
+      ]
+    },
+    {
+      "id": "21.9",
+      "slug": "3a6dz3",
+      "text": "Small in-sandbox follow-ons to consider before promotion: (1) export.md zero-resolve wording fix [C1, tiny doc]; (2) version-tolerance test migrations-singleton teardown [tiny test-hygiene]; (3) meta.number normalize-on-open [#1119 subset, small code]. Larger/deferred: #1114 migration, #1120 concurrency, #1121 tool-conventions blessed-lib exception (promotion-coupled), #1119 full doctor.",
+      "state": "done",
+      "createdAt": "2026-09-19T17:54:40-07:00",
+      "events": [
+        {
+          "ts": "2026-09-19T17:54:40-07:00",
+          "op": "add"
+        },
+        {
+          "ts": "2026-09-19T21:18:12-07:00",
+          "op": "close"
+        }
+      ]
+    },
+    {
+      "id": "21.10",
+      "slug": "c5eeg2",
+      "text": "Follow-on polish formalized as task #1122 (session-tooling pre-promotion polish: A export.md wording, B migrations-singleton test teardown, C meta.number normalize-on-open) — user to decide whether/when to do it. Larger deferred: #1114 migration, #1120 concurrency, #1121 tool-conv exception, #1119 doctor.",
+      "state": "done",
+      "createdAt": "2026-09-19T21:18:12-07:00",
+      "events": [
+        {
+          "ts": "2026-09-19T21:18:12-07:00",
+          "op": "add"
+        },
+        {
+          "ts": "2026-09-19T21:44:06-07:00",
+          "op": "close"
+        }
+      ]
+    }
+  ]
+}

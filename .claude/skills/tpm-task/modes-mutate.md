@@ -2,32 +2,25 @@
 
 Loaded when the router resolves a content mode. These are the modes with real drafting judgment. The
 mechanics (id allocation, bucketing, index updates) are all the tool's — your job is to author good
-content and stage it as a `--from` payload.
+content and hand it to the tool as flags, or, for `import`, as a per-id JSON object.
 
-## The payload format (what you write to `./tmp/tpm-task/<mode>-<slug>.md`)
+## How content reaches the tool
 
-One task = one block starting with a `# ` heading. Plain markdown — the same shape as a stored body,
-minus the bits the tool stamps (number, State, dates), which it fills in:
+There is no markdown payload file and no `--from` flag. Content goes in as CLI flags; a long body goes
+in from a text file:
 
-```markdown
-# <headline — ≤ ~8 words>
+- **`add` / `edit`** take the fields directly:
+  - `--headline "<≤ ~8 words>"` (required for `add`)
+  - `--summary "<one or two sentences>"`
+  - `--context "<what / why / trigger; cross-refs in backticks>"`
+  - `--label <L>` (repeatable) or `--labels "a,b"`
+  - `--body-txt-file <f> --field summary|context` — read a long summary or context body from a file
+    instead of quoting a multi-line block on the command line.
+- **`import <id>`** takes a per-id JSON object of editable fields (`--file <f.json>` or stdin) — see
+  the `import` section below.
 
-**Summary:** <one or two sentences>
-
-**Context:** <full detail — what / why / trigger, cross-refs in `backticks`>
-
-**Subtasks:**            ← include ONLY for an epic
-- [ ] A. <first subtask>
-- [ ] B. <second subtask>
-```
-
-- **`- **Created:** YYYY-MM-DD`** — include only in an `import` payload when the source text implies a
-  date (per-entry override); otherwise the tool stamps today.
-- **`- **State:** …`** — normally omit (the tool defaults `open`). Present only in an `export` file you
-  re-`import` (so a finished/dropped task round-trips its state).
-- Multiple blocks in one file = a batch (`import`).
-
-Always pass the file with `--from`: `tpm-task.js --tasks-dir <dir> add --from ./tmp/tpm-task/add-rename.md`.
+The tool stamps everything mechanical (id, `State`, dates, history); you never write those. State moves
+ONLY through the lifecycle verbs (`start`/`finish`/`drop`/`remove`/`reopen`), never via `add`/`edit`/`import`.
 
 ## `add`
 
@@ -35,53 +28,71 @@ Always pass the file with `--from`: `tpm-task.js --tasks-dir <dir> add --from ./
    summary + context. Under `minimalTasks: true` (config), context is optional — headline + summary is
    enough for quick capture (G7: the tool is lenient and writes whatever you give it; `minimalTasks` is
    YOUR drafting hint, not a tool gate).
-2. **Detect an epic.** If the work is clearly several discrete steps, propose lettered subtasks and show
-   them for a nod before writing. Don't force subtasks onto a simple task.
-3. Stage the payload → `tpm-task.js … add --from <payload>` → relay the `added #N …` line.
+2. **Detect an epic.** If the work is clearly several discrete steps, propose the subtasks and show them
+   for a nod before writing. `add` itself has no subtask flag — add them after the task exists, either
+   `add-subtask <id> "<text>"` per step or one `import <id>` carrying a `subtasks` array (see `import`).
+   Don't force subtasks onto a simple task.
+3. `tpm task add --headline "…" [--summary "…"] [--context "…"] [--label L]…` → relay the
+   `created task #N` line. For a long summary/context body, pass `--body-txt-file <f> --field
+   summary|context` instead of an inline flag.
 
 ## `edit`
 
-`edit` changes **content fields only** (headline / summary / context / subtasks) — NEVER state (Q9).
-State changes go through `start`/`finish`/`drop`/`remove`/`reopen`.
+`edit` rewrites **editable scalar fields only** — headline / labels / summary / context — NEVER state
+(Q9), and NOT subtasks. State changes go through `start`/`finish`/`drop`/`remove`/`reopen`; subtask
+changes go through `add-subtask` / `check` / `import`.
 
-1. `tpm-task.js … show <id>` to see the current body.
-2. Draft a payload block with ONLY the fields you're changing (omit the rest — the tool leaves an
-   omitted field untouched; supplying `**Subtasks:**` REPLACES the whole subtask list).
-3. `tpm-task.js … edit <id> --from <payload>` → relay.
+1. `tpm task show <id>` to see the current body.
+2. `tpm task edit <id> [--headline …] [--summary …] [--context …] [--label L]…` — pass ONLY the fields
+   you're changing; an omitted field is left untouched. Use `--body-txt-file <f> --field
+   summary|context` for a long body. → relay.
 
-To flip a single checkbox, use `check`, not `edit`. To re-word or re-order subtasks, `edit` with a new
-`**Subtasks:**` block (letters are re-derived A, B, C…).
+To flip a single checkbox use `check`; to append a subtask use `add-subtask`; to rewrite or re-order a
+whole subtask set at once, `import <id>` a JSON object with a `subtasks` array (add `--prune` to drop
+the keys you leave out).
 
-## `import` — convert a free-form file into tasks (the on-ramp)
+## `import` — apply a per-id JSON patch to an existing task
 
-Braindump anywhere, then `/tpm-task import <path>` structures it. Collaborative + non-destructive —
-nothing is written until the user confirms.
+`import <id>` sets one existing task's **editable fields** from a JSON object — `--file <f.json>` or
+piped on stdin. It is the bulk-edit path: change several fields (and the whole subtask set) in one
+write, or round-trip a task through JSON. Per-id and non-destructive to mechanical state.
 
-1. **Read + assess the file.** Compatibility check FIRST: already in / close to our body format →
-   light touch (don't re-draft structured items); free-form prose/bullets → extract candidate tasks.
-2. **Ask the collaboration mode:**
-   - **Piecemeal** — present candidates as a numbered WORKING list (1, 2, 3 … — ephemeral handles, NOT
-     the real `#1000+` ids the tool assigns on write). For each: proposed headline, drafted
-     summary + context, an **inferred created date** (from any date the text implies, else today —
-     shown so the user can correct), and epic detection. Walk keep / edit / skip.
-   - **Best-effort** — convert ALL candidates with best judgment, present the full batch for one
-     review, confirm, write.
-3. **Write via the tool** — accepted candidates → one `tpm-task.js … import --from <payload>` (contiguous
-   id block, single index update). Each accepted block gets its `- **Created:** <date>` line if you
-   inferred one. **Dedup** against existing tasks (`tpm-task.js list`) and warn on likely duplicates before
-   writing.
-4. **Source file left untouched** by default (it's the user's). Offer to annotate/clear only if asked.
+- **Editable fields only.** Keys the tool applies: `headline`, `labels`, `summary`, `context`,
+  `subtasks` (`[{key,text}]`). Mechanical fields (`id` / `state` / timestamps / `history` /
+  `endAction`) are IGNORED even when present — state still moves only through the lifecycle verbs (G3).
+- **Subtasks are keep-missing by default.** Keys you include are set/updated; keys already on the task
+  that you omit are LEFT in place. Pass `--prune` to drop the omitted ones — destructive to the subtask
+  set, so confirm before pruning.
+- **`import --template`** prints a blank editable-fields JSON skeleton to fill in:
 
-Candidate numbers (1, 2, 3) are throwaway — never conflate them with real ids.
+  ```json
+  { "headline": "", "labels": [], "summary": "", "context": "", "subtasks": [ { "key": "A", "text": "" } ] }
+  ```
 
-## `export` — serialize tasks to a file
+Flow: draft the JSON (`tpm task import --template > ./tmp/tpm-task/edit-<id>.json`, then fill in the
+fields you're changing), show it for a nod when it rewrites or prunes a subtask set, then `tpm task
+import <id> --file ./tmp/tpm-task/edit-<id>.json` (add `--prune` to drop omitted subtasks) → relay the
+`applied editable fields to task #<id>` line.
 
-`/tpm-task export <selector> [--out <path>]` → `tpm-task.js … export <selector> [--out <path>] [--state <s>]`.
-Writes selected tasks to ONE markdown file in canonical body format, so **export round-trips back
-through `import`** (the tool reassigns fresh ids on re-import; content is preserved). Default out is
-config-derived (`<exportDir>/tasks-export-<date>.md`, Q4) — the user may name a path with `--out`.
-`--state` widens the pool to reach finished/removed. Read-only against the store.
+> **Bulk-creating tasks from a braindump is a separate flow, not `import`.** `import` patches ONE
+> existing task; to turn a free-form file into new tasks, draft each candidate and `add` it (confirm
+> first, dedup against `tpm task list`).
 
-Examples: `export all` · `export 214-218` · `export 1234,12,1245` · `export tasks about the rename`
-(semantic → you resolve to an id-list first) · `export finished last week` (→ you lower to
-`resolve --state finished --since 7d`, then export that id-list).
+## `export` — serialize tasks
+
+`/tpm-task export <selector> [--out <path>]` → `tpm task export <selector> [--out <path>]`. The router
+sends `export` (and `search`) to `tpm-task-export.js` — **NOT** `tpm-task.js`, which has no `export`
+verb. Emits the selected tasks: default `--human` (rendered bodies) **to stdout** — there is no
+config-derived output path, so pass `--out <dir|file>` to write a file (`--json` for records,
+`--per-file --out <dir>` for one `task-<id>.{json,md}` per task, `--thin` to drop history). Read-only
+against the store.
+
+Selectors (AND together): a **bare `export`** (no selector) = ALL tasks; explicit `<id>` / `<id>,<id>,…`
+/ `<lo>-<hi>` ranges; `--state <s>[,<s>]` (`open|in-progress|finished|dropped|removed` — note `all` is
+NOT a valid `--state` value here, unlike `list`); `--open`/`--closed` sugar; `--label <l>`; `--match
+<text>`; the window flags `--opened-since`/`--updated-since`/`--closed-since <Nd|date>`; and `--last N
+[--by updated|created|closed]`.
+
+Examples: `export` (every task) · `export 214-218` · `export 1234,12,1245` · `export tasks about the
+rename` (semantic → you resolve to an id-list first) · `export finished last week` (→ you lower to
+`export --state finished --closed-since 7d`).

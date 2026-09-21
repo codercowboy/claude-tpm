@@ -1,0 +1,448 @@
+#!/usr/bin/env node
+'use strict';
+/**
+ * tpm-session-ops.js — the node-invokable session OPS + IMPORT tool for `kind:"session"` records
+ * (P06). The capstone that makes the JSON-first session tooling usable end-to-end, against a
+ * SCRATCH or real sessions dir. Composes the blessed shared pieces — it re-implements NONE of the
+ * model / converter / IO primitives:
+ *   - `lib/session-model.js`     · loadSession / saveSession / open / append / punchlist ops / import*
+ *   - `lib/session-converter.js` · render(record, { now }) — the PURE JSON→human converter
+ *
+ * ── OPS (each: load → mutate via the model → saveSession = ATOMIC canonical JSON FIRST, then the
+ *    derived human `.md` regenerated via the converter with `now` bound in a CLOSURE) ──
+ *   open           — mint a fresh session (optionally folding a prior session's open punchlist items,
+ *                    each carried with `fromSession` provenance); writes JSON + .md.
+ *   save           — re-persist the current session (re-stamp handoff.updatedAt, regenerate the .md).
+ *   note           — append ONE log entry (append-only): a plain `log` line OR a `decision`.
+ *   punchlist      — add / close / reopen / drop / carry-in a punchlist item.
+ *   close          — CLOSE-GUARD (#1115 E): REFUSES unless a handoff AND a punchlist are both present,
+ *                    naming what is missing; only then stamps meta.closedAt.
+ *
+ * ── IMPORT (#1115; honors the LOCKED editable table — mechanical fields ignored, state never set
+ *    by import; loosened all-or-none rule = partial file-driven writes allowed, but each write's
+ *    canonical JSON is still ATOMIC) ──
+ *   import-handoff — REPLACE the handoff from a JSON file (handoff obj OR a full session record) OR
+ *                    from a plain TEXT file (raw → handoff `where`; `--next`/`--next-file` supplies
+ *                    the required `next`).
+ *   import-log     — APPEND a log addendum from a TEXT file (append-only; existing entries never
+ *                    rewritten; monotonic seq preserved).
+ *   import-punchlist — ADD/merge punchlist items from a file (JSON array of strings/{text}, or one
+ *                    item per non-empty text line); state is NEVER set by import.
+ *
+ * ── NODE-INVOKABLE, NO BIN (Q5) ──
+ * Runs via bare `node session-tooling/tpm-session-ops.js <verb> …` — there is NO package.json `bin`
+ * / npm-run entry. Programmatic callers `require()` it for the `op*` functions.
+ *
+ * Zero third-party deps; Node built-ins only.
+ */
+const fs = require('fs');
+const path = require('path');
+
+const model = require('./lib/session-model');
+const { render } = require('./lib/session-converter');
+const { nowIsoTz } = require('../lib/timestamp');
+
+// ── paths ────────────────────────────────────────────────────────────────────
+
+// Zero-padded 4-wide session number for on-disk file names (matches the human header's "0021").
+function padNumber(number) {
+  const n = Number(number);
+  return Number.isFinite(n) ? String(n).padStart(4, '0') : String(number == null ? '' : number);
+}
+
+/**
+ * sessionPaths(sessionsDir, number) -> { jsonPath, mdPath }
+ * CANONICAL NESTED layout (json-format-spec A4, Q-F): each session lives in its OWN per-session
+ * folder `<sessionsDir>/session-<NNNN>/`, holding session-<NNNN>.json (canonical) + session-<NNNN>.md
+ * (derived). Zero-padded <NNNN>. The enclosing folder is created (mkdir -p) by `persist` before write.
+ */
+function sessionPaths(sessionsDir, number) {
+  if (!sessionsDir) throw new Error('tpm-session-ops: sessionsDir is required');
+  if (number === undefined || number === null || String(number) === '') {
+    throw new Error('tpm-session-ops: session number is required');
+  }
+  const nnnn = padNumber(number);
+  const sessionDir = path.join(sessionsDir, `session-${nnnn}`);
+  return {
+    jsonPath: path.join(sessionDir, `session-${nnnn}.json`),
+    mdPath: path.join(sessionDir, `session-${nnnn}.md`),
+  };
+}
+
+/**
+ * persist(record, { sessionsDir, number, now, renderFn }) -> record (the persisted record)
+ * The single save path shared by every op: writes the canonical JSON ATOMICALLY first, THEN
+ * regenerates the derived `.md` via the converter with `now` bound in a CLOSURE (P04/P06 concern).
+ */
+function persist(record, opts) {
+  const { sessionsDir, number, now } = opts;
+  const renderFn = typeof opts.renderFn === 'function' ? opts.renderFn : render;
+  const ref = now != null ? now : nowIsoTz();
+  const { jsonPath, mdPath } = sessionPaths(sessionsDir, number);
+  fs.mkdirSync(path.dirname(jsonPath), { recursive: true }); // the per-session folder session-<NNNN>/
+  return model.saveSession(record, {
+    jsonPath,
+    mdPath,
+    render: (r) => renderFn(r, { now: ref }),   // ← the `now` CLOSURE
+  });
+}
+
+// Load the current canonical record for a session (fail-loud via the model's load path).
+function loadCurrent(sessionsDir, number) {
+  const { jsonPath } = sessionPaths(sessionsDir, number);
+  return model.loadSession(jsonPath);
+}
+
+// ── OPS ───────────────────────────────────────────────────────────────────────
+
+/**
+ * opOpen({ sessionsDir, number, sessionId, tpmVersion?, priorSessionPath?, now? }) -> record
+ * Mint a fresh session and persist it. A prior session's still-open punchlist items are carried
+ * forward (same slug, new id, {op:"carry-in", fromSession:<prior number>} event).
+ */
+function opOpen(opts) {
+  const o = opts || {};
+  const record = model.openSession({
+    number: o.number,
+    sessionId: o.sessionId,
+    tpmVersion: o.tpmVersion,
+    priorSessionPath: o.priorSessionPath,
+    priorSession: o.priorSession,
+  });
+  return persist(record, { sessionsDir: o.sessionsDir, number: o.number, now: o.now, renderFn: o.renderFn });
+}
+
+/**
+ * opSave({ sessionsDir, number, now? }) -> record
+ * Re-persist the current session — re-stamps handoff.updatedAt (if present) and regenerates the .md.
+ */
+function opSave(opts) {
+  const o = opts || {};
+  const record = loadCurrent(o.sessionsDir, o.number);
+  return persist(record, { sessionsDir: o.sessionsDir, number: o.number, now: o.now, renderFn: o.renderFn });
+}
+
+/**
+ * opNote({ sessionsDir, number, type?, what?, why?, status?, text?, now? }) -> record  (append-only)
+ * Appends ONE log entry: a `decision` (what/why) or a plain `log` line (status/text). The model
+ * allocates a monotonic seq and stamps ts; existing entries are never rewritten.
+ */
+function opNote(opts) {
+  const o = opts || {};
+  let record = loadCurrent(o.sessionsDir, o.number);
+  record = model.appendLog(record, {
+    type: o.type, what: o.what, why: o.why, status: o.status, text: o.text,
+  });
+  return persist(record, { sessionsDir: o.sessionsDir, number: o.number, now: o.now, renderFn: o.renderFn });
+}
+
+/**
+ * opPunchlist({ sessionsDir, number, action, text?, slug?, idOrSlug?, priorSessionPath?, item?, now? })
+ *   -> record
+ * action: add | close | reopen | drop | carry-in.
+ *   add       — mint a slug + session-prefixed id, state open, {op:"add"}.
+ *   close/reopen/drop — set state via the mechanical op (by id OR slug); append the op event.
+ *   carry-in  — copy a still-OPEN item from a prior session file (`priorSessionPath` + `item` =
+ *               that item's id/slug); SAME slug, NEW id, {op:"carry-in", fromSession:<prior number>}.
+ */
+function opPunchlist(opts) {
+  const o = opts || {};
+  let record = loadCurrent(o.sessionsDir, o.number);
+  switch (o.action) {
+    case 'add':
+      record = model.addPunchlist(record, { text: o.text, slug: o.slug });
+      break;
+    case 'close':
+      record = model.closePunchlistItem(record, o.idOrSlug);
+      break;
+    case 'reopen':
+      record = model.reopenPunchlistItem(record, o.idOrSlug);
+      break;
+    case 'drop':
+      record = model.dropPunchlistItem(record, o.idOrSlug);
+      break;
+    case 'carry-in': {
+      if (!o.priorSessionPath) throw new Error('punchlist carry-in: --from <prior session json> is required');
+      if (!o.item) throw new Error('punchlist carry-in: --item <id|slug> is required');
+      const prior = model.loadSession(o.priorSessionPath);
+      const src = (prior.punchlist || []).find((it) => it.id === o.item || it.slug === o.item);
+      if (!src) throw new Error(`punchlist carry-in: no item matching '${o.item}' in '${o.priorSessionPath}'`);
+      if (src.state !== 'open') throw new Error(`punchlist carry-in: item '${o.item}' is '${src.state}', only OPEN items carry in`);
+      record = model.carryInPunchlist(record, src, prior.meta && prior.meta.number);
+      break;
+    }
+    default:
+      throw new Error(`punchlist: unknown action '${o.action}' (add|close|reopen|drop|carry-in)`);
+  }
+  return persist(record, { sessionsDir: o.sessionsDir, number: o.number, now: o.now, renderFn: o.renderFn });
+}
+
+/**
+ * opClose({ sessionsDir, number, now? }) -> record
+ * CLOSE-GUARD (#1115 E): REFUSES to seal unless a handoff AND a punchlist are BOTH present, naming
+ * what is missing. Only when the guard passes does it stamp meta.closedAt and persist.
+ */
+function opClose(opts) {
+  const o = opts || {};
+  const record = loadCurrent(o.sessionsDir, o.number);
+  assertCloseGuard(record);
+  const closed = model.closeSession(record);
+  return persist(closed, { sessionsDir: o.sessionsDir, number: o.number, now: o.now, renderFn: o.renderFn });
+}
+
+/**
+ * assertCloseGuard(record) -> void   (throws LOUD, naming what is missing)
+ * "present" = handoff is a non-null object; punchlist has at least one item.
+ */
+function assertCloseGuard(record) {
+  const missing = [];
+  const handoffPresent = record && record.handoff !== null && record.handoff !== undefined;
+  const punchlistPresent = record && Array.isArray(record.punchlist) && record.punchlist.length > 0;
+  if (!handoffPresent) missing.push('a handoff');
+  if (!punchlistPresent) missing.push('a punchlist');
+  if (missing.length) {
+    throw new Error(
+      `tpm-session-ops close: refusing to close session — missing ${missing.join(' and ')}. ` +
+      'A session cannot be sealed without a handoff AND at least one punchlist item (#1115 close-guard).',
+    );
+  }
+}
+
+// ── IMPORT (#1115) ──────────────────────────────────────────────────────────────
+
+function readFileText(file) {
+  if (!file) throw new Error('import: a file path is required');
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    throw new Error(`import: cannot read file '${file}': ${e.message}`);
+  }
+}
+
+/**
+ * opImportHandoff({ sessionsDir, number, jsonFile? | txtFile?, next?, nextFile?, inFlight?, mustNotRedo?, now? })
+ *   -> record
+ * REPLACE-semantics. Exactly one source:
+ *   jsonFile — a handoff object OR a full session record (`.handoff` extracted). Editable fields
+ *              only are applied (mechanical fields in the file are IGNORED by importHandoff).
+ *   txtFile  — the raw contents become the handoff `where`; the required `next` comes from `--next`
+ *              or `--next-file`; optional `--in-flight`/`--must-not-redo` (repeatable) fill the arrays.
+ *              (Interpretation of #1115 A "raw → handoff body", RAISED in HANDOFF: replace-semantics
+ *              cannot invent the required `next`, so it must be supplied — we fail loud if absent.)
+ */
+function opImportHandoff(opts) {
+  const o = opts || {};
+  let record = loadCurrent(o.sessionsDir, o.number);
+  let handoffObj;
+
+  if (o.jsonFile && o.txtFile) {
+    throw new Error('import-handoff: pass EITHER --json-file OR --txt-file, not both');
+  }
+  if (o.jsonFile) {
+    let parsed;
+    try {
+      parsed = JSON.parse(readFileText(o.jsonFile));
+    } catch (e) {
+      throw new Error(`import-handoff: '${o.jsonFile}' is not valid JSON: ${e.message}`);
+    }
+    // Accept a bare handoff object OR a full session record with a `.handoff`.
+    handoffObj = (parsed && typeof parsed === 'object' && parsed.handoff && typeof parsed.handoff === 'object')
+      ? parsed.handoff
+      : parsed;
+    if (!handoffObj || typeof handoffObj !== 'object') {
+      throw new Error(`import-handoff: '${o.jsonFile}' has no handoff object`);
+    }
+  } else if (o.txtFile) {
+    const where = readFileText(o.txtFile).replace(/\s+$/, '');   // trim trailing whitespace/newline
+    const next = o.next != null ? o.next : (o.nextFile ? readFileText(o.nextFile).replace(/\s+$/, '') : undefined);
+    if (!next || String(next).trim() === '') {
+      throw new Error(
+        'import-handoff --txt-file: handoff replace also needs a non-empty `next` — pass --next <str> ' +
+        'or --next-file <file> (the required `next` cannot be invented from the where-text alone)',
+      );
+    }
+    handoffObj = { where, next };
+    if (o.inFlight && o.inFlight.length) handoffObj.in_flight = o.inFlight;
+    if (o.mustNotRedo && o.mustNotRedo.length) handoffObj.must_not_redo = o.mustNotRedo;
+  } else {
+    throw new Error('import-handoff: a source is required — --json-file <f> OR --txt-file <f>');
+  }
+
+  record = model.importHandoff(record, handoffObj);   // REPLACE; editable-only; re-stamps updatedAt
+  return persist(record, { sessionsDir: o.sessionsDir, number: o.number, now: o.now, renderFn: o.renderFn });
+}
+
+/**
+ * opImportLog({ sessionsDir, number, txtFile, type?, status?, why?, now? }) -> record   (APPEND-ONLY)
+ * Appends ONE log entry whose body is the raw text file. Default type "log" with `--status` (default
+ * "NOTE"); or type "decision" (`--decision`) whose `what` is the file and `why` from `--why`.
+ * Existing entries are NEVER rewritten (monotonic seq preserved by the model).
+ */
+function opImportLog(opts) {
+  const o = opts || {};
+  let record = loadCurrent(o.sessionsDir, o.number);
+  const body = readFileText(o.txtFile).replace(/\s+$/, '');
+  if (body === '') throw new Error(`import-log: '${o.txtFile}' is empty — nothing to append`);
+  let entry;
+  if (o.type === 'decision') {
+    if (!o.why || String(o.why).trim() === '') throw new Error('import-log --decision: --why <str> is required');
+    entry = { type: 'decision', what: body, why: o.why };
+  } else {
+    entry = { type: 'log', status: o.status || 'NOTE', text: body };
+  }
+  record = model.importLogAddendum(record, [entry]);
+  return persist(record, { sessionsDir: o.sessionsDir, number: o.number, now: o.now, renderFn: o.renderFn });
+}
+
+/**
+ * opImportPunchlist({ sessionsDir, number, file, now? }) -> record   (ADD/merge)
+ * Reads items from a file: a JSON array (of strings OR {text} objects), or a plain text file with
+ * one item per non-empty line. Each becomes a new open item; state is NEVER set by import.
+ */
+function opImportPunchlist(opts) {
+  const o = opts || {};
+  let record = loadCurrent(o.sessionsDir, o.number);
+  const items = parsePunchlistItems(readFileText(o.file), o.file);
+  if (!items.length) throw new Error(`import-punchlist: '${o.file}' yielded no items`);
+  record = model.importPunchlist(record, items);
+  return persist(record, { sessionsDir: o.sessionsDir, number: o.number, now: o.now, renderFn: o.renderFn });
+}
+
+// Parse punchlist items from raw file contents: JSON array first, else one-item-per-line text.
+function parsePunchlistItems(raw, file) {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('[')) {
+    let arr;
+    try {
+      arr = JSON.parse(trimmed);
+    } catch (e) {
+      throw new Error(`import-punchlist: '${file}' looks like JSON but did not parse: ${e.message}`);
+    }
+    if (!Array.isArray(arr)) throw new Error(`import-punchlist: '${file}' JSON must be an array`);
+    return arr.map((el) => (typeof el === 'string' ? { text: el } : { text: el && el.text, slug: el && el.slug }));
+  }
+  // plain text: one item per non-empty line
+  return trimmed.split('\n').map((l) => l.trim()).filter((l) => l !== '').map((l) => ({ text: l }));
+}
+
+// ── CLI ────────────────────────────────────────────────────────────────────────
+
+function parseArgv(argv) {
+  const verb = argv[0];
+  const o = { inFlight: [], mustNotRedo: [] };
+  for (let i = 1; i < argv.length; i++) {
+    const a = argv[i];
+    const next = () => {
+      if (i + 1 >= argv.length) throw new Error(`tpm-session-ops: ${a} needs a value`);
+      return argv[++i];
+    };
+    switch (a) {
+      case '--sessions-dir': o.sessionsDir = next(); break;
+      case '--session': case '--number': o.number = next(); break;
+      case '--session-id': o.sessionId = next(); break;
+      case '--tpm-version': o.tpmVersion = next(); break;
+      case '--prior-session-path': case '--from': o.priorSessionPath = next(); break;
+      case '--now': o.now = next(); break;
+      // note
+      case '--decision': case '--decide': o.type = 'decision'; break;
+      case '--log': o.type = 'log'; break;
+      case '--what': o.what = next(); break;
+      case '--why': o.why = next(); break;
+      case '--status': o.status = next(); break;
+      case '--text': o.text = next(); break;
+      // punchlist
+      case '--action': o.action = next(); break;
+      case '--slug': o.slug = next(); break;
+      case '--item': o.item = next(); o.idOrSlug = o.idOrSlug || o.item; break;
+      case '--id': o.idOrSlug = next(); break;
+      // import
+      case '--json-file': o.jsonFile = next(); break;
+      case '--txt-file': o.txtFile = next(); break;
+      case '--next': o.next = next(); break;
+      case '--next-file': o.nextFile = next(); break;
+      case '--in-flight': o.inFlight.push(next()); break;
+      case '--must-not-redo': o.mustNotRedo.push(next()); break;
+      case '--file': o.file = next(); break;
+      case '-h': case '--help': o.help = true; break;
+      default: throw new Error(`tpm-session-ops: unknown argument '${a}'`);
+    }
+  }
+  return { verb, opts: o };
+}
+
+const USAGE = `tpm-session-ops — session ops + import (#1115) (run: node session-tooling/tpm-session-ops.js <verb> …)
+
+Common:  --sessions-dir <dir>   store dir holding per-session folders session-<NNNN>/ (a SCRATCH or real dir; created for open)
+         --session <NNNN>       session number (aka --number)
+         --now <iso>            reference time for punchlist age (default: now, local offset)
+
+Verbs:
+  open          --session <NNNN> --session-id <id> [--tpm-version v] [--prior-session-path <json>]
+  save          --session <NNNN>
+  note          --session <NNNN> (--log --status NOTE --text "…" | --decision --what "…" --why "…")
+  punchlist     --session <NNNN> --action add|close|reopen|drop|carry-in
+                    add:      --text "…" [--slug s]
+                    close/reopen/drop: --item <id|slug>
+                    carry-in: --from <prior json> --item <id|slug>
+  close         --session <NNNN>       (REFUSES unless a handoff AND a punchlist are present)
+
+Import (#1115):
+  import-handoff   --session <NNNN> (--json-file <f> | --txt-file <f> --next "…"|--next-file <f>
+                        [--in-flight "…"]… [--must-not-redo "…"]…)      REPLACE
+  import-log       --session <NNNN> --txt-file <f> [--status NOTE | --decision --why "…"]   APPEND-ONLY
+  import-punchlist --session <NNNN> --file <f>   (JSON array of strings/{text}, or one item per line)  ADD
+
+Import honors the LOCKED editable table (mechanical fields ignored; state never set by import). Each
+write's canonical JSON is atomic; the derived .md is regenerated after the JSON write succeeds.`;
+
+function dispatch(verb, opts) {
+  switch (verb) {
+    case 'open': return opOpen(opts);
+    case 'save': return opSave(opts);
+    case 'note': return opNote(opts);
+    case 'punchlist': return opPunchlist(opts);
+    case 'close': return opClose(opts);
+    case 'import-handoff': return opImportHandoff(opts);
+    case 'import-log': return opImportLog(opts);
+    case 'import-punchlist': return opImportPunchlist(opts);
+    default: throw new Error(`tpm-session-ops: unknown verb '${verb}' — see --help`);
+  }
+}
+
+function main(argv) {
+  if (!argv.length || argv[0] === '-h' || argv[0] === '--help') {
+    process.stdout.write(USAGE + '\n');
+    return 0;
+  }
+  let parsed;
+  try {
+    parsed = parseArgv(argv);
+  } catch (e) {
+    process.stderr.write(String(e.message) + '\n\n' + USAGE + '\n');
+    return 2;
+  }
+  if (parsed.opts.help) { process.stdout.write(USAGE + '\n'); return 0; }
+  try {
+    const record = dispatch(parsed.verb, parsed.opts);
+    const { jsonPath, mdPath } = sessionPaths(parsed.opts.sessionsDir, record.meta.number);
+    process.stderr.write(`tpm-session-ops ${parsed.verb}: wrote\n  ${jsonPath}\n  ${mdPath}\n`);
+    return 0;
+  } catch (e) {
+    process.stderr.write('tpm-session-ops: ' + String(e.message) + '\n');
+    return 1;
+  }
+}
+
+module.exports = {
+  // ops
+  opOpen, opSave, opNote, opPunchlist, opClose,
+  // import
+  opImportHandoff, opImportLog, opImportPunchlist,
+  // guard + helpers (exported for tests)
+  assertCloseGuard, sessionPaths, padNumber, parsePunchlistItems, persist,
+  main,
+};
+
+if (require.main === module) {
+  process.exit(main(process.argv.slice(2)));
+}

@@ -71,8 +71,8 @@ Usage:
   tpm <suite> <verb> [args…]
 
 Suites:
-  session    session-notes tooling   (config / current / notes / review)
-  task       task ledger             (add / list / show / … / config)
+  session    session-notes tooling   (ops / export / migrate / doctor)
+  task       task ledger             (add / list / show / … / config / export / migrate / doctor)
   workflow   multi-agent rounds      (audit / compose / lint / scaffold / cost / signoff / doctor / config)
   hooks      PreToolUse hooks        (gate-spawn / expand-tpm-home)
 

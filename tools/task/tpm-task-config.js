@@ -1,47 +1,28 @@
 #!/usr/bin/env node
+'use strict';
 /**
- * tpm-task-config.js — the `tasks` config-section resolver (checklist A3 / build-plan Wave 1).
+ * tpm-task-config.js — the `tasks` config-section resolver (P06 port; governs the #1109 history gate).
  *
  * PURPOSE
  *   A minimal, SUITE-LOCAL resolver for the `tasks` section of a project's
- *   `.claude/claude-tpm/config.json` (config-guide §3). Reads the config file if present,
- *   merges its `tasks` section over built-in defaults, and hands back the fully resolved
- *   registry so every tools/task/* script AND the tpm-task skill read the SAME 12 keys the
- *   SAME way. Mirrors the structure of tools/session/tpm-session-config.js but scoped to `tasks` —
- *   per tool-conventions.md Part I §2 (portability) this does NOT require() any shared
- *   config-resolver; it is a small, deliberately-duplicated copy of just what this suite needs.
+ *   `.claude/claude-tpm/config.json`. Reads the config file if present, merges its `tasks` section
+ *   over built-in defaults, and hands back the fully resolved registry so every task tool AND the
+ *   tpm-task skill read the same keys the same way. Near-verbatim port of
+ *   `../../../claude-tpm/tools/task/tpm-task-config.js`, with TWO deltas for the JSON-first rework:
+ *     1. `findRoot` now comes from the shared base lib via `./lib/base` (paths #1058), NOT the
+ *        retired `./tpm-task-paths`.
+ *     2. a new `history: { enabled: true }` key — the #1109 history gate the JSON model reads
+ *        (`tpm-task.js` calls `model.setHistoryEnabled(resolved.history.enabled)`).
  *
- *   Absent config file, or an absent `tasks` key, is NOT an error — it means "use the
- *   defaults" (system ON). A malformed config file resolves to defaults + a stderr warning
- *   (never a crash) — matching the module's lenient philosophy. An EXPLICIT --config path that
- *   does not exist IS a friendly error + exit 1.
- *
- * RESOLVED SHAPE (defaults shown — spec §9)
- *   {
- *     enabled: true,
- *     tasksDir: ".claude/claude-tpm/tasks",
- *     startId: 1000,
- *     bucketSize: 1000,
- *     defaultOrder: "newest",
- *     defaultListState: ["open", "in-progress"],
- *     timezone: "local",
- *     exportDir: "tmp",
- *     allowHardDelete: true,
- *     maxOpenWarn: 50,
- *     autoConfirm: { finish: false, drop: false },
- *     minimalTasks: false,
- *     subtaskStyle: "letters"
- *   }
+ *   Absent config file, or an absent `tasks` key, is NOT an error — it means "use the defaults"
+ *   (system ON, history ON). A malformed config resolves to defaults + a stderr warning (never a
+ *   crash). An EXPLICIT --config path that does not exist IS a friendly error + exit 1.
  *
  * CLI
- *   --config <path>    Optional. Default: <projectRoot>/.claude/claude-tpm/config.json, where
- *                       <projectRoot> is found by walking up from cwd for a CLAUDE.md marker.
- *                       A default location that doesn't exist resolves to defaults, not an
- *                       error. An EXPLICIT --config path that doesn't exist IS an error + exit 1.
+ *   --config <path>    Optional. Default: <projectRoot>/.claude/claude-tpm/config.json.
  *   --json             Print the resolved `tasks` config as JSON.
- *   --get <dotted.key> Print one resolved value, e.g. --get autoConfirm.finish
- *   --tasks-dir        Shortcut for the resolved tasksDir as a bare ABSOLUTE path (no JSON
- *                       quoting) — convenient for the skill/other scripts to consume.
+ *   --get <dotted.key> Print one resolved value, e.g. --get history.enabled
+ *   --tasks-dir        Print the resolved tasksDir as a bare absolute path.
  *   --help             Usage.
  *
  * REUSABLE API (also a module)
@@ -50,17 +31,13 @@
  *   tasksDirAbs(resolved, projectRoot) -> absolute path to the resolved tasksDir
  *   getDotted(obj, key) -> { found, value }
  *
- * EXAMPLES
- *   npx tpm task config --json
- *   npx tpm task config --get startId
- *   npx tpm task config --tasks-dir
+ * Zero third-party deps; Node built-ins only; loadable via `node tpm-task-config.js --help`.
  */
-
-'use strict';
 
 const fs = require('fs');
 const path = require('path');
-const { findRoot } = require('./tpm-task-paths');
+const base = require('./lib/base');
+const { findRoot } = base.paths;
 
 function getDefaults() {
   return {
@@ -72,11 +49,12 @@ function getDefaults() {
     defaultListState: ['open', 'in-progress'],
     timezone: 'local',
     exportDir: 'tmp',
-    allowHardDelete: true,
+    allowHardDelete: false,   // #1086: OFF/safe by default — `remove --hard` refuses unless opt-in true.
     maxOpenWarn: 50,
     autoConfirm: { finish: false, drop: false },
     minimalTasks: false,
     subtaskStyle: 'letters',
+    history: { enabled: true },   // #1109 history gate — ON by default (P06)
   };
 }
 
@@ -115,6 +93,12 @@ function mergeTasksConfig(rawTasks) {
   if (rawTasks.subtaskStyle === 'letters' || rawTasks.subtaskStyle === 'numbers') {
     resolved.subtaskStyle = rawTasks.subtaskStyle;
   }
+  // #1109 history gate: accept either { history: { enabled: bool } } or a bare boolean `history`.
+  if (isPlainObject(rawTasks.history)) {
+    if (typeof rawTasks.history.enabled === 'boolean') resolved.history.enabled = rawTasks.history.enabled;
+  } else if (typeof rawTasks.history === 'boolean') {
+    resolved.history.enabled = rawTasks.history;
+  }
 
   return resolved;
 }
@@ -126,8 +110,9 @@ function mergeTasksConfig(rawTasks) {
  * @param {string} [opts.startDir] where to start walking up for the project root
  * @returns {{resolved, projectRoot, configPath, configExists, warning}}
  */
-function resolveTasksConfig(configPathArg, opts = {}) {
-  const startDir = opts.startDir || process.cwd();
+function resolveTasksConfig(configPathArg, opts) {
+  const options = opts || {};
+  const startDir = options.startDir || process.cwd();
   const projectRoot = findRoot({ startDir, marker: 'CLAUDE.md' });
   const usedDefaultLocation = !configPathArg;
   const configPath = configPathArg
@@ -150,7 +135,6 @@ function resolveTasksConfig(configPathArg, opts = {}) {
   try {
     parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   } catch (err) {
-    // Malformed config is NOT fatal — fall back to defaults with a warning (lenient philosophy).
     warning = `could not parse ${configPath} as JSON (${err.message}); using built-in defaults.`;
     return { resolved: getDefaults(), projectRoot, configPath, configExists: true, warning };
   }
@@ -166,7 +150,7 @@ function tasksDirAbs(resolved, projectRoot) {
 }
 
 function getDotted(obj, dottedKey) {
-  const parts = dottedKey.split('.');
+  const parts = String(dottedKey).split('.');
   let cur = obj;
   for (const p of parts) {
     if (cur === null || typeof cur !== 'object' || !(p in cur)) {
@@ -180,21 +164,16 @@ function getDotted(obj, dottedKey) {
 function printHelp() {
   process.stdout.write(
     [
-      'Usage: npx tpm task config [--config <path>] (--json | --get <dotted.key> | --tasks-dir) [--help]',
+      'Usage: node tpm-task-config.js [--config <path>] (--json | --get <dotted.key> | --tasks-dir) [--help]',
       '',
       "Resolves the 'tasks' section of a claude-tpm config.json over built-in defaults.",
       '',
       'Flags:',
       '  --config <path>     Path to config.json. Default: <projectRoot>/.claude/claude-tpm/config.json',
       '  --json               Print the resolved tasks config as JSON.',
-      '  --get <dotted.key>   Print one resolved value, e.g. --get autoConfirm.finish',
+      '  --get <dotted.key>   Print one resolved value, e.g. --get history.enabled',
       '  --tasks-dir           Print the resolved tasksDir as a bare absolute path.',
       '  --help                Show this message.',
-      '',
-      'Examples:',
-      '  npx tpm task config --json',
-      '  npx tpm task config --get startId',
-      '  npx tpm task config --tasks-dir',
       '',
     ].join('\n'),
   );
@@ -213,18 +192,15 @@ function parseArgs(argv) {
   return args;
 }
 
-function main() {
-  const args = parseArgs(process.argv.slice(2));
+function main(argv) {
+  const args = parseArgs(argv);
 
-  if (args.help) {
-    printHelp();
-    process.exit(0);
-  }
+  if (args.help) { printHelp(); return 0; }
 
   if (!args.json && !args.get && !args.tasksDir) {
     process.stderr.write('tpm-task-config.js: nothing to do — pass one of --json / --get / --tasks-dir.\n\n');
     printHelp();
-    process.exit(1);
+    return 1;
   }
 
   let resolution;
@@ -232,35 +208,21 @@ function main() {
     resolution = resolveTasksConfig(args.config);
   } catch (err) {
     process.stderr.write(`config: ${err.message}\n`);
-    process.exit(1);
+    return 1;
   }
 
   const { resolved, projectRoot, warning } = resolution;
   if (warning) process.stderr.write(`config: ${warning}\n`);
 
-  if (args.json) {
-    process.stdout.write(`${JSON.stringify(resolved, null, 2)}\n`);
-    process.exit(0);
-  }
-
-  if (args.tasksDir) {
-    process.stdout.write(`${tasksDirAbs(resolved, projectRoot)}\n`);
-    process.exit(0);
-  }
-
+  if (args.json) { process.stdout.write(`${JSON.stringify(resolved, null, 2)}\n`); return 0; }
+  if (args.tasksDir) { process.stdout.write(`${tasksDirAbs(resolved, projectRoot)}\n`); return 0; }
   if (args.get) {
     const { found, value } = getDotted(resolved, args.get);
-    if (!found) {
-      process.stderr.write(`config: no such key "${args.get}" in resolved config.\n`);
-      process.exit(1);
-    }
+    if (!found) { process.stderr.write(`config: no such key "${args.get}" in resolved config.\n`); return 1; }
     process.stdout.write(`${JSON.stringify(value)}\n`);
-    process.exit(0);
+    return 0;
   }
-}
-
-if (require.main === module) {
-  main();
+  return 0;
 }
 
 module.exports = {
@@ -269,4 +231,9 @@ module.exports = {
   getDefaults,
   tasksDirAbs,
   getDotted,
+  main,
 };
+
+if (require.main === module) {
+  process.exit(main(process.argv.slice(2)));
+}

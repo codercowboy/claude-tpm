@@ -44,21 +44,21 @@ check('bare `tpm` → exit 0 + lists all three suites', () => {
 check('`tpm --help` → exit 0', () => assert.strictEqual(tpm('--help').status, 0));
 check('unknown suite → exit 2', () => assert.strictEqual(tpm('frobnicate').status, 2));
 
-// ── session router ──────────────────────────────────────────────────────────────
+// ── session router (JSON-first surface #1113: ops/export/migrate/doctor) ──────────
 check('`tpm session` (bare) → exit 0 + lists session verbs', () => {
   const r = tpm('session');
   assert.strictEqual(r.status, 0);
-  for (const v of ['config', 'current', 'notes', 'review']) assert.ok(r.out.includes(v), `lists ${v}`);
+  for (const v of ['ops', 'export', 'migrate', 'doctor']) assert.ok(r.out.includes(v), `lists ${v}`);
 });
 check('unknown session verb → exit 2', () => assert.strictEqual(tpm('session', 'badverb').status, 2));
-check('`tpm session config --json` dispatches (exit 0 + valid JSON)', () => {
-  const r = tpm('session', 'config', '--json');
+check('`tpm session doctor --help` dispatches through the router (exit 0 + output)', () => {
+  const r = tpm('session', 'doctor', '--help'); // doctor is READ-ONLY; --help never touches a store
   assert.strictEqual(r.status, 0);
-  JSON.parse(r.out); // throws if the child output wasn't passed through cleanly
+  assert.ok(r.out.trim().length > 0, 'the child --help text made it back through both dispatch hops');
 });
-check('pass-through is faithful: `tpm session config --json` === direct tool output', () => {
-  const via = tpm('session', 'config', '--json').out;
-  const direct = run(path.join(TOOLS, 'session', 'tpm-session-config.js'), ['--json']).out;
+check('pass-through is faithful: `tpm session doctor --help` === direct tool output', () => {
+  const via = tpm('session', 'doctor', '--help').out;
+  const direct = run(path.join(TOOLS, 'session', 'tpm-session-doctor.js'), ['--help']).out;
   assert.strictEqual(via, direct);
 });
 

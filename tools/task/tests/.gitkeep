@@ -1,0 +1,5 @@
+# tests/ — the task-tooling test suite home (populated in phase 08-tests).
+#
+# Placeholder keeper so the skeleton dir exists in git. Phase 08 adds per-module unit suites,
+# golden converter suites, an ops-persist-fault suite, an import/subtask-lifecycle suite, an
+# e2e verb suite, plus a run-all.js, and re-runs session-tooling's 24-suite regression gate.

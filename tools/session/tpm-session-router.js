@@ -1,64 +1,65 @@
 #!/usr/bin/env node
+'use strict';
 /**
  * tpm-session-router.js — the `session` sub-router for the `tpm` dispatcher.
  *
  * PURPOSE
- *   `tpm session <verb> [args…]` dispatches to the matching session tool script. This router OWNS
- *   the session verb table; the top-level `tpm.js` is deliberately dumb about verbs and just forwards
+ *   `tpm session <verb> [args…]` dispatches to the matching session tool script. This router OWNS the
+ *   session verb table; the top-level `tpm.js` is deliberately dumb about verbs and just forwards
  *   `session <anything…>` here (see tools/tpm.js). Verbs are SHORT — the `session` suite name already
- *   namespaces them (design: dev/tpm-cli-design.md §0).
+ *   namespaces them.
  *
- *   Sibling scripts are resolved against THIS file's own directory (`__dirname`), so nothing here
- *   depends on `%TPM_HOME%` or any env var — the whole point of routing skill invocations through
- *   `tpm`: it eliminates the `%TPM_HOME%` token from Bash invocations (Path A).
+ *   The JSON-first session tooling (#1113) is four node-invokable scripts; this router is the ONE `bin`
+ *   seam over them. Each entry script owns its OWN subcommands/flags, so everything after the verb token
+ *   passes straight through (`tpm session ops open …` ≡ `tpm-session-ops.js open …`).
  *
- *   Dispatch is by CHILD PROCESS (`spawnSync('node', [tool, …args], {stdio:'inherit'})`) — process
- *   isolation + faithful argv/stdio pass-through; the child's exit code is propagated.
- *
- *   NOTE: the skill MODES `open`/`close`/`save`/`info` are NOT here — those are the `/tpm-session`
- *   slash command (orchestration + model doc-reads + MOTD), not scripts. This router exposes only the
- *   scripts those modes shell out to.
+ *   Sibling scripts resolve against THIS file's own directory (`__dirname`), so nothing here depends on
+ *   an absolute bundle path or any env var. Dispatch is by CHILD PROCESS
+ *   (`spawnSync('node', [tool, …args], {stdio:'inherit'})`) — process isolation + faithful argv/stdio
+ *   pass-through; the child's exit code is propagated.
  *
  * USAGE
- *   tpm session <config|current|notes|punchlist|save|boot-read|review> [args…]
+ *   tpm session <ops|export|migrate|doctor|config|current|boot-read> [args…]
  *   tpm session --help | -h
+ *
+ * Zero third-party deps; Node built-ins only.
  */
-
-'use strict';
 
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-// short verb -> sibling script (in this same dir). Self-contained; no shared imports (tool-conventions I§2).
+// short verb -> sibling script (in this same dir). Self-contained; no shared imports.
 const VERBS = {
-  config: 'tpm-session-config.js',
-  current: 'tpm-session-current.js',
-  notes: 'tpm-session-notes.js',
-  punchlist: 'tpm-session-punchlist.js',
-  save: 'tpm-session-save.js',
-  'boot-read': 'tpm-session-boot-read.js',
-  review: 'tpm-session-review.js',
+  ops: 'tpm-session-ops.js',          // session ops + #1115 import (open/save/note/punchlist/close/import-*)
+  export: 'tpm-session-export.js',    // #1092 export: single/multi · JSON/human
+  migrate: 'tpm-session-migrate.js',  // #1114 opt-in old 3-file markdown -> canonical JSON
+  doctor: 'tpm-session-doctor.js',    // #1119 READ-ONLY validate + hash-drift + detect/suggest-migrate
+  config: 'tpm-session-config.js',    // #1123 restored: session config resolver (--json/--get/--sessions-dir/--modules)
+  current: 'tpm-session-current.js',  // #1123 restored: current-session pointer (--state/--open/--seal/--next-number)
+  'boot-read': 'tpm-session-boot-read.js', // #1123 reworked: JSON-first boot pickup emitter (always exit 0)
 };
 
 function help() {
-  console.log(`tpm session — session-notes tooling router
+  console.log(`tpm session — JSON-first session-notes tooling router
 
 Usage:
   tpm session <verb> [args…]
 
 Verbs:
-  config     resolve session config / sessions-dir (--json / --sessions-dir / --get)
-  current    the current-session pointer (--state / --open / --seal / --next-number)
-  notes      the ledger WRITE API (init / log / decide / seal)
-  punchlist  the open/done work items (add / close / list / reopen / drop)
-  save       the gated, linted checkpoint (--payload <file.json>): rewrites session-NNNN-handoff.md
-  boot-read  the boot-time pickup emit (prior handoff + open punchlist); never crashes boot
-  review     the notes READ API (--last N …)
+  ops        session ops + #1115 import (open / save / note / punchlist / close / import-handoff|log|punchlist)
+  export     export sessions (single/multi · --style json|human|both · --last N | --session NNNN)
+  migrate    #1114 opt-in convert ONE old 3-file markdown session -> canonical JSON (--in / --out-dir)
+  doctor     #1119 READ-ONLY health check: validate + hash-drift + detect/suggest-migrate (--sessions-dir)
+  config     session config resolver (--json / --get <k> / --sessions-dir / --modules)
+  current    current-session pointer (--state / --open / --seal / --next-number · --sessions-dir)
+  boot-read  JSON-first boot pickup emitter — prior handoff + open punchlist (always exits 0)
 
 Remaining args pass straight through, e.g.:
-  tpm session current --sessions-dir .claude/claude-tpm/sessions --open
-  tpm session punchlist --sessions-dir .claude/claude-tpm/sessions add "wire the save lint"
-  tpm session save --sessions-dir .claude/claude-tpm/sessions --payload handoff.json`);
+  tpm session ops open --sessions-dir .claude/claude-tpm/sessions --session 0043
+  tpm session export --sessions-dir .claude/claude-tpm/sessions --last 3 --style human
+  tpm session doctor --sessions-dir .claude/claude-tpm/sessions
+  tpm session config --sessions-dir
+  tpm session boot-read --sessions-dir .claude/claude-tpm/sessions`);
 }
 
 function main(argv) {

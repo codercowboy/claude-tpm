@@ -1,55 +1,33 @@
-#!/usr/bin/env node
-/**
- * tests/run-all.js — runs every shipped tools/task test suite in one shot.
- *
- * PURPOSE
- *   The single "does the tools/task suite pass" entry point. Runs each suite as a real
- *   subprocess (so one suite's crash can't corrupt another's process state), prints a per-suite
- *   PASS/FAIL line, and exits non-zero if anything failed. This is the GREEN baseline the
- *   mutation-check depends on and the verifier re-runs.
- *
- *   NOTE: tests/tpm-task/bug-repros.test.js is DELIBERATELY not listed here — it documents
- *   confirmed defects as failing repros (expected RED) for the bug-fixer loop, and would (by
- *   design) fail this runner. Run it directly: `node tests/tpm-task/bug-repros.test.js`.
- *
- * HOW TO RUN
- *   node tests/run-all.js
- */
-
 'use strict';
-
+/**
+ * run-all.js — the task-tooling test entrypoint (mirrors session-tooling/tests/run-all.js).
+ *
+ * Runs every *.test.js in this dir as its OWN `node <file>` process (so each stays independently
+ * runnable, per tool-conventions' ship-tool bar) and aggregates exit codes. Exits 0 only if ALL
+ * suites pass; non-zero otherwise. Prints the "N suites run, M failed" summary line.
+ *
+ * Discovery is FLAT + non-recursive: shared, non-runnable helpers live under `helpers/` and are
+ * never picked up (they do not end in `.test.js` at this level).
+ *
+ * Run: node tests/run-all.js
+ * Node built-ins only.
+ */
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
-const { ensureRunSlug } = require('../../tests/lib/scratch');
+const { spawnSync } = require('child_process');
 
-const SUITES = [
-  'format/test.js',
-  'render/test.js',
-  'tpm-task/test.js',
-];
+const here = __dirname;
+const suites = fs.readdirSync(here)
+  .filter((f) => f.endsWith('.test.js'))
+  .sort();
 
-function main() {
-  ensureRunSlug(); // share one scratch slug across this group's child suites
-  let failures = 0;
-  for (const rel of SUITES) {
-    const p = path.join(__dirname, rel);
-    if (!fs.existsSync(p)) {
-      process.stderr.write(`✗ MISSING — ${rel}\n`);
-      failures += 1;
-      continue;
-    }
-    try {
-      const out = execFileSync('node', [p], { encoding: 'utf8' });
-      const lastLine = out.trim().split('\n').pop();
-      process.stdout.write(`✓ ${rel} — ${lastLine}\n`);
-    } catch (err) {
-      process.stderr.write(`✗ FAIL — ${rel}\n${err.stdout || ''}${err.stderr || ''}\n`);
-      failures += 1;
-    }
-  }
-  process.stdout.write(`\n${failures ? 'FAIL' : 'PASS'} — ${SUITES.length - failures}/${SUITES.length} suites green\n`);
-  process.exit(failures ? 1 : 0);
+let failed = 0;
+for (const suite of suites) {
+  console.log(`\n=== ${suite} ===`);
+  const res = spawnSync(process.execPath, [path.join(here, suite)], { stdio: 'inherit' });
+  if (res.status !== 0) failed++;
 }
 
-main();
+console.log(`\n──────────────────────────────`);
+console.log(`${suites.length} suites run, ${failed} failed`);
+process.exit(failed === 0 ? 0 : 1);

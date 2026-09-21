@@ -41,8 +41,8 @@ The small set you read at every session open, regardless of which modules are en
 
 Then the project-state reads outside `methodology/` — the task ledger under the `tasks` module store
 (`.claude/claude-tpm/tasks/`; read via `npx tpm task list`, **not** the old `docs/tasks.md`), the latest
-`session-notes.md` under the configured sessions dir (`session.notes.sessionsDir`; read via
-`npx tpm session review`), and `tools/README.md`. The `tpm-session` skill (`open` mode) walks THIS list;
+session record (`session-NNNN.json` + derived `.md`) under the configured sessions dir
+(`session.notes.sessionsDir`; read via `npx tpm session export`), and `tools/README.md`. The `tpm-session` skill (`open` mode) walks THIS list;
 neither it nor `CLAUDE.md` re-states these docs (a second copy is what drifts).
 
 ## Tier 2 — Shared situational shelf (know it exists; read WHEN THE TRIGGER FIRES)

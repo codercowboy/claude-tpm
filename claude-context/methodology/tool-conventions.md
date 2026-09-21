@@ -65,7 +65,7 @@ project wires its tools to be run in one or both of two ways:
   ```
 - **A `bin` dispatcher** — a single git-style front-door command declared as the package `bin`, run as
   `npx <bin> <suite> <verb>`. claude-tpm ships `"bin": { "tpm": "tools/tpm.js" }`, so its tools run as
-  `npx tpm session review`, `npx tpm task list`, etc. (claude-tpm exposes only this bin — no per-tool
+  `npx tpm session export`, `npx tpm task list`, etc. (claude-tpm exposes only this bin — no per-tool
   `npm run` scripts beyond `npm test`; another project may prefer npm scripts, or both.)
 
 Either style is fine, and a tool wired **neither** way (an internal helper, a hook script the harness

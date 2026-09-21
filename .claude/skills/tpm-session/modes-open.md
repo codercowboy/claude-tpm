@@ -26,7 +26,7 @@ the workflow module, not by gatekeeping who may boot.)
    `config.json` for enablement. For the resolved *session* section specifically (notes dir, MOTD
    flags), use `npx tpm session config --json`. The reader is lenient: a malformed config never
    crashes boot (it degrades to all-enabled + a warning) — surfacing a malformed config is the
-   doctor's job (`npx tpm install --check`), not boot's.
+   doctor's job (`npx tpm session doctor`, the READ-ONLY health check), not boot's.
 
 3. **Walk the core reading list** — fetch the orchestrator reading-list manifest with
    `npx tpm doc claude-context/methodology/orchestrator/reading-list.md` (it prints the doc with the
@@ -39,12 +39,13 @@ the workflow module, not by gatekeeping who may boot.)
      (it self-resolves the sessions dir via `npx tpm session config --sessions-dir`; pass
      `--sessions-dir <dir>` explicitly if you already resolved it). This runs AFTER step 1's
      `current --open`, so it emits the highest **PRIOR** session (never the just-opened current one):
-     its `handoff.md` verbatim (READ IT FULLY — where we are, next action, what NOT to redo), its open
-     `punchlist.md` items (what remains), the three file locations, and the reminder that the notes log
-     reads bottom-to-top. This is your "previous session" pickup — pulled into context by the tool, not
-     by you choosing which file to open. It degrades gracefully (old/partial/unrecognized prior session
-     → points at the path to read directly) and **always exits 0** — it never crashes boot. If it
-     reports no prior session, start fresh.
+     its HANDOFF slice verbatim (READ IT FULLY — where we are, next action, what NOT to redo), its open
+     punchlist headlines (what remains), the canonical `session-NNNN.json` + derived `session-NNNN.md`
+     file locations, and the reminder that the `.md` log reads newest-first. This is your "previous
+     session" pickup — pulled into context by the tool, not by you choosing which file to open. It
+     degrades gracefully (missing/partial/unknown-schema prior session → one clean line pointing at the
+     path to read directly) and **always exits 0** — it never crashes boot. If it reports no prior
+     session, start fresh.
    - **The task queue** (only if `tasks` module enabled): blocking breadcrumbs and queued work.
 
 5. **Surface capabilities — the open MOTD** (gated by `session.showTPMOpenMessage`): list the

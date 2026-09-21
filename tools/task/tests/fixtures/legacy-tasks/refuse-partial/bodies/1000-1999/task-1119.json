@@ -1,0 +1,3 @@
+{
+  "note": "Purpose-built partial-store fixture: a stray canonical JSON body sitting beside the old .md bodies. Its mere PRESENCE must make detectStore REFUSE the whole store (don't half-convert an already-partly-migrated store). Not a valid task record on purpose — it is never parsed, only detected."
+}

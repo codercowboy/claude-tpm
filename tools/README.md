@@ -46,35 +46,39 @@ as `npx tpm workflow <verb>`.
 
 ## Session suite — `tools/session/`
 
-The three-file session-memory subsystem behind the `tpm-session` skill's modes (`handoff.md` +
-`punchlist.md` + `session-notes.md`). Self-contained (no imports outside the suite). User-facing verbs
-wired as `npx tpm session <verb>`; the format/paths modules are internal.
+The JSON-first session-memory subsystem behind the `tpm-session` skill's modes: ONE canonical
+`session-NNNN.json` per session (source of truth) + a derived `session-NNNN.md` (`## Handoff` /
+`## Punchlist` / `## Log`, regenerated on every write), nested under `session-NNNN/`. Self-contained
+(no imports outside the suite). User-facing verbs wired as `npx tpm session <verb>`; the `lib/` model +
+`paths` module are internal.
 
-- **`tools/session/tpm-session-config.js`** — resolve the `session` config section over built-in defaults (`--json` / `--get` / `--sessions-dir`). Run: `npx tpm session config` · Doc: `config.md`
-- **`tools/session/tpm-session-current.js`** — the current-session pointer: open-vs-not state, next-`session-NNN` allocation, seal-at-close. Run: `npx tpm session current` · Doc: `tpm-session-current.md`
-- **`tools/session/tpm-session-notes.js`** — the ledger WRITE API: `init` / `log` / `decide` / `seal`, each stamped with a trailing ISO-TZ timestamp (refuses non-current writes without `--edit-sealed`). Run: `npx tpm session notes` · Doc: `tpm-session-notes.md`
-- **`tools/session/tpm-session-punchlist.js`** — the punchlist mini task-manager: `add` / `close` / `list [--all]` / `reopen` / `drop` over session-prefixed ids (`#<session>.<n>`). Run: `npx tpm session punchlist` · Doc: `tpm-session-punchlist.md`
-- **`tools/session/tpm-session-save.js`** — the gated, linted checkpoint: `save --payload <file.json>` rewrites `handoff.md` (What-remains from the punchlist) + refreshes headers on all three files. Exit 0 ok · 1 refused · 2 usage. Run: `npx tpm session save` · Doc: `tpm-session-save.md`
-- **`tools/session/tpm-session-boot-read.js`** — the boot-time pickup emit: the prior session's handoff verbatim + open punchlist + file locations; degrades to point-at-path, always exits 0. Run: `npx tpm session boot-read` · Doc: `tpm-session-boot-read.md`
-- **`tools/session/tpm-session-review.js`** — the READ API: `review --last N [--open-items|--decisions|--since|--grep|--json]` (overview from handoff, open items from punchlist, decisions/log from the ledger). Run: `npx tpm session review` · Doc: `tpm-session-review.md`
-- **`tools/session/tpm-session-format.js`** — the three-file format SSOT (headings/tokens/ids/slug+ISO-TZ helpers/parse/render + the shared wayfinding header). Internal helper (imported, not a CLI). Doc: header
+- **`tools/session/tpm-session-config.js`** — resolve the `session` config section over built-in defaults (`--json` / `--get` / `--sessions-dir` / `--modules` — the cross-module ENABLED map for the boot MOTD). Run: `npx tpm session config` · Doc: `tpm-session-config.md`
+- **`tools/session/tpm-session-current.js`** — the current-session pointer: open-vs-not state, next-`session-NNNN` allocation, idempotent `--open`, `--seal` at close. Run: `npx tpm session current` · Doc: `tpm-session-current.md`
+- **`tools/session/tpm-session-ops.js`** — the notes WRITE surface + `#1115` import: `open` / `save` / `note (--log|--decision)` / `punchlist --action add|close|reopen|drop|carry-in` / `close` (close-guard: refuses without a handoff AND a punchlist) / `import-handoff|import-log|import-punchlist`. Every write is atomic; the `.md` is regenerated from the JSON. Run: `npx tpm session ops` · Doc: `tpm-session-ops.md`
+- **`tools/session/tpm-session-export.js`** — the READ / export API: `--last N | --session NNNN[,NNNN]` · `--style json|human|both` · `--out <dir|file>` (default: JSON to stdout). Run: `npx tpm session export` · Doc: `tpm-session-export.md`
+- **`tools/session/tpm-session-migrate.js`** — `#1114` opt-in convert ONE old 3-file markdown session → canonical JSON (`--in` / `--out-dir`). Run: `npx tpm session migrate` · Doc: `tpm-session-migrate.md`
+- **`tools/session/tpm-session-boot-read.js`** — the boot-time pickup emit: the prior session's handoff verbatim + open punchlist headlines + the JSON/`.md` file locations; self-resolves the sessions dir via config; degrades to one clean line, always exits 0. Run: `npx tpm session boot-read` · Doc: `tpm-session-boot-read.md`
+- **`tools/session/tpm-session-doctor.js`** — `#1119` READ-ONLY health check: validate + hash-drift + detect/suggest-migrate (`--sessions-dir` / `--json` / `--strict`). Run: `npx tpm session doctor` · Doc: `tpm-session-doctor.md`
+- **`tools/session/lib/`** — the JSON model the tools share: `session-model.js` (read → migrate → validate + render), `session-schema.js` (the envelope + `session` payload schema), `session-converter.js` (old 3-file → JSON). Internal helpers (imported, not CLIs). Doc: header
 - **`tools/session/tpm-session-paths.js`** — the suite's project-root / path resolver. Internal helper (imported, not a CLI). Doc: header
-- **`tools/session/tpm-session-router.js`** — the `session` sub-router (forwarded to by `tpm.js`). Internal plumbing, not a CLI. Doc: header
+- **`tools/session/tpm-session-router.js`** — the `session` sub-router (forwarded to by `tpm.js`; routes `ops` / `export` / `migrate` / `doctor` / `config` / `current` / `boot-read`). Internal plumbing, not a CLI. Doc: header
 
 ---
 
 ## Task suite — `tools/task/`
 
-The task-ledger subsystem behind the `tpm-task` skill. Self-contained; the ledger CLI plus its config
-resolver are user-facing, the format/store/render/paths modules are internal helpers.
+The JSON-first task-ledger subsystem behind the `tpm-task` skill: one canonical `task-<id>.json` per
+task (+ derived `.md`, machine `tasks-index.json`, and three human index views). Self-contained; the
+ledger CLI, its config resolver, and the export/doctor/migrate tools are user-facing, the `lib/` model
+is internal.
 
-- **`tools/task/tpm-task.js`** — the ledger CLI: 13 user modes (`add` / `import` / `export` / `list` / `show` / `edit` / `check` / `add-subtask` / `start` / `finish` / `drop` / `remove` / `reopen`) plus the tool-internal `resolve` / `reindex`. Run: `npx tpm task <subcmd>` · Doc: `tpm-task.md`
-- **`tools/task/tpm-task-config.js`** — resolve the `tasks` config section over defaults (`--json` / `--get` / `--tasks-dir`). Run: `npx tpm task config` · Doc: `config.md`
-- **`tools/task/tpm-task-format.js`** — the task token SSOT. Internal helper (imported, not a CLI). Doc: header
-- **`tools/task/tpm-task-store.js`** — the filesystem store engine. Internal helper (imported, not a CLI). Doc: header
-- **`tools/task/tpm-task-render.js`** — the view / age-ladder layer. Internal helper (imported, not a CLI). Doc: header
-- **`tools/task/tpm-task-paths.js`** — the project-root resolver. Internal helper (imported, not a CLI). Doc: header
-- **`tools/task/tpm-task-router.js`** — the `task` sub-router (forwarded to by `tpm.js`). Internal plumbing, not a CLI. Doc: header
+- **`tools/task/tpm-task.js`** — the ledger CLI: `list` / `show` / `add` / `edit` / `import` (per-id JSON, `--template` / `--prune`) / `add-subtask` / `check` / `label` / `unlabel` / `labels` / `start` / `finish` / `drop` / `remove [--hard]` (`--hard` PURGES the body, config-gated on `tasks.allowHardDelete`, off by default) / `reopen`, plus `reindex` / `history`. Run: `npx tpm task <subcmd>` · Doc: `tpm-task.md`
+- **`tools/task/tpm-task-config.js`** — resolve the `tasks` config section over defaults (`--json` / `--get` / `--tasks-dir`; owns the `allowHardDelete` gate + the `#1109` history gate). Run: `npx tpm task config` · Doc: `tpm-task-config.md`
+- **`tools/task/tpm-task-export.js`** — export + search on ONE selector core: ids/ranges, `--state`, `--open`/`--closed`, `--label`, `--match`, `--opened-since`/`--updated-since`/`--closed-since`, `--last N --by …`; shape `--json`/`--human` (default `--human` to stdout), `--out <dir|file>`, `--per-file`, `--thin`. Run: `npx tpm task export|search` · Doc: `tpm-task-export.md`
+- **`tools/task/tpm-task-doctor.js`** — `#1119` READ-ONLY task-store validator + drift detector (`--tasks-dir` / `--json`). Run: `npx tpm task doctor` · Doc: `tpm-task-doctor.md`
+- **`tools/task/tpm-task-migrate.js`** — `#1114.B` opt-in whole-store old-markdown → JSON task migrator (`--in` / `--out-dir` / `--dry-run`). Run: `npx tpm task migrate` · Doc: `tpm-task-migrate.md`
+- **`tools/task/lib/`** — the JSON model the tools share: `task-model.js` (read → migrate → validate + render + `reindex`), `task-schema.js`, `task-converter.js` + `legacy-task-format.js` (old markdown → JSON), `base.js` (shared path/root helpers). Internal helpers (imported, not CLIs). Doc: header
+- **`tools/task/tpm-task-router.js`** — the `task` sub-router (forwarded to by `tpm.js`; routes `config` / `export` / `search` / `doctor` / `migrate`, else → `tpm-task.js`). Internal plumbing, not a CLI. Doc: header
 
 ---
 
@@ -134,8 +138,8 @@ Every suite's tests are self-contained (zero-dep) and safe to run anywhere (they
 - **`tools/tests/tpm-router.test.js`** — the `tpm` dispatcher: suite/verb routing, unknown → exit 2, arg pass-through, exit-code propagation. Run: `node tools/tests/tpm-router.test.js`
 - **`tools/tests/tpm-workflow-lint-selflocate.test.js`** — the lint tool self-locating its canonical manifest. Run: `node tools/tests/tpm-workflow-lint-selflocate.test.js`
 - **`tools/workflow/tests/run-all.js`** — the workflow suite. Run: `node tools/workflow/tests/run-all.js`
-- **`tools/session/tests/run-all.js`** (+ `tools/session/tests/mutation-check.js`) — the session suite. Run: `node tools/session/tests/run-all.js`
-- **`tools/task/tests/run-all.js`** (+ `tools/task/tests/mutation-check.js`) — the task suite. Run: `node tools/task/tests/run-all.js`
+- **`tools/session/tests/run-all.js`** (+ `tools/session/tests/mutation-check.js`) — the session suite (27 suites, 0 failed). Run: `node tools/session/tests/run-all.js`
+- **`tools/task/tests/run-all.js`** (+ `tools/task/tests/mutation-check.js`) — the task suite (16 suites, 0 failed). Run: `node tools/task/tests/run-all.js`
 - **`tools/consumer/tests/run-all.js`** — install / uninstall (pure exported helpers, incl. `parsePluginList`) + the `expand-hook` unit tests; `expand-hook/smoke.sh` is the LLM smoke. Run: `node tools/consumer/tests/run-all.js`
 - **`tools/misc/fix-git-rename/tests/tpm-fix-git-rename-refs/test.js`** — the rename migrator (hermetic temp-dir fixtures). Run: `node tools/misc/fix-git-rename/tests/tpm-fix-git-rename-refs/test.js`
 - **`tools/tests/lib/`** — shared test-support (the scratch-dir helper), not a suite.

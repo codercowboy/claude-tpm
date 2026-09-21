@@ -1,25 +1,29 @@
 #!/usr/bin/env node
 /**
- * tpm-session-boot-read.js — the boot-time pickup emitter (spec §7, §12.6).
+ * tpm-session-boot-read.js — the boot-time pickup emitter, REWORKED for the JSON-first note format.
  *
  * PURPOSE
- *   A PURE-READ verb whose stdout IS the pickup payload: `session open` calls it so prior state is
- *   pulled into context by a tool call, not by the model choosing to open a file. It emits, for the
- *   highest-numbered PRIOR session (never the just-opened current one):
- *     • the `session-NNNN-handoff.md` VERBATIM (short, always current — the READ-FIRST doc),
- *     • the unfinished (`## Open`) punchlist items, mechanically extracted (HEADLINES ONLY — NO notes),
- *     • when there is ≥1 open item, ONE templated `lineage` pointer using a real slug from the list (#1095),
- *     • the file locations of all three files,
- *     • the reminder that the notes log reads BOTTOM-TO-TOP.
+ *   A PURE-READ verb whose stdout IS the boot pickup payload: `session open` (the tpm-session skill's
+ *   boot ritual) calls it so prior state is pulled into context by a tool call, not by the model
+ *   choosing to open a file. It emits, for the highest-numbered PRIOR session (never the just-opened
+ *   current one):
+ *     • the prior session's HANDOFF (where / next / in flight / must-not-redo), rendered from the
+ *       canonical JSON via the new session model — the READ-FIRST slice,
+ *     • the still-OPEN punchlist items (HEADLINES ONLY: id · text · slug),
+ *     • the file locations of the canonical `session-NNNN.json` + derived `session-NNNN.md`,
+ *     • a pointer to the derived `.md` / `tpm session export` for the full log + punchlist detail.
  *
- * CONTRACT — NEVER crashes boot: exit 0 in ALL cases (including no prior session, an unreadable
- *   dir, an unrecognized/old/partial prior session). Side-effect-free (reads only).
+ * FORMAT (rework, #1123 Stage C) — the notes are now ONE canonical `session-NNNN.json` (+ ONE derived
+ *   `session-NNNN.md` with `## Handoff` / `## Punchlist` / `## Log` sections), nested under
+ *   `<sessionsDir>/session-NNNN/`. The OLD boot-read parsed the retired three-file `.md` layout
+ *   (`-handoff.md` / `-punchlist.md` / `-log.md`); this version reads the canonical JSON through
+ *   `lib/session-model.loadSession` (read → migrate → validate) instead — no dependence on the old
+ *   markdown parser or its v1.0 sentinel. The load path's migrate step REFUSES an unknown-NEWER
+ *   schemaVersion, so a session written by a newer tool is skipped (never mis-read), not crashed on.
  *
- * VERSION GATE (§13.6) — v1.0 only, no back-compat:
- *   The prior session is the highest-numbered PRIOR folder whose `session-NNNN-handoff.md` carries the
- *   `tpm-session-version: 1.0` sentinel (via `readsAsV1`). Any pre-v1.0 / unmarked / handoff-less
- *   folder is IGNORED (skipped), never parsed. If NO prior folder is v1.0 → the clean "first session"
- *   message. The point-at-path tier is REMOVED — an old session is invisible, not pointed-at.
+ * CONTRACT — NEVER crashes boot: exit 0 in ALL cases (no prior session, an unreadable dir, a
+ *   corrupt / unknown-newer / partial prior JSON). Side-effect-free (reads only). Any failure
+ *   degrades to a clean one-line message + exit 0.
  *
  * SESSIONS DIR
  *   `--sessions-dir <dir>` if given (used by tests + explicit callers). Otherwise resolved from the
@@ -35,9 +39,16 @@
 
 const fs = require('fs');
 const path = require('path');
-const { readsAsV1 } = require('./tpm-session-format');
 
 const NUMBER_RE = /^session-(\d{3,4})$/;
+
+// meta.number / folder numbers are canonical zero-padded width-4; re-pad defensively so a 3-digit
+// legacy folder and a 4-digit one compare + render the same way (tolerant, like the converter).
+function padNumber(number) {
+  const n = Number(number);
+  if (Number.isFinite(n)) return String(n).padStart(4, '0');
+  return String(number == null ? '' : number).padStart(4, '0');
+}
 
 // ---- sessions-dir resolution (best-effort; never throws) --------------------
 function resolveSessionsDir(explicit) {
@@ -66,7 +77,7 @@ function currentSessionNumber(sessionsDir) {
 }
 
 // ---- prior-session selection ------------------------------------------------
-/** All `session-NNN(N)` numbers under sessionsDir, descending (highest first). [] on any read error. */
+/** All `session-NNN(N)` numbers under sessionsDir, DESCENDING (highest first). [] on any read error. */
 function listSessionNumbers(sessionsDir) {
   let entries = [];
   try {
@@ -80,27 +91,82 @@ function listSessionNumbers(sessionsDir) {
     const m = NUMBER_RE.exec(e.name);
     if (m) numbers.push(m[1]);
   }
-  return numbers.sort().reverse();
+  // numeric descending so session-0010 outranks session-0009 (string sort would not).
+  return numbers.sort((a, b) => Number(b) - Number(a));
+}
+
+function sessionPaths(sessionsDir, number) {
+  const nnnn = padNumber(number);
+  const folder = path.join(sessionsDir, `session-${nnnn}`);
+  return {
+    folder,
+    jsonPath: path.join(folder, `session-${nnnn}.json`),
+    mdPath: path.join(folder, `session-${nnnn}.md`),
+  };
 }
 
 /**
- * Highest prior session number (excluding the current pointer's number) whose `session-NNNN-handoff.md`
- * reads as v1.0. Iterates descending and SKIPS (ignores) any prior that is not a v1.0 file — a
- * pre-v1.0 / unmarked / handoff-less folder is invisible (no point-at-path tier; removed under
- * no-back-compat). null if nothing qualifies.
+ * Highest PRIOR session (excluding the current pointer's number) that has a canonical
+ * `session-NNNN.json` which LOADS through the model (read→migrate→validate). Iterates descending
+ * and SKIPS any folder whose JSON is absent / corrupt / unknown-newer — such a folder is invisible,
+ * never crashed on. Returns { number, folder, jsonPath, mdPath, record } or null.
  */
-function highestPriorNumber(sessionsDir, currentNumber) {
-  const numbers = listSessionNumbers(sessionsDir);
-  for (const n of numbers) {
-    if (currentNumber && n === currentNumber) continue;
-    const handoffPath = path.join(sessionsDir, `session-${n}`, `session-${n}-handoff.md`);
-    if (!readsAsV1(handoffPath)) continue;
-    return n;
+function findPrior(sessionsDir, currentNumber) {
+  let model = null;
+  try {
+    // eslint-disable-next-line global-require
+    model = require('./lib/session-model');
+  } catch (err) {
+    model = null;
+  }
+  for (const n of listSessionNumbers(sessionsDir)) {
+    if (currentNumber && padNumber(n) === padNumber(currentNumber)) continue;
+    const paths = sessionPaths(sessionsDir, n);
+    if (!fs.existsSync(paths.jsonPath)) continue;
+    let record = null;
+    if (model) {
+      try {
+        record = model.loadSession(paths.jsonPath);
+      } catch (err) {
+        continue; // corrupt / unknown-newer / invalid — skip; never crash boot.
+      }
+    } else {
+      // No model available (should not happen — sibling lib) — degrade to raw parse best-effort.
+      try {
+        record = JSON.parse(fs.readFileSync(paths.jsonPath, 'utf8'));
+      } catch (err) {
+        continue;
+      }
+    }
+    return { number: padNumber(n), folder: paths.folder, jsonPath: paths.jsonPath, mdPath: paths.mdPath, record };
   }
   return null;
 }
 
 // ---- emit -------------------------------------------------------------------
+function nonEmptyString(s) {
+  return typeof s === 'string' && s.trim() !== '';
+}
+
+function bulleted(items) {
+  return items.map((x) => '- ' + x).join('\n');
+}
+
+/** Render the handoff slice from the canonical `handoff` object (null-safe). */
+function renderHandoff(h) {
+  if (h === null || h === undefined) {
+    return '(no handoff recorded yet — the prior session opened but never saved a handoff.)';
+  }
+  const blocks = [];
+  if (nonEmptyString(h.where)) blocks.push('**Where we are:**\n' + h.where);
+  if (nonEmptyString(h.next)) blocks.push('**Next:**\n' + h.next);
+  if (Array.isArray(h.in_flight) && h.in_flight.length) blocks.push('**In flight:**\n' + bulleted(h.in_flight));
+  if (Array.isArray(h.must_not_redo) && h.must_not_redo.length) {
+    blocks.push('**Must not redo:**\n' + bulleted(h.must_not_redo));
+  }
+  return blocks.length ? blocks.join('\n\n') : '(handoff present but empty.)';
+}
+
 function emitNoPrior(sessionsDir) {
   const where = sessionsDir || '(unresolved sessions dir)';
   process.stdout.write(
@@ -108,45 +174,29 @@ function emitNoPrior(sessionsDir) {
   );
 }
 
-function emitNewFormat(number, folder) {
-  const handoffPath = path.join(folder, `session-${number}-handoff.md`);
-  const punchlistPath = path.join(folder, `session-${number}-punchlist.md`);
-  const notesPath = path.join(folder, `session-${number}-log.md`);
-
+function emitPrior(prior, sessionsDir) {
+  const { number, folder, jsonPath, mdPath, record } = prior;
   const out = [];
   out.push(`== PRIOR SESSION ${number} · ${folder}/ ==`);
-  out.push(`files: ${handoffPath} · ${punchlistPath} · ${notesPath}   (log reads bottom-to-top)`);
+  out.push(`files: ${jsonPath} · ${mdPath}   (canonical JSON + derived .md; the log reads newest-first)`);
 
-  // handoff.md verbatim (the READ-FIRST doc).
+  // Handoff — the READ-FIRST slice, reconstructed from the canonical JSON.
   out.push('--- HANDOFF (read fully) ---');
-  let handoff = '';
-  try {
-    handoff = fs.readFileSync(handoffPath, 'utf8').replace(/\n+$/, '');
-  } catch (err) {
-    handoff = `(could not read ${handoffPath}: ${err.message})`;
-  }
-  out.push(handoff);
+  out.push(renderHandoff(record ? record.handoff : null));
 
-  // Open punchlist items, mechanically extracted — HEADLINES ONLY (incl. carried), NO notes (#1095,
-  // §13.5). The emit reads only id/text/slug/created, never `it.notes`, so notes stay hidden by
-  // construction. A single templated `lineage` pointer (using a REAL slug from the list) is appended
-  // when there is at least one open item — detail is one `lineage` call away (the reader is #1092).
-  let openLines = [];
-  let pointerSlug = null;
-  try {
-    if (fs.existsSync(punchlistPath)) {
-      // eslint-disable-next-line global-require
-      const { parsePunchlist, openItems } = require('./tpm-session-format');
-      const open = openItems(parsePunchlist(fs.readFileSync(punchlistPath, 'utf8')));
-      openLines = open.map((it) => `#${it.id} · ${it.text}  [${it.slug}, ${it.created}]`);
-      if (open.length) pointerSlug = open[0].slug;
-    }
-  } catch (err) {
-    openLines = [`(could not read ${punchlistPath}: ${err.message})`];
+  // Open punchlist — HEADLINES ONLY (id · text · slug); dropped/done items are omitted.
+  const items = record && Array.isArray(record.punchlist) ? record.punchlist : [];
+  const open = items.filter((it) => it && it.state === 'open');
+  out.push(`--- OPEN PUNCHLIST (${open.length}) ---`);
+  if (open.length) {
+    out.push(open.map((it) => `#${it.id} · ${it.text}  [${it.slug}]`).join('\n'));
+    out.push(
+      `for full detail: read ${mdPath} (## Punchlist / ## Log), or run: ` +
+        `npx tpm session export --sessions-dir ${sessionsDir} --session ${number} --style human`,
+    );
+  } else {
+    out.push('(no open punchlist items)');
   }
-  out.push(`--- OPEN PUNCHLIST (${openLines.length}) ---`);
-  out.push(openLines.length ? openLines.join('\n') : '(no open punchlist items)');
-  if (pointerSlug) out.push(`for more detail: npx tpm session punchlist lineage ${pointerSlug}`);
 
   process.stdout.write(`${out.join('\n')}\n`);
 }
@@ -157,10 +207,10 @@ function printHelp() {
     [
       'Usage: npx tpm session boot-read [--sessions-dir <dir>]',
       '',
-      'Pure-read boot pickup: emits the highest PRIOR v1.0 session\'s session-NNNN-handoff.md verbatim +',
-      'its open punchlist items + the three file locations + the bottom-to-top log reminder. Never emits',
-      'the just-opened current session. Pre-v1.0 / unmarked sessions are IGNORED (no back-compat).',
-      'ALWAYS exits 0 — it must never crash boot.',
+      "Pure-read boot pickup: emits the highest PRIOR session's handoff (from the canonical",
+      'session-NNNN.json, via the session model) + its open punchlist headlines + the JSON/.md file',
+      'locations. Never emits the just-opened current session. A corrupt / unknown-newer / partial',
+      'prior JSON is SKIPPED, not crashed on. ALWAYS exits 0 — it must never crash boot.',
       '',
     ].join('\n'),
   );
@@ -194,19 +244,19 @@ function main() {
     }
 
     const currentNumber = currentSessionNumber(sessionsDir);
-    const priorNumber = highestPriorNumber(sessionsDir, currentNumber);
-    if (!priorNumber) {
+    const prior = findPrior(sessionsDir, currentNumber);
+    if (!prior) {
       emitNoPrior(sessionsDir);
       process.exit(0);
     }
 
-    // priorNumber is guaranteed v1.0 (highestPriorNumber gates on readsAsV1) — emit the rich slice.
-    const folder = path.join(sessionsDir, `session-${priorNumber}`);
-    emitNewFormat(priorNumber, folder);
+    emitPrior(prior, sessionsDir);
     process.exit(0);
   } catch (err) {
     // Last-resort guard: never crash boot.
-    process.stdout.write(`boot-read: could not build a pickup slice (${err.message}) — open the latest session folder directly.\n`);
+    process.stdout.write(
+      `boot-read: could not build a pickup slice (${err.message}) — open the latest session folder directly.\n`,
+    );
     process.exit(0);
   }
 }
@@ -219,5 +269,8 @@ module.exports = {
   resolveSessionsDir,
   currentSessionNumber,
   listSessionNumbers,
-  highestPriorNumber,
+  sessionPaths,
+  findPrior,
+  renderHandoff,
+  padNumber,
 };

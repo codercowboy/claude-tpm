@@ -251,41 +251,33 @@ Whenever you've reached a state worth saving, checkpoint it:
 /tpm-session save
 ```
 
-A session's memory lives in **three files** in its folder — `handoff.md` (the pickup doc a cold resume
-reads first), `punchlist.md` (open/done work items), and `session-notes.md` (the append-only ledger of
-decisions + log). `save` runs a fixed 3-step ritual over them: reconcile the punchlist, append any
-ledger lines, then write the gated handoff. The tools it calls produce output like this:
+A session's memory lives in **two files** in its folder — ONE canonical `session-NNNN.json` (the source
+of truth) and ONE derived `session-NNNN.md` (a human view regenerated from the JSON on every write, with
+`## Handoff` / `## Punchlist` / `## Log` sections). `save` runs a fixed 3-step ritual over the record:
+reconcile the punchlist (`ops punchlist --action …`), append any ledger lines (`ops note --log/--decision`),
+then replace the handoff (`ops import-handoff`) and persist (`ops save`). Each write rewrites the JSON
+atomically and re-renders the `.md`.
 
-```
-punchlist: added #1.1  [ihy1fy]
-session-notes: appended [DONE] log entry in .../session-001/session-notes.md
-save: wrote handoff.md for session 001 (.../session-001)
-still open: #1.1
-```
-
-The `handoff.md` is the durable memory the next `open` reads back — its "What remains" is rebuilt
-mechanically from the punchlist, never re-typed:
+The record is the durable memory the next `open` reads back. Its `## Handoff` section is what a cold
+resume reads first (verified render):
 
 ```markdown
-# HANDOFF — session 001 — 2026-09-16
-> ⚠️ READ THIS FULLY before doing anything. Unfinished punchlist items below are required reading.
+## Handoff
 
-## Where we are / Next / In flight
-**Where we are:** Toolbar button shipped and wired to exportCsv(); backend endpoint still pending.
-**Next action:** Add the backend export endpoint.
-**In flight:** Nothing in flight.
+**Where we are:**
+Toolbar button shipped and wired to exportCsv(); backend endpoint still pending.
 
-## What remains
-- #1.1 · Add the backend export endpoint  [ihy1fy, 2026-09-16T20:13:48-07:00]
+**Next:**
+Add the backend export endpoint.
 
-## MUST NOT redo
-- Do not re-add CSV escaping — reuse exportCsv().
+**In flight:**
+- backend export endpoint
 ```
 
-The handoff is gated: `where` and `next` are required, and `save` refuses (writing nothing) if either is
-missing. That `still open:` line is a non-blocking nudge — close any items that are actually done and
-save again. Repeated saves in one session rewrite the same session's `handoff.md` wholesale (the ledger
-and punchlist are append/mark-only). They don't spawn a new session number — only `open` allocates one.
+The handoff is gated: `where` and `next` are required, and `ops import-handoff` refuses (writing nothing,
+exit 1) if `next` is missing. Repeated saves in one session rewrite the same session's `session-NNNN.json`
+wholesale (the log and punchlist are append/mark-only). They don't spawn a new session number — only
+`open` (via `current --open`) allocates one.
 
 ### 5. Close the session
 
@@ -297,7 +289,7 @@ When you're done, wrap up:
 
 Close writes a final checkpoint and offers to reap any stray subagents left from your rounds (see
 [tpm-reap](#66-tpm-reap)). The next time you `open`, the orchestrator reads back this sealed session's
-`handoff.md` (via `boot-read`) and resumes from its "Where we are / Next" head.
+handoff (via `boot-read`) and resumes from its "Where we are / Next" head.
 
 That's the whole loop: `open` → work with `tpm-task` and `tpm-workflow` → `save` → `close`.
 
@@ -316,9 +308,10 @@ still resolve.
 
 ### 6.1 tpm-session
 
-**Purpose.** Boot, checkpoint, and wrap a session so its state survives across sessions in three files
-per session — `handoff.md` (the pickup doc), `punchlist.md` (open/done work items), and
-`session-notes.md` (the decisions + log ledger). This is the backbone — the orchestrator's boot and the
+**Purpose.** Boot, checkpoint, and wrap a session so its state survives across sessions in one canonical
+record per session — `session-NNNN.json` (the source of truth) + a derived `session-NNNN.md` with
+`## Handoff` (the pickup doc), `## Punchlist` (open/done work items), and `## Log` (the decisions + log
+ledger). This is the backbone — the orchestrator's boot and the
 first thing you run.
 
 **When to reach for it.** Starting work (`open`), mid-session to save state (`save`), wrapping up
@@ -330,7 +323,7 @@ first thing you run.
 |---|---|---|
 | `open` | start, begin, boot | Boots the session: confirms config, allocates or resumes a session number, walks the reading chain, loads prior notes and the task queue. |
 | `close` | end, finish, wrap | Wraps up: final checkpoint, notes seal, and offers reap. |
-| `save` | write, checkpoint, snapshot, record, note | Runs the 3-step checkpoint: reconcile the punchlist, append any ledger lines, write the gated `handoff.md`. |
+| `save` | write, checkpoint, snapshot, record, note | Runs the 3-step checkpoint: reconcile the punchlist, append any ledger lines, replace the gated handoff via `ops import-handoff` + persist via `ops save`. |
 | `info` | status, current, which, where, show | Prints the current session number, whether notes exist, and the session count. Writes nothing. |
 
 **Bare `/tpm-session` is state-aware:** not opened yet → runs `open`; already open → runs `save`. It's
@@ -340,7 +333,7 @@ mechanism `open` and `save` use to find their own session.
 **What `open` does, in order.** It allocates or confirms the session number (idempotent — a second
 `open` in the same session returns the *same* number, never mints a new folder), reads the module map,
 walks the orchestrator reading list fresh from its manifest, calls `boot-read` to pull the prior
-session's `handoff.md` and open punchlist into context (it always excludes the just-opened session and
+session's handoff and open punchlist into context (it always excludes the just-opened session and
 never crashes boot), loads the task queue, prints the capabilities menu (only the enabled skills), and
 ends with the session footer. That is why a boot both remembers the last session and knows what you can
 reach for.
@@ -369,23 +362,29 @@ where you are without writing anything, run `/tpm-session info`.
 tpm session — session-notes tooling router
 
 Verbs:
-  config     resolve session config / sessions-dir (--json / --sessions-dir / --get)
+  config     resolve session config / sessions-dir (--json / --sessions-dir / --get / --modules)
   current    the current-session pointer (--state / --open / --seal / --next-number)
-  notes      the ledger WRITE API (init / log / decide / seal)
-  punchlist  the open/done work items (add / close / list / reopen / drop)
-  save       the gated, linted checkpoint (--payload <file.json>): rewrites handoff.md
+  ops        the notes WRITE surface (open / save / note / punchlist --action / close / import-handoff|log|punchlist)
+  export     the notes READ / export API (--last N | --session NNNN · --style json|human|both · --out)
+  migrate    opt-in convert ONE old 3-file markdown session → canonical JSON (--in / --out-dir)
   boot-read  the boot-time pickup emit (prior handoff + open punchlist); never crashes boot
-  review     the notes READ API (--last N …)
+  doctor     READ-ONLY health check: validate + hash-drift + suggest-migrate
 ```
 
 You rarely type these yourself, but they're useful for scripting or inspection. For example, read back
-recent sessions without opening one:
+the most recent session without opening one:
 
 ```
-$ npx tpm session review --sessions-dir <dir> --last 1
-session-001 — 2026-09-16 — Wire up CSV export
-  Where: Toolbar button shipped; endpoint pending.
-  Next:  Add the backend export endpoint.
+$ npx tpm session export --sessions-dir <dir> --last 1 --style human
+# Session 0001 · 2026-09-16
+
+## Handoff
+
+**Where we are:**
+Toolbar button shipped; endpoint pending.
+
+**Next:**
+Add the backend export endpoint.
 ```
 
 ### 6.2 tpm-task
@@ -461,25 +460,31 @@ Multiple `# ` blocks in one file is a batch, which is what `import` ingests.
 
 ```
 Usage: npx tpm task [--tasks-dir <path>] [--config <path>] <subcommand> [args]
-Subcommands:
-  list [--order newest|oldest|id|state] [--state open|in-progress|finished|dropped|removed|all]
-  show <selector> [--state <s>]
-  add --from <payload.md>
-  import --from <payload.md>
-  export <selector> [--out <path>] [--state <s>]
-  edit <id> --from <payload.md>
-  check <id.LETTER>
-  add-subtask <id> "<text>"
+Subcommands (via the router → tpm-task.js):
+  list [--state open|in-progress|finished|dropped|removed|all] [--label <l>]
+  show <id>
+  add --headline "<…>" [--summary "<…>"] [--context "<…>"] [--label <l>]… [--body-txt-file <f> --field summary|context]
+  import <id> (--file <f.json> | stdin) [--prune]      # per-id JSON, editable fields only
+  import --template                                     # emit a blank editable-fields JSON skeleton
+  edit <id> [--headline …] [--summary …] [--context …] [--label …]
+  add-subtask <id> --text "<…>"
+  check <id> <key>
+  label / unlabel <id> <label…>   ·   labels [--json]
   start <id>
-  finish <id> --action "<what was done>"
-  drop <id> --reason "<why>"
-  remove <id> [--hard]
+  finish <id> [--action "<…>"] [--note "<…>"] [--ref "<…>"]…
+  drop <id> [--reason "<…>"] [--note "<…>"] [--ref "<…>"]…
+  remove <id> [--hard]          # --hard PURGES the body; config-gated on tasks.allowHardDelete (off by default)
   reopen <id>
-  resolve <selector> [--state <s>] [--since <Nd>]
-  reindex
+  reindex   ·   history <id> [--json]
+
+Reached through the router but implemented in tpm-task-export.js:
+  export|search <selector…> [--state <s>] [--open|--closed] [--label <l>] [--match <t>]
+                            [--opened-since|--updated-since|--closed-since <Nd|date>] [--last N --by updated|created|closed]
+                            [--json|--human] [--out <dir|file>]   # default: --human to stdout
 ```
 
-(`resolve` and `reindex` are tool-internal — the skill uses them; you won't type them.)
+(`reindex` / `history` are mostly tool-internal — the skill uses them; you rarely type them. There is
+no `resolve` verb — use `search`/`export` selectors.)
 
 ### 6.3 tpm-workflow
 

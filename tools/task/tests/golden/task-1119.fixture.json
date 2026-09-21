@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "1.0.0",
+  "kind": "task",
+  "id": "1119",
+  "state": "in-progress",
+  "headline": "Build the task JSON→human converter",
+  "labels": ["session", "tooling"],
+  "summary": "Pure render layer that turns the canonical task JSON into the derived body and index views.",
+  "context": "Mirrors session-converter; replaces the surgical tpm-task-format.js now that bodies are derived.",
+  "subtasks": [
+    { "key": "A", "text": "render(record) → body .md", "state": "done" },
+    { "key": "B", "text": "renderIndexView(indexObj) → the three views", "state": "open" },
+    { "key": "C", "text": "byte-exact golden + mutation proof", "state": "open" }
+  ],
+  "timestamps": {
+    "createdAt": "2026-09-19T09:12:00-07:00",
+    "updatedAt": "2026-09-20T11:30:00-07:00",
+    "startedAt": "2026-09-20T09:00:00-07:00",
+    "endedAt": null,
+    "reopenedAt": null
+  },
+  "endAction": null,
+  "history": [
+    { "at": "2026-09-19T09:12:00-07:00", "op": "create" },
+    { "at": "2026-09-19T10:03:00-07:00", "op": "edit", "field": "headline", "value": "Build the task JSON→human converter" },
+    { "at": "2026-09-20T09:00:00-07:00", "op": "state", "from": "open", "to": "in-progress" },
+    { "at": "2026-09-20T10:15:00-07:00", "op": "subtask", "key": "A", "action": "check" }
+  ]
+}

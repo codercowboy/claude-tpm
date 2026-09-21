@@ -2,9 +2,8 @@
 
 Answers "is a session currently open, or not?" and owns allocating the next `session-NNNN` folder
 number (four-digit, zero-padded). Backs the `tpm-session` skill's bare-invocation state check (open →
-`save`, not-opened → `open`) and `tpm-session-notes.js`'s "which folder is CURRENT" guard — both the
-skill and the write API call this directly, on the same footing as
-`tpm-session-notes.js`/`tpm-session-review.js`.
+`save`, not-opened → `open`); the skill resolves the session number here, then passes it to the write
+surface (`tpm-session-ops.js`) and the reader (`tpm-session-export.js`) as an explicit `--session`.
 
 Every claim below was run against a disposable sandbox tree
 (`tmp/bug-fixer-r1/sandbox/`), never the live configured sessions dir.
@@ -78,7 +77,7 @@ $ npx tpm session current --sessions-dir "$SDIR" --state
 
 - `tools/session/config.md` — resolves `--sessions-dir` for this tool (via `--get
   notes.sessionsDir` / `--sessions-dir`).
-- `tools/session/tpm-session-notes.md` — the write API; calls `resolveCurrentSession`/`sealSession`
-  from this module directly to find/close the CURRENT session before writing.
+- `tools/session/tpm-session-ops.md` — the write surface; the skill uses this tool's `--open`/`--seal`
+  to allocate/close the CURRENT session number, then passes it to `ops` as `--session`.
 - `out/skills/tpm-session/SKILL.md` — drives this tool's `--state` output to pick a mode
   (not-opened → `open`, open → `save`) for the skill's bare-invocation default.
