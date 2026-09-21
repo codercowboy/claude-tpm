@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "session": {
+    "notes": {
+      "sessionsDir": "claude-context/sessions"
+    }
+  }
+}

@@ -367,12 +367,14 @@ const REAL_MANIFEST = {
   hooks: {
     PreToolUse: [
       { matcher: 'Agent|Task', hooks: [{ type: 'command', command: 'npx tpm hooks gate-spawn' }] },
-      { matcher: 'Read|Glob|Grep|NotebookRead', hooks: [{ type: 'command', command: 'npx tpm hooks expand-tpm-home' }] },
+    ],
+    PostToolUse: [
+      { matcher: 'Read|Grep|Glob', hooks: [{ type: 'command', command: 'npx tpm hooks expand-tpm-home-content' }] },
     ],
   },
 };
 check('parseHooksManifest: the real hooks.json → both hooks detected', () => {
-  assert.deepStrictEqual(inst.parseHooksManifest(REAL_MANIFEST), { gateSpawn: true, expandTpmHome: true });
+  assert.deepStrictEqual(inst.parseHooksManifest(REAL_MANIFEST), { gateSpawn: true, expandContent: true });
 });
 check('parseHooksManifest: matches by substring so a `node …` command form still detects', () => {
   const legacy = { hooks: { PreToolUse: [
@@ -385,12 +387,17 @@ check('parseHooksManifest: matches by substring so a `node …` command form sti
 });
 check('parseHooksManifest: only one hook present → the other stays false', () => {
   const partial = { hooks: { PreToolUse: [{ hooks: [{ command: 'npx tpm hooks gate-spawn' }] }] } };
-  assert.deepStrictEqual(inst.parseHooksManifest(partial), { gateSpawn: true, expandTpmHome: false });
+  assert.deepStrictEqual(inst.parseHooksManifest(partial), { gateSpawn: true, expandContent: false });
+});
+check('parseHooksManifest: the content hook is only detected in PostToolUse, not PreToolUse', () => {
+  // A stray content-hook wired under PreToolUse must NOT count — resolution is a PostToolUse concern.
+  const misplaced = { hooks: { PreToolUse: [{ hooks: [{ command: 'npx tpm hooks expand-tpm-home-content' }] }] } };
+  assert.strictEqual(inst.parseHooksManifest(misplaced).expandContent, false);
 });
 check('parseHooksManifest: garbage/empty input → both false, no throw', () => {
-  assert.deepStrictEqual(inst.parseHooksManifest(null), { gateSpawn: false, expandTpmHome: false });
-  assert.deepStrictEqual(inst.parseHooksManifest({}), { gateSpawn: false, expandTpmHome: false });
-  assert.deepStrictEqual(inst.parseHooksManifest({ hooks: { PreToolUse: 'nope' } }), { gateSpawn: false, expandTpmHome: false });
+  assert.deepStrictEqual(inst.parseHooksManifest(null), { gateSpawn: false, expandContent: false });
+  assert.deepStrictEqual(inst.parseHooksManifest({}), { gateSpawn: false, expandContent: false });
+  assert.deepStrictEqual(inst.parseHooksManifest({ hooks: { PreToolUse: 'nope' } }), { gateSpawn: false, expandContent: false });
 });
 
 // ── bundleHooksHealth (2a: disk read from the target's node_modules) ─────────────────────────────────
@@ -402,13 +409,13 @@ function writeBundleHooks(dir, manifestOrRaw) {
 }
 check('bundleHooksHealth: absent manifest → present:false (degrades to skip)', () => {
   assert.deepStrictEqual(inst.bundleHooksHealth(mkTmp()),
-    { present: false, error: null, gateSpawn: false, expandTpmHome: false });
+    { present: false, error: null, gateSpawn: false, expandContent: false });
 });
 check('bundleHooksHealth: real delivered manifest → present + both hooks', () => {
   const dir = mkTmp();
   writeBundleHooks(dir, REAL_MANIFEST);
   assert.deepStrictEqual(inst.bundleHooksHealth(dir),
-    { present: true, error: null, gateSpawn: true, expandTpmHome: true });
+    { present: true, error: null, gateSpawn: true, expandContent: true });
 });
 check('bundleHooksHealth: malformed manifest JSON → present:true + error, hooks false', () => {
   const dir = mkTmp();

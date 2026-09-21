@@ -28,16 +28,23 @@ the workflow module, not by gatekeeping who may boot.)
    crashes boot (it degrades to all-enabled + a warning) — surfacing a malformed config is the
    doctor's job (`npx tpm install --check`), not boot's.
 
-3. **Walk the core reading list** — the orchestrator reading-list manifest
-   (`${TPM_HOME}/claude-context/methodology/orchestrator/reading-list.md`) is the single source of truth. Read it
-   FRESH (it evolves), walk its Tier-1 in order; do not paraphrase from memory. (`CLAUDE.md` is
+3. **Walk the core reading list** — fetch the orchestrator reading-list manifest with
+   `npx tpm doc claude-context/methodology/orchestrator/reading-list.md` (it prints the doc with the
+   bundle path resolved). It is the single source of truth — read it FRESH (it evolves), walk its Tier-1
+   in order; do not paraphrase from memory. (`CLAUDE.md` is
    harness-auto-injected context, not a thing you "read" as a step here.)
 
 4. **Load project state — module-gated:**
-   - **Latest session notes** (only if `session.notes.enabled`): the HIGHEST-numbered
-     `claude-context/sessions/session-NNN/` folder — check for `session-notes.md` first. 
-     This is your "previous session" — it carries forward decisions and open threads. 
-     If no session folders exist, start fresh.
+   - **Prior session pickup** (only if `session.notes.enabled`): call `npx tpm session boot-read`
+     (it self-resolves the sessions dir via `npx tpm session config --sessions-dir`; pass
+     `--sessions-dir <dir>` explicitly if you already resolved it). This runs AFTER step 1's
+     `current --open`, so it emits the highest **PRIOR** session (never the just-opened current one):
+     its `handoff.md` verbatim (READ IT FULLY — where we are, next action, what NOT to redo), its open
+     `punchlist.md` items (what remains), the three file locations, and the reminder that the notes log
+     reads bottom-to-top. This is your "previous session" pickup — pulled into context by the tool, not
+     by you choosing which file to open. It degrades gracefully (old/partial/unrecognized prior session
+     → points at the path to read directly) and **always exits 0** — it never crashes boot. If it
+     reports no prior session, start fresh.
    - **The task queue** (only if `tasks` module enabled): blocking breadcrumbs and queued work.
 
 5. **Surface capabilities — the open MOTD** (gated by `session.showTPMOpenMessage`): list the
@@ -70,7 +77,7 @@ model. If the wiring is unclear, **ASK** — don't invent a resolution mechanism
 ## What this step does NOT do (moved elsewhere, not silently dropped)
 
 - **The pre-flight gate** — the workflow module walks the pre-task questions
-  (`${TPM_HOME}/claude-context/methodology/orchestrator/pre-task-questions.md`) before spawn/plan/
+  (`%TPM_HOME%/claude-context/methodology/orchestrator/pre-task-questions.md`) before spawn/plan/
   scaffold, not at boot.
 - **Drift detection** (methodology docs unreachable from a reading list; operational paths named but
   missing on disk) — planned for the hygiene module (enabled in config by default, but not yet built —

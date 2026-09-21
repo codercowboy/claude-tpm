@@ -15,7 +15,7 @@
  *   Everything resolves against THIS file's dir (`__dirname`) and dispatches by CHILD PROCESS
  *   (`spawnSync('node', [tool, …args], {stdio:'inherit'})`) — process isolation + faithful argv/stdio
  *   pass-through; the child's exit code is propagated. Because the routers self-locate their scripts,
- *   NOTHING in the `tpm …` chain needs `${TPM_HOME}` or any env var.
+ *   NOTHING in the `tpm …` chain needs `%TPM_HOME%` or any env var.
  *
  * USAGE
  *   tpm session <verb> [args…]      # session-notes tooling      → session/tpm-session-router.js
@@ -25,6 +25,8 @@
  *   tpm install [dir] [options]     # graft claude-tpm onto an existing project
  *   tpm uninstall [dir] [options]   # reverse it (scope-aware: this project vs the whole system)
  *   tpm doctor [dir]                # read-only health check (= `install --check`)
+ *   tpm home                        # print the absolute bundle root (self-located, bypass-safe)
+ *   tpm doc <bundle-relative-path>  # print a bundle doc with ${TPM_HOME}/%TPM_HOME% resolved
  *   tpm --help | -h
  *
  *   e.g.  npx tpm session notes resume --where "…" --next "…"
@@ -45,11 +47,15 @@ const SUITES = {
   hooks: 'hooks/tpm-hooks-router.js',
 };
 
-// flat human-porcelain aliases (consumer adoption) — NOT suites; they map straight to a script.
+// flat top-level verbs — NOT suites; they map straight to a script. Two groups: consumer-adoption
+// porcelain (install/uninstall/doctor) and the self-locating bundle primitives (home/doc), the
+// bypass-safe way skills/tools/users resolve the bundle path + read bundle docs (session 019 redesign).
 const ALIASES = {
   install: 'consumer/tpm-consumer-install.js',
   uninstall: 'consumer/tpm-consumer-uninstall.js',
   doctor: 'consumer/tpm-consumer-install.js', // read-only health check = `install --check`
+  home: 'tpm-home.js',                         // print the absolute bundle root (self-located)
+  doc: 'tpm-doc.js',                           // print a bundle doc with ${TPM_HOME}/%TPM_HOME% resolved
 };
 
 // Fixed trailing args a porcelain alias injects — `doctor` IS `install --check`, so the dispatcher
@@ -74,6 +80,10 @@ Consumer adoption:
   install [dir] [options]     graft claude-tpm onto an existing project
   uninstall [dir] [options]   reverse it (asks: this project only, or the whole system)
   doctor [dir]                read-only health check (= install --check)
+
+Bundle primitives (self-locating; work in every permission mode):
+  home                        print the absolute bundle root
+  doc <bundle-relative-path>  print a bundle doc with \${TPM_HOME}/%TPM_HOME% resolved
 
   tpm <suite> --help          list that suite's verbs
   tpm --help, -h              show this message

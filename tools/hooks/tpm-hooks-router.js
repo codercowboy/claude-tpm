@@ -3,7 +3,8 @@
  * tpm-hooks-router.js — the `hooks` sub-router for the `tpm` dispatcher.
  *
  * PURPOSE
- *   `tpm hooks <verb> [args…]` dispatches to a claude-tpm PreToolUse HOOK program. This router OWNS
+ *   `tpm hooks <verb> [args…]` dispatches to a claude-tpm HOOK program (PreToolUse or PostToolUse).
+ *   This router OWNS
  *   the hook verb table; the top-level `tpm.js` forwards `hooks <anything…>` here without knowing the
  *   verbs (design: dev/tpm-cli-design.md §0). It exists so a plugin `hooks.json` can invoke a hook by
  *   a STABLE, path-independent command — `npx tpm hooks gate-spawn` — instead of hard-coding a deep
@@ -21,7 +22,7 @@
  *   decision JSON) flows straight back out, and the hook's EXIT CODE (0 = allow, 2 = block) propagates
  *   up through this router and `tpm.js` unchanged.
  *
- *   Sibling/relative scripts resolve against THIS file's dir (`__dirname`) — no `${TPM_HOME}`/env
+ *   Sibling/relative scripts resolve against THIS file's dir (`__dirname`) — no `%TPM_HOME%`/env
  *   dependency.
  *
  * USAGE
@@ -39,6 +40,7 @@ const { spawnSync } = require('child_process');
 const VERBS = {
   'gate-spawn': '../workflow/hooks/tpm-workflow-gate-spawn.js',
   'expand-tpm-home': '../consumer/hooks/expand-tpm-home.js',
+  'expand-tpm-home-content': '../consumer/hooks/expand-tpm-home-content.js',
 };
 
 function help() {
@@ -48,13 +50,16 @@ Usage:
   tpm hooks <verb> [args…]
 
 Verbs:
-  gate-spawn        block a tpm-workflow round spawn without a fresh kickoff  (PreToolUse: Agent|Task)
-  expand-tpm-home   resolve \${TPM_HOME}/… in read-tool paths to the bundle   (PreToolUse: Read|Glob|Grep|NotebookRead)
+  gate-spawn               block a tpm-workflow round spawn without a fresh kickoff  (PreToolUse: Agent|Task)
+  expand-tpm-home          resolve %TPM_HOME%/… in read-tool PATHS to the bundle    (PreToolUse: Read|Glob|Grep|NotebookRead)
+  expand-tpm-home-content  resolve \${TPM_HOME}/%TPM_HOME% in read CONTENT           (PostToolUse: Read|Grep|Glob) — bypass-safe
 
   tpm hooks --help, -h
 
-These are harness-invoked hooks: the PreToolUse payload arrives on stdin and the exit code decides the
-tool's fate (0 = allow, 2 = block). Wire them from a plugin hooks.json, e.g.:
+These are harness-invoked hooks. A PreToolUse hook's exit code decides the tool's fate (0 = allow,
+2 = block); a PostToolUse hook rewrites the tool RESULT via hookSpecificOutput.updatedToolOutput. In
+both cases the payload arrives on stdin and stdout flows back to the harness. Wire them from a plugin
+hooks.json, e.g.:
   { "type": "command", "command": "npx tpm hooks gate-spawn" }`);
 }
 

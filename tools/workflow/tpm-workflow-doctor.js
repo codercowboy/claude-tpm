@@ -74,10 +74,10 @@ function checkCompose() {
       '--plan', path.join(tmp, 'plan.md'), '--charter', path.join(tmp, 'charter.md'),
     ], { encoding: 'utf8' });
     const hasMarker = /<!--\s*tpm-workflow-spawn\s+phase="[^"]+"\s+role="[^"]+"\s*-->/.test(out);
-    const hasToken = out.includes('${TPM_HOME}/claude-context/methodology');
+    const hasToken = out.includes('%TPM_HOME%/claude-context/methodology');
     if (!hasMarker) return { ok: false, detail: 'compose output has NO well-formed quoted spawn-gate marker', fix: 'compose must emit `<!-- tpm-workflow-spawn phase="…" role="…" -->` (the gate keys off it).' };
-    if (!hasToken) return { ok: false, detail: 'compose emits BARE methodology paths (not ${TPM_HOME}/…)', fix: 'tokenize the base-chain paths so a consumer worker can resolve them via the expand hook.' };
-    return { ok: true, detail: 'compose emits the quoted gate marker + ${TPM_HOME}/ methodology paths' };
+    if (!hasToken) return { ok: false, detail: 'compose emits BARE methodology paths (not %TPM_HOME%/…)', fix: 'tokenize the base-chain paths so a consumer worker can resolve them via the content hook / `tpm doc`.' };
+    return { ok: true, detail: 'compose emits the quoted gate marker + %TPM_HOME%/ methodology paths' };
   } catch (e) {
     return { ok: false, detail: `compose failed to run: ${String(e.message).split('\n')[0]}`, fix: 'compose needs --role --phase-dir --plan --charter; run it with all required flags.' };
   } finally {

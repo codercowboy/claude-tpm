@@ -33,6 +33,7 @@ const TARGETS = [
   'consumer/tests/run-all.js',
   'workflow/tests/run-all.js',
   'tests/tpm-router.test.js',
+  'tests/tpm-home-doc.test.js',
   'tests/tpm-workflow-lint-selflocate.test.js',
   'misc/fix-git-rename/tests/tpm-fix-git-rename-refs/test.js',
 ];

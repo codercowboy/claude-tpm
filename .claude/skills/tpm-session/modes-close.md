@@ -15,14 +15,16 @@ follow your spawn prompt instead.
    auto-kills** — enumerate → explicit user choice → double-confirm for "all" → close only the
    confirmed, per `tpm-reap`'s own ritual. Silent (no prompt) if `tpm-reap` finds nothing running.
 
-2. **Finalize session notes — delegate to `save`.** Run `SKILL.md`'s `save` body verbatim (same
-   compose-then-write logic: RESUME rewritten in place, any final open items/decisions/log lines).
+2. **Finalize session notes — delegate to `save`.** Run `SKILL.md`'s `save` body verbatim — the fixed
+   3-step ritual: reconcile the punchlist (close finished items, add any new ones), append any final
+   decisions/log lines, then write the gated `handoff.md` via `save --payload` (honoring its exit codes
+   — a refused save (exit 1) wrote nothing, so fix the named field and re-run before sealing).
    Module-gated: a no-op if `session.notes.enabled` is false. This is the one path — `close` does NOT
    duplicate the notes-writing logic.
 
 3. **Seal the session.** After `save` finishes, call `npx tpm session notes
    --sessions-dir <dir> seal` — stamps `SEALED <date>` in the note AND marks the current-session
-   pointer closed (`${TPM_HOME}/tools/session/tpm-session-current.js`'s `sealSession`), so the NEXT bare
+   pointer closed (`%TPM_HOME%/tools/session/tpm-session-current.js`'s `sealSession`), so the NEXT bare
    `tpm-session` invocation (this session or a future one) opens fresh instead of reusing this folder.
 
 4. **`/export` nudge.** One-line reminder that `/export` (a Claude Code CLI command) saves a readable
@@ -50,5 +52,5 @@ follow your spawn prompt instead.
 - The old skill minted a **new** `session-NNN` folder on every close — the "always create a new
   folder" rule was stated directly in `CLAUDE.md`'s pre-rewrite boot ritual, which pointed at an
   `orchestrator/session-process.md` that is now written and live at
-  `${TPM_HOME}/claude-context/methodology/orchestrator/session-process.md`. `close` now updates the SAME folder
+  `%TPM_HOME%/claude-context/methodology/orchestrator/session-process.md`. `close` now updates the SAME folder
   `open` established this session (step 2–3 above) — the bug this whole redesign exists to fix.

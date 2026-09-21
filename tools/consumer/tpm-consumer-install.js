@@ -23,9 +23,10 @@
  *        ONLY if the plugin is installed but currently disabled for this project (step 4 usually
  *        already leaves it enabled).
  *   Deliberately NOT handled here: writing env.TPM_HOME or hooks into any settings.json. The plugin
- *   delivers its PreToolUse hooks itself, via the bundle-root hooks/hooks.json (auto-discovered on
- *   plugin enable — confirmed firing end-to-end, session 013), and env.TPM_HOME is retired (zero
- *   consumers: skills call `npx tpm …` and doc-reads resolve through the plugin's expand-tpm-home hook).
+ *   delivers its hooks itself, via the bundle-root hooks/hooks.json (auto-discovered on plugin enable
+ *   — confirmed firing end-to-end, session 013), and env.TPM_HOME is retired (zero consumers: skills
+ *   call `npx tpm …` and in-content %TPM_HOME% resolves through the plugin's PostToolUse
+ *   expand-tpm-home-content hook).
  *   `claude plugin … --scope project` performs its own in-repo settings declaration; this tool never
  *   touches settings.json directly.
  *
@@ -60,8 +61,8 @@
  *                      SOURCE resolves (catches a registration whose source path is gone — "points at
  *                      the wrong place") · plugin installed · plugin enabled for the project · plugin
  *                      CACHE present (catches an installed record whose cache dir is gone — "registered
- *                      but not there" / cache-miss) · the bundle delivers its two PreToolUse hooks
- *                      (gate-spawn + expand-tpm-home) · any consumer config.json parses as JSON. (There
+ *                      but not there" / cache-miss) · the bundle delivers its hooks (gate-spawn
+ *                      PreToolUse + expand-tpm-home-content PostToolUse) · any consumer config.json parses as JSON. (There
  *                      is NO env.TPM_HOME / settings.json hook wiring to check — the plugin delivers the
  *                      hooks itself; env.TPM_HOME is retired.) A normal install runs this same doctor as
  *                      a final step, and SELF-HEALS a dead-source marketplace (removes + re-adds it).
@@ -276,27 +277,28 @@ function pluginState(cwd) {
   return parsePluginList(runClaudeJson(['plugin', 'list', '--json'], cwd));
 }
 
-// ── hooks-delivery health (the plugin ships its two PreToolUse hooks itself, via the bundle-root
-// hooks/hooks.json; there is NO env.TPM_HOME / settings.json hook wiring to check — that was retired).
-// The doctor verifies the delivered artifact is intact: the bundle in the target's node_modules carries
-// a hooks/hooks.json that declares both hooks. Split pure-parse / disk-read like parsePluginList above. ─
+// ── hooks-delivery health (the plugin ships its hooks itself, via the bundle-root hooks/hooks.json;
+// there is NO env.TPM_HOME / settings.json hook wiring to check — that was retired). The doctor verifies
+// the delivered artifact is intact: the bundle in the target's node_modules carries a hooks/hooks.json
+// that declares gate-spawn (PreToolUse) and expand-tpm-home-content (PostToolUse). Split pure-parse /
+// disk-read like parsePluginList above. ─
 
-// Pure: given a parsed hooks.json object, report whether it declares the two PreToolUse hooks the plugin
-// delivers. Matched by the command string CONTAINING `hooks <name>`, so it survives a `node …`→`npx tpm`
-// rewording of the command and doesn't pin to one exact invocation form.
+// Pure: given a parsed hooks.json object, report whether it declares the two hooks the plugin delivers:
+// `gate-spawn` (PreToolUse) and `expand-tpm-home-content` (PostToolUse — the bypass-safe %TPM_HOME%
+// CONTENT resolver that replaced the old PreToolUse path hook). Matched by the command string CONTAINING
+// `hooks <name>`, so it survives a `node …`→`npx tpm` rewording and doesn't pin to one invocation form.
 function parseHooksManifest(manifest) {
-  const result = { gateSpawn: false, expandTpmHome: false };
-  if (!manifest || typeof manifest !== 'object') return result;
-  const pre = manifest.hooks && manifest.hooks.PreToolUse;
-  if (!Array.isArray(pre)) return result;
-  for (const group of pre) {
-    const hooks = group && Array.isArray(group.hooks) ? group.hooks : [];
-    for (const h of hooks) {
-      const cmd = h && typeof h.command === 'string' ? h.command : '';
-      if (/hooks\s+gate-spawn/.test(cmd)) result.gateSpawn = true;
-      if (/hooks\s+expand-tpm-home/.test(cmd)) result.expandTpmHome = true;
+  const result = { gateSpawn: false, expandContent: false };
+  if (!manifest || typeof manifest !== 'object' || !manifest.hooks) return result;
+  const scan = (groups, pred) => {
+    if (!Array.isArray(groups)) return;
+    for (const group of groups) {
+      const hooks = group && Array.isArray(group.hooks) ? group.hooks : [];
+      for (const h of hooks) pred(h && typeof h.command === 'string' ? h.command : '');
     }
-  }
+  };
+  scan(manifest.hooks.PreToolUse, (cmd) => { if (/hooks\s+gate-spawn/.test(cmd)) result.gateSpawn = true; });
+  scan(manifest.hooks.PostToolUse, (cmd) => { if (/hooks\s+expand-tpm-home-content/.test(cmd)) result.expandContent = true; });
   return result;
 }
 
@@ -305,10 +307,10 @@ function parseHooksManifest(manifest) {
 // check row degrades to a skip rather than a hard fail when node_modules has no bundle.
 function bundleHooksHealth(targetDir) {
   const p = path.join(targetDir, 'node_modules', TPM_PKG_NAME, 'hooks', 'hooks.json');
-  if (!fs.existsSync(p)) return { present: false, error: null, gateSpawn: false, expandTpmHome: false };
+  if (!fs.existsSync(p)) return { present: false, error: null, gateSpawn: false, expandContent: false };
   let manifest;
   try { manifest = JSON.parse(fs.readFileSync(p, 'utf8')); }
-  catch (e) { return { present: true, error: e.message, gateSpawn: false, expandTpmHome: false }; }
+  catch (e) { return { present: true, error: e.message, gateSpawn: false, expandContent: false }; }
   return Object.assign({ present: true, error: null }, parseHooksManifest(manifest));
 }
 
@@ -613,11 +615,11 @@ function runCheck(targetDir) {
   const hooksNote = !nmHasTpm ? '(skipped — dependency not installed in node_modules)'
     : hh.error ? `(bundle hooks.json invalid JSON: ${hh.error})`
     : !hh.present ? '(bundle carries no hooks/hooks.json)'
-    : (!hh.gateSpawn || !hh.expandTpmHome)
-      ? `(missing: ${[!hh.gateSpawn && 'gate-spawn', !hh.expandTpmHome && 'expand-tpm-home'].filter(Boolean).join(' + ')})`
+    : (!hh.gateSpawn || !hh.expandContent)
+      ? `(missing: ${[!hh.gateSpawn && 'gate-spawn', !hh.expandContent && 'expand-tpm-home-content'].filter(Boolean).join(' + ')})`
       : '';
-  rows.push({ label: 'plugin delivers its PreToolUse hooks (gate-spawn + expand-tpm-home)',
-    pass: !nmHasTpm ? true : (hh.present && !hh.error && hh.gateSpawn && hh.expandTpmHome), note: hooksNote });
+  rows.push({ label: 'plugin delivers its hooks (gate-spawn PreToolUse + expand-tpm-home-content PostToolUse)',
+    pass: !nmHasTpm ? true : (hh.present && !hh.error && hh.gateSpawn && hh.expandContent), note: hooksNote });
 
   // Consumer override config (optional): if present, it must be valid JSON — a malformed one silently
   // degrades every resolver to defaults. Absent is fine (defaults); present-and-malformed FAILS.

@@ -4,14 +4,15 @@
  *
  * PURPOSE
  *   Answers the question `tpm-session`'s bare invocation needs: "has `open` already run this
- *   session, or not?" — and owns allocating the next `session-NNN` folder number
- *   (highest existing `session-NNN` + 1; no UUID involved in the count, per the resolved
- *   build answer). Backs both the skill's bare-invocation state check and the write-API's
- *   "which folder is CURRENT" guard.
+ *   session, or not?" — and owns allocating the next `session-NNNN` folder number
+ *   (highest existing `session-NNN(N)` + 1, zero-padded to 4 digits; no UUID involved in the count,
+ *   per the resolved build answer). The listing regex still SEES the surviving 3-digit legacy folders
+ *   so numbering continues past them (§13.6: first v1.0 session is 020). Backs both the skill's
+ *   bare-invocation state check and the write-API's "which folder is CURRENT" guard.
  *
  * MECHANISM — a single current-session pointer file, NOT a sessionId->NNN map
  *   `<sessionsDir>/.current-session.json`:
- *     { "sessionId": "<uuid-or-null>", "number": "008", "openedAt": "<ISO8601>",
+ *     { "sessionId": "<uuid-or-null>", "number": "0020", "openedAt": "<ISO8601>",
  *       "closedAt": "<ISO8601>|null" }
  *
  *   This is a deliberate build-time decision (build-plan.md §6 Q2 flagged the exact shape as
@@ -40,7 +41,7 @@
  *   resolveCurrentSession({ sessionsDir })            -> { state: 'open'|'not-opened', number, sessionId, pointerPath, pointer }
  *   openSession({ sessionsDir })                       -> { number, sessionId, isNew, pointerPath }  (idempotent if already open)
  *   sealSession({ sessionsDir })                       -> { number, closedAt } | throws if nothing open
- *   allocateNextNumber({ sessionsDir })                -> "008" (highest existing session-NNN + 1, "001" if none)
+ *   allocateNextNumber({ sessionsDir })                -> "0020" (highest existing session-NNN(N) + 1, "0001" if none)
  *   readEnvSessionId()                                 -> string|null ($CLAUDE_CODE_SESSION_ID, best-effort)
  *
  * CLI
@@ -57,7 +58,11 @@ const fs = require('fs');
 const path = require('path');
 
 const POINTER_FILENAME = '.current-session.json';
-const NUMBER_RE = /^session-(\d{3})$/;
+// Allocation LISTING regex: matches BOTH the surviving 3-digit legacy folders (session-001..019) and
+// the new 4-digit ones (session-NNNN) so numbering CONTINUES past the old sessions (19 → 0020) rather
+// than restarting at 0001 (R-4). Allocation COUNTS folders to avoid reusing a number; it does NOT
+// apply the v1.0 reader gate — the version gate is a READER concern only.
+const NUMBER_RE = /^session-(\d{3,4})$/;
 
 function readEnvSessionId() {
   const v = process.env.CLAUDE_CODE_SESSION_ID;
@@ -85,7 +90,11 @@ function writePointer(sessionsDir, pointer) {
   fs.writeFileSync(pointerPathFor(sessionsDir), `${JSON.stringify(pointer, null, 2)}\n`, 'utf8');
 }
 
-/** Highest existing session-NNN + 1, zero-padded to 3 digits. "001" if none exist yet. */
+/**
+ * Highest existing session-NNN(N) + 1, zero-padded to 4 digits ("0001" if none exist yet). Counts
+ * BOTH surviving 3-digit legacy folders and 4-digit ones (NUMBER_RE) so a workspace at session-019
+ * continues at 0020 rather than restarting (R-4). No v1.0 gate here — allocation counts folders.
+ */
 function allocateNextNumber({ sessionsDir }) {
   let entries = [];
   try {
@@ -100,7 +109,7 @@ function allocateNextNumber({ sessionsDir }) {
     const m = NUMBER_RE.exec(e.name);
     if (m) highest = Math.max(highest, parseInt(m[1], 10));
   }
-  return String(highest + 1).padStart(3, '0');
+  return String(highest + 1).padStart(4, '0');
 }
 
 /**
@@ -170,7 +179,7 @@ function printHelp() {
       '  --state               Print the resolved { state, number, sessionId, ... } as JSON. No side effect.',
       '  --open                Ensure a session is open (idempotent); print the result as JSON.',
       '  --seal                Close the current open session; print { number, closedAt }. Errors if none open.',
-      '  --next-number         Print the next allocation ("008") without writing anything.',
+      '  --next-number         Print the next allocation ("0020") without writing anything.',
       '  --help                Show this message.',
       '',
       'Examples:',

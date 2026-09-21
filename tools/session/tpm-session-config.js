@@ -4,7 +4,7 @@
  *
  * PURPOSE
  *   A minimal, SUITE-LOCAL resolver for the `session` section of a project's
- *   `.claude/claude-tpm/config.json`, per claude-context/config-guide.md §1. Reads the config
+ *   `.claude/claude-tpm/config.json`, per docs/config-guide.md §1. Reads the config
  *   file if present, merges it over built-in defaults, and hands back the fully resolved
  *   `session` registry so every tools/session/* script and the tpm-session skill read the
  *   SAME ~6 keys the SAME way. Mirrors the shape of tools/workflow/tpm-workflow-config-resolver.js but

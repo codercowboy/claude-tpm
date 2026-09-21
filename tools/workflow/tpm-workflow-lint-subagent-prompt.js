@@ -390,14 +390,17 @@ function buildStructuralChecks() {
       test: body => reAny(body, /dev\//),
     },
     {
-      // RELOCATABLE (2026-09-01): a spawned worker in a consumer resolves bundle docs via the expand
-      // hook ONLY if they carry ${TPM_HOME}/. A BARE `claude-context/methodology/…` dead-ends at the
-      // consumer root — so the composed prompt must never contain one (defense-in-depth for #1000-C).
+      // RELOCATABLE: a spawned worker resolves a bundle doc only through a mechanism that self-locates
+      // the bundle. Post-#1099 the PreToolUse path-hook is GONE, so `${TPM_HOME}/…` read-PATHS no longer
+      // resolve — the load-bearing form is now `npx tpm doc <relpath>` (self-resolving, bypass-safe).
+      // A BARE `claude-context/methodology/…` still dead-ends at the consumer root, so require ONE of the
+      // resolving forms: `npx tpm doc <path>` (preceding `doc `), or a `%TPM_HOME%/` / `${TPM_HOME}/`
+      // token prefix (both accepted through the respell transition, #1102).
       id: 'bundle-paths-tokenized',
-      name: 'Bundle methodology paths are ${TPM_HOME}/-prefixed (relocatable)',
-      docPointer: 'child-project-path-resolution.md - ${TPM_HOME} tokenization',
+      name: 'Bundle methodology paths resolve (via `tpm doc`, %TPM_HOME%/ or ${TPM_HOME}/)',
+      docPointer: 'tpm-doc.js / child-project-path-resolution.md — bundle-relative resolution',
       applies: (_b, o) => !o.sentinelsOnly,
-      test: body => !/(?<!\$\{TPM_HOME\}\/)claude-context\/methodology\//.test(body),
+      test: body => !/(?<!\$\{TPM_HOME\}\/)(?<!%TPM_HOME%\/)(?<!doc )claude-context\/methodology\//.test(body),
     },
     {
       id: 'verifier-hard-rule',

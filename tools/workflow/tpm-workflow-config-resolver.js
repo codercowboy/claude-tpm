@@ -4,7 +4,7 @@
  *
  * PURPOSE
  *   Per-suite domain resolver (Tier 2) for the `workflow` section of a project's
- *   `.claude/claude-tpm/config.json`, per claude-context/config-guide.md §2 and
+ *   `.claude/claude-tpm/config.json`, per docs/config-guide.md §2 and
  *   claude-context/dev/framework-config-design.md §"Config reading". Reads the config file
  *   (if any), merges it over built-in defaults, and hands back the fully RESOLVED workflow
  *   registry (subagentConfigs / teams / charterVariants / verifier / deliverables / etc) so
@@ -92,7 +92,7 @@ function findProjectRoot(startDir, marker = 'CLAUDE.md') {
 }
 
 // ---------------------------------------------------------------------------
-// Built-in defaults — mirrors claude-context/config-guide.md §2 "Workflow config".
+// Built-in defaults — mirrors docs/config-guide.md §2 "Workflow config".
 // charterVariants defaults to {} (empty): the config-guide.md example entry
 // (`builder: { alternates: ["charters/mvp.md"] }`) is illustrative of the SHAPE a
 // consumer would add, not a file this framework ships by default — defaulting it

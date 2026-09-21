@@ -59,27 +59,46 @@ check('readEnvSessionId returns null when unset or blank', () => {
 
 // ---- allocateNextNumber --------------------------------------------------------
 
-check('allocateNextNumber returns "001" when sessionsDir does not exist yet', () => {
+check('allocateNextNumber returns "0001" (padded-4) when sessionsDir does not exist yet', () => {
   const dir = mkSandbox('alloc-empty');
   const sessionsDir = path.join(dir, 'sessions'); // deliberately not created
-  assert.strictEqual(cs.allocateNextNumber({ sessionsDir }), '001');
+  assert.strictEqual(cs.allocateNextNumber({ sessionsDir }), '0001');
 });
 
-check('allocateNextNumber returns highest existing session-NNN + 1', () => {
+check('allocateNextNumber returns highest existing session-NNNN + 1, zero-padded to 4', () => {
   const dir = mkSandbox('alloc-existing');
-  for (const n of ['session-001', 'session-002', 'session-007']) {
+  for (const n of ['session-0001', 'session-0002', 'session-0007']) {
     fs.mkdirSync(path.join(dir, n), { recursive: true });
   }
-  assert.strictEqual(cs.allocateNextNumber({ sessionsDir: dir }), '008');
+  assert.strictEqual(cs.allocateNextNumber({ sessionsDir: dir }), '0008');
 });
 
 check('allocateNextNumber ignores non-matching dir names and non-directory entries', () => {
   const dir = mkSandbox('alloc-noise');
-  fs.mkdirSync(path.join(dir, 'session-003'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'session-0003'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'not-a-session-dir'), { recursive: true });
-  fs.mkdirSync(path.join(dir, 'session-999x'), { recursive: true }); // doesn't match \d{3}$ exactly
-  fs.writeFileSync(path.join(dir, 'session-010'), 'this is a FILE named like a session dir, not a dir');
-  assert.strictEqual(cs.allocateNextNumber({ sessionsDir: dir }), '004');
+  fs.mkdirSync(path.join(dir, 'session-999x'), { recursive: true }); // doesn't match ^session-\d{3,4}$ exactly
+  fs.writeFileSync(path.join(dir, 'session-0010'), 'this is a FILE named like a session dir, not a dir');
+  assert.strictEqual(cs.allocateNextNumber({ sessionsDir: dir }), '0004');
+});
+
+// ---- R-4 (the numbering trap): continuity across the 3-digit → 4-digit cut ------
+// The allocation LISTING regex must still SEE the surviving 3-digit legacy folders so numbering
+// CONTINUES past them (spec §13.6: the first v1.0 session is 020), rather than restarting at 0001.
+check('R-4: a 3-digit legacy session-019 is still counted — next allocation is "0020" (padded-4)', () => {
+  const dir = mkSandbox('alloc-continuity');
+  fs.mkdirSync(path.join(dir, 'session-019'), { recursive: true }); // 3-digit legacy folder
+  assert.strictEqual(cs.allocateNextNumber({ sessionsDir: dir }), '0020',
+    'numbering must continue 19 → 0020, not restart at 0001');
+});
+
+check('R-4: a mix of 3-digit legacy + 4-digit folders takes the true max and pads to 4', () => {
+  const dir = mkSandbox('alloc-mixed');
+  for (const n of ['session-018', 'session-019', 'session-0020']) {
+    fs.mkdirSync(path.join(dir, n), { recursive: true });
+  }
+  assert.strictEqual(cs.allocateNextNumber({ sessionsDir: dir }), '0021',
+    'the highest of {18,19,20} + 1, padded to 4');
 });
 
 // ---- resolveCurrentSession / openSession / sealSession -------------------------
@@ -91,10 +110,10 @@ check('resolveCurrentSession reports not-opened when no pointer file exists', ()
   assert.strictEqual(r.number, null);
 });
 
-check('openSession on an empty sessionsDir allocates "001" and marks isNew: true', () => {
+check('openSession on an empty sessionsDir allocates "0001" and marks isNew: true', () => {
   const dir = mkSandbox('open-fresh');
   const r = cs.openSession({ sessionsDir: dir });
-  assert.strictEqual(r.number, '001');
+  assert.strictEqual(r.number, '0001');
   assert.strictEqual(r.isNew, true);
   assert.ok(fs.existsSync(path.join(dir, '.current-session.json')), 'pointer file must be written');
 });
@@ -112,7 +131,7 @@ check('resolveCurrentSession reports state: open with the pointer\'s number afte
   cs.openSession({ sessionsDir: dir });
   const r = cs.resolveCurrentSession({ sessionsDir: dir });
   assert.strictEqual(r.state, 'open');
-  assert.strictEqual(r.number, '001');
+  assert.strictEqual(r.number, '0001');
 });
 
 check('sealSession throws ENOTHING_OPEN when nothing is open', () => {
@@ -142,7 +161,7 @@ check('after seal (with a real session-NNN folder on disk, as a note write would
   const second = cs.openSession({ sessionsDir: dir });
   assert.notStrictEqual(second.number, first.number);
   assert.strictEqual(second.isNew, true);
-  assert.strictEqual(second.number, '002');
+  assert.strictEqual(second.number, '0002');
 });
 
 // ---- KNOWN LIMITATION: allocateNextNumber only sees FOLDERS, not the pointer ----
@@ -205,7 +224,7 @@ check('CLI --next-number prints the allocation with no side effect (no pointer f
   const dir = mkSandbox('cli-next-number');
   const r = runNode(TOOLS.currentSession, ['--sessions-dir', dir, '--next-number']);
   assert.strictEqual(r.code, 0);
-  assert.strictEqual(r.stdout.trim(), '001');
+  assert.strictEqual(r.stdout.trim(), '0001');
   assert.ok(!fs.existsSync(path.join(dir, '.current-session.json')), '--next-number must not write a pointer');
 });
 

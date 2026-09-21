@@ -25,7 +25,9 @@ const { ensureRunSlug } = require('../../tests/lib/scratch');
 const SUITES = [
   'tpm-consumer-install/test.js',
   'tpm-consumer-uninstall/test.js',
+  'tpm-consumer-lint-skill-refs/test.js',
   'expand-hook/unit.js',
+  'expand-hook/content-unit.js',
 ];
 
 function main() {

@@ -18,7 +18,7 @@ top-of-file docstring.
 <suite> <verb>` (or a linked `tpm <suite> <verb>`). `tpm.js` is a **dumb top dispatcher**: it knows only
 the four suites (`session` / `task` / `workflow` / `hooks`) plus the flat consumer aliases
 (`install` / `uninstall` / `doctor`), and forwards `<everything-after>` to that suite's own router. The per-suite
-routers own their verb tables and self-locate their scripts via `__dirname`, so no `${TPM_HOME}`/env is
+routers own their verb tables and self-locate their scripts via `__dirname`, so no `%TPM_HOME%`/env is
 needed. Dispatch is by child process with faithful arg/stdio pass-through and exit-code propagation.
 
 - **`tools/tpm.js`** — the top dispatcher / front door; routes `<suite> <verb>` to the per-suite router, plus the flat consumer aliases `install` / `uninstall` / `doctor` (unknown → exit 2; bare / `--help` → menu). Run: `npx tpm <suite> <verb>` · Doc: `tpm.md`
@@ -39,21 +39,25 @@ as `npx tpm workflow <verb>`.
 - **`tools/workflow/tpm-workflow-audit.js`** — audit a `dev/` epic/phase tree against the canonical layout + `00-epic-plan/` charter-cleanliness; emits a markdown punch list. Run: `npx tpm workflow audit` · Doc: `tpm-workflow-audit.md`
 - **`tools/workflow/tpm-workflow-cost-ledger.js`** — per-subagent cost rows in `00-epic-plan/`, with `--summary` / `--rollup`. Run: `npx tpm workflow cost` · Doc: `tpm-workflow-cost-ledger.md`
 - **`tools/workflow/tpm-workflow-signoff.js`** — the user-sign-off ledger for workflow kickoffs: records the deterministic two-token sign-off that the spawn gate checks before a round is allowed to spawn subagents. Run: `npx tpm workflow signoff` · Doc: header
-- **`tools/workflow/tpm-workflow-doctor.js`** — fail-loud PREFLIGHT: charters resolve · sign-off writable · compose emits a marker + `${TPM_HOME}` paths; self-locates the bundle, runs in a consumer. Every ✗ prints its fix. Run: `npx tpm workflow doctor` · Doc: header
+- **`tools/workflow/tpm-workflow-doctor.js`** — fail-loud PREFLIGHT: charters resolve · sign-off writable · compose emits a marker + `%TPM_HOME%` paths; self-locates the bundle, runs in a consumer. Every ✗ prints its fix. Run: `npx tpm workflow doctor` · Doc: header
 - **`tools/workflow/tpm-workflow-router.js`** — the `workflow` sub-router (owns the verb table above; forwarded to by `tpm.js`). Internal plumbing, not a CLI. Doc: header
 
 ---
 
 ## Session suite — `tools/session/`
 
-The session-notes subsystem behind the `tpm-session` skill's modes. Self-contained (no imports outside the
-suite). User-facing verbs wired as `npx tpm session <verb>`; the format/paths modules are internal.
+The three-file session-memory subsystem behind the `tpm-session` skill's modes (`handoff.md` +
+`punchlist.md` + `session-notes.md`). Self-contained (no imports outside the suite). User-facing verbs
+wired as `npx tpm session <verb>`; the format/paths modules are internal.
 
 - **`tools/session/tpm-session-config.js`** — resolve the `session` config section over built-in defaults (`--json` / `--get` / `--sessions-dir`). Run: `npx tpm session config` · Doc: `config.md`
 - **`tools/session/tpm-session-current.js`** — the current-session pointer: open-vs-not state, next-`session-NNN` allocation, seal-at-close. Run: `npx tpm session current` · Doc: `tpm-session-current.md`
-- **`tools/session/tpm-session-notes.js`** — the notes WRITE API: `resume` / `open add|done` / `log` / `decide` / `seal` (refuses non-current writes without `--edit-sealed`). Run: `npx tpm session notes` · Doc: `tpm-session-notes.md`
-- **`tools/session/tpm-session-review.js`** — the notes READ API: `review --last N [--open-items|--decisions|--since|--grep]`. Run: `npx tpm session review` · Doc: `tpm-session-review.md`
-- **`tools/session/tpm-session-format.js`** — the session-notes token SSOT (headings/tokens/parse/render). Internal helper (imported, not a CLI). Doc: header
+- **`tools/session/tpm-session-notes.js`** — the ledger WRITE API: `init` / `log` / `decide` / `seal`, each stamped with a trailing ISO-TZ timestamp (refuses non-current writes without `--edit-sealed`). Run: `npx tpm session notes` · Doc: `tpm-session-notes.md`
+- **`tools/session/tpm-session-punchlist.js`** — the punchlist mini task-manager: `add` / `close` / `list [--all]` / `reopen` / `drop` over session-prefixed ids (`#<session>.<n>`). Run: `npx tpm session punchlist` · Doc: `tpm-session-punchlist.md`
+- **`tools/session/tpm-session-save.js`** — the gated, linted checkpoint: `save --payload <file.json>` rewrites `handoff.md` (What-remains from the punchlist) + refreshes headers on all three files. Exit 0 ok · 1 refused · 2 usage. Run: `npx tpm session save` · Doc: `tpm-session-save.md`
+- **`tools/session/tpm-session-boot-read.js`** — the boot-time pickup emit: the prior session's handoff verbatim + open punchlist + file locations; degrades to point-at-path, always exits 0. Run: `npx tpm session boot-read` · Doc: `tpm-session-boot-read.md`
+- **`tools/session/tpm-session-review.js`** — the READ API: `review --last N [--open-items|--decisions|--since|--grep|--json]` (overview from handoff, open items from punchlist, decisions/log from the ledger). Run: `npx tpm session review` · Doc: `tpm-session-review.md`
+- **`tools/session/tpm-session-format.js`** — the three-file format SSOT (headings/tokens/ids/slug+ISO-TZ helpers/parse/render + the shared wayfinding header). Internal helper (imported, not a CLI). Doc: header
 - **`tools/session/tpm-session-paths.js`** — the suite's project-root / path resolver. Internal helper (imported, not a CLI). Doc: header
 - **`tools/session/tpm-session-router.js`** — the `session` sub-router (forwarded to by `tpm.js`). Internal plumbing, not a CLI. Doc: header
 
@@ -83,7 +87,7 @@ aliases; the rest support the smoke suites and skill-relocatability.
 - **`tools/consumer/tpm-consumer-uninstall.js`** — reverse the install, **scope-aware** (the plugin + marketplace are machine-global singletons): asks *this project only* (disable here + drop the dep, leave the shared marketplace for others) vs *whole system* (plugin uninstall + global marketplace remove + drop the dep), with a secondary consent + a guard when the shared marketplace's source points at this project. `--project` / `--system` set the scope non-interactively. Never deletes the user's files. Run: `npx tpm uninstall [dir]` · Doc: header
 - **`npx tpm doctor [dir]`** — read-only health check; a porcelain alias for `install --check` (all the doctor rows, changes nothing). Run: `npx tpm doctor [dir]` · Doc: `tpm.md` / `install` header
 - **`tools/consumer/tpm-consumer-check-json.js`** — extract + assert on the strict JSON a headless `claude -p` probe returns (`--truthy` / `--eq` / `--includes`); backs the smoke suites deterministically. Doc: header
-- **`tools/consumer/tpm-consumer-lint-skill-refs.js`** — keep the `tpm-*` skills relocatable: flag any bare bundle ref that must carry `${TPM_HOME}/`. Doc: header
+- **`tools/consumer/tpm-consumer-lint-skill-refs.js`** — keep the `tpm-*` skills relocatable: flag any bare bundle ref that must carry `%TPM_HOME%/`. Doc: header
 - **`tools/consumer/smoke.sh`** — LLM-in-the-loop consumer smoke: headless `claude -p` probes (`skills-present`, `methodology-resolves`, `token-methodology-read`, + the deterministic `npx-tpm-resolves`) asserted via `tpm-consumer-check-json.js`. Run against an installed consumer dir. Doc: header
 
 ---
@@ -96,7 +100,7 @@ live in their owning suite (a workflow gate under `workflow/`, the read-path res
 
 - **`tools/hooks/tpm-hooks-router.js`** — the `hooks` sub-router: exposes each hook under one stable verb table (`npx tpm hooks <verb>`), dispatching by child process so the harness's PreToolUse payload/stdout/exit-code pass through unchanged. Internal plumbing. Doc: header
 - **`tools/workflow/hooks/tpm-workflow-gate-spawn.js`** — PreToolUse hook on `Agent|Task`: the spawn gate (blocks a marked subagent spawn that fails the sign-off check). Run: `npx tpm hooks gate-spawn` · Doc: header
-- **`tools/consumer/hooks/expand-tpm-home.js`** — PreToolUse hook on `Read|Glob|Grep|NotebookRead`: resolves the `${TPM_HOME}/…` bundle placeholder in read-tool paths to the real bundle (self-located from `__dirname`; read-family only + containment + fail-open). Run: `npx tpm hooks expand-tpm-home` · Doc: header
+- **`tools/consumer/hooks/expand-tpm-home.js`** — PreToolUse hook on `Read|Glob|Grep|NotebookRead`: resolves the `%TPM_HOME%/…` bundle placeholder in read-tool paths to the real bundle (self-located from `__dirname`; read-family only + containment + fail-open). Run: `npx tpm hooks expand-tpm-home` · Doc: header
 
 ---
 

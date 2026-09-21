@@ -24,6 +24,9 @@ const SUITES = [
   'lib-current-session/test.js',
   'tpm-session-notes/test.js',
   'tpm-session-review/test.js',
+  'tpm-session-save/test.js',
+  'tpm-session-punchlist/test.js',
+  'tpm-session-boot-read/test.js',
 ];
 
 function main() {

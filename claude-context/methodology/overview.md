@@ -79,7 +79,7 @@ reflexively verify lightweight work — verification is a per-round decision, no
 ## Where to go next
 
 - **Config shape:** module `enabled` flags and per-module config live in `.claude/claude-tpm/config.json`;
-  see [`../config-guide.md`](../config-guide.md).
+  see [`../../docs/config-guide.md`](../../docs/config-guide.md).
 - **Per-module surface:** each shipped module owns a skill (`tpm-task`, `tpm-workflow`, `tpm-session`) and
   its tools under `tools/`; the workflow module's planning + charter docs live under
   [`workflow-setup/`](workflow-setup/).

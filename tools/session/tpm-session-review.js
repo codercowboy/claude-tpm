@@ -1,37 +1,39 @@
 #!/usr/bin/env node
 /**
- * tpm-session-review.js — the session-notes READ API (task B2).
+ * tpm-session-review.js — the session READ API (task B2), reworked for the THREE-FILE model.
  *
  * PURPOSE
- *   Extracts the tokened sections of the last N session-notes cheaply (grep-shaped, without
- *   loading every note into context) — powers the recurring "look back over the last N
- *   sessions: what open items did we never get back to?" query
- *   (session-notes-design.md §"The recurring query"). Shares tpm-session-format.js's token SSOT with
- *   tpm-session-notes.js (write side) so read/write cannot drift.
+ *   Extracts the tokened sections of the last N sessions cheaply (grep-shaped, without loading
+ *   every note into context) — powers the recurring "look back over the last N sessions: what open
+ *   items did we never get back to?" query. Shares tpm-session-format.js's token SSOT with the write
+ *   tools so read/write cannot drift.
  *
- * LEGACY NOTES (session-001..007, pre-dating this tool)
- *   Those are freeform prose (`notes.md`, no `# SESSION NNN — ...` title, no canonical
- *   headings — see session-notes-spec.md §3.3). This tool detects that case (parseNote
- *   returns no `number`) and reports the session as "(legacy format — not token-parseable)"
- *   rather than silently omitting it or crashing; the file path is still surfaced so a human
- *   can open it directly.
+ * THREE-FILE REWORK + v1.0 GATE (2026-09-17, §13.6)
+ *   A session folder holds three session-number-prefixed files, and this tool sources each concern
+ *   from its home file:
+ *     • Where/Next (the old RESUME overview) ← `session-NNNN-handoff.md` (via `parseHandoff`).
+ *     • Open work items                       ← `session-NNNN-punchlist.md` (via `parsePunchlist`/`openItems`).
+ *     • Decisions + Log                        ← `session-NNNN-log.md` (via `parseNote`).
+ *   Only v1.0 sessions are read (`sessionIsV1` gate on the `tpm-session-version: 1.0` preamble);
+ *   pre-v1.0 / unprefixed / unmarked folders are IGNORED (no legacy-parse branch, no back-compat) —
+ *   a window with zero v1.0 sessions prints "No sessions found." When a v1.0 session has no handoff
+ *   yet (notes written before the first save), the overview FALLS BACK to the ledger (Decisions +
+ *   latest Log line).
  *
  * CLI
  *   --sessions-dir <dir>   REQUIRED.
  *   --last N               REQUIRED. How many of the highest-numbered sessions to include.
- *   --open-items            Show only the Open items section per included session.
- *   --decisions              Show only the Decisions section per included session.
- *   --since <YYYY-MM-DD>      Restrict to sessions whose title date is >= this date (canonical
- *                             notes only — a legacy note's date is not machine-parsed, so it is
- *                             always included when --since is given, flagged as unfiltered).
- *   --grep <term>             Case-insensitive substring filter across Resume/Open
- *                             items/Decisions/Log text; prints only matching lines.
- *   --json                    Emit the selected, filtered data as JSON instead of prose.
+ *   --open-items           Show only the open punchlist items per included session.
+ *   --decisions            Show only the Decisions section per included session.
+ *   --since <YYYY-MM-DD>   Restrict to sessions whose note-title (or handoff) date is >= this date. A
+ *                          session with no machine-parseable date is always included (unfilterable).
+ *   --grep <term>          Case-insensitive substring filter across handoff Where/Next/In-flight,
+ *                          open punchlist item text, Decisions, and Log text; prints only matches.
+ *   --json                 Emit the selected, filtered data as JSON instead of prose.
  *   --help
  *
- * With no filter flags, prints a one-block-per-session overview (title + RESUME summary, or
- * the legacy notice). Filters combine — e.g. --open-items --grep foo shows only open items
- * containing "foo".
+ * With no filter flags, prints a one-block-per-session overview (title + handoff Where/Next, or a
+ * notes-ledger fallback when a v1.0 session has no handoff yet). Filters combine.
  *
  * EXAMPLES
  *   npx tpm session review --sessions-dir .claude/claude-tpm/sessions --last 5
@@ -44,9 +46,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { parseNote } = require('./tpm-session-format');
+const { parseNote, parseHandoff, parsePunchlist, openItems, readsAsV1 } = require('./tpm-session-format');
 
-const NUMBER_RE = /^session-(\d{3})$/;
+const NUMBER_RE = /^session-(\d{3,4})$/;
 
 function listSessionNumbers(sessionsDir) {
   let entries = [];
@@ -66,25 +68,57 @@ function listSessionNumbers(sessionsDir) {
 }
 
 function resolveNoteFile(sessionsDir, number) {
-  const folder = path.join(sessionsDir, `session-${number}`);
-  const modern = path.join(folder, 'session-notes.md');
-  const legacy = path.join(folder, 'notes.md');
-  if (fs.existsSync(modern)) return modern;
-  if (fs.existsSync(legacy)) return legacy;
-  return null;
+  const p = path.join(sessionsDir, `session-${number}`, `session-${number}-log.md`);
+  return fs.existsSync(p) ? p : null;
 }
 
+/**
+ * The v1.0 reader gate (§13.6): a session is VISIBLE iff any of its three prefixed files carries the
+ * `tpm-session-version: 1.0` preamble. A pre-v1.0 / unmarked / unprefixed folder returns false and is
+ * IGNORED by `collect` — no legacy-parse branch, no back-compat.
+ */
+function sessionIsV1(sessionsDir, number) {
+  const folder = path.join(sessionsDir, `session-${number}`);
+  return readsAsV1(path.join(folder, `session-${number}-handoff.md`))
+    || readsAsV1(path.join(folder, `session-${number}-log.md`))
+    || readsAsV1(path.join(folder, `session-${number}-punchlist.md`));
+}
+
+function readIfExists(filePath) {
+  try {
+    return fs.readFileSync(filePath, 'utf8');
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
+ * Load one session across all three prefixed files (callers pre-filter to v1.0 via `sessionIsV1`):
+ *   { number, filePath (log), handoffPath, punchlistPath, parsed (note),
+ *     handoff|null, open:[...open punchlist items] }
+ * A v1.0 session may have a log but no handoff yet (notes written before the first save) — the
+ * overview falls back to the ledger in that case.
+ */
 function loadSession(sessionsDir, number) {
-  const filePath = resolveNoteFile(sessionsDir, number);
-  if (!filePath) return { number, filePath: null, legacy: true, parsed: null };
-  const parsed = parseNote(fs.readFileSync(filePath, 'utf8'));
-  return { number, filePath, legacy: !parsed.number, parsed };
+  const folder = path.join(sessionsDir, `session-${number}`);
+  const notePath = resolveNoteFile(sessionsDir, number);
+  const handoffPath = path.join(folder, `session-${number}-handoff.md`);
+  const punchlistPath = path.join(folder, `session-${number}-punchlist.md`);
+
+  const parsed = notePath ? parseNote(readIfExists(notePath) || '') : null;
+  const handoffRaw = fs.existsSync(handoffPath) ? readIfExists(handoffPath) : null;
+  const handoff = handoffRaw ? parseHandoff(handoffRaw) : null;
+  const punchRaw = fs.existsSync(punchlistPath) ? readIfExists(punchlistPath) : null;
+  const open = punchRaw ? openItems(parsePunchlist(punchRaw)) : [];
+
+  return { number, filePath: notePath, handoffPath, punchlistPath, parsed, handoff, open };
 }
 
 function withinSince(session, since) {
   if (!since) return true;
-  if (session.legacy || !session.parsed || !session.parsed.date) return true; // unfilterable -> included
-  return session.parsed.date >= since;
+  const date = (session.parsed && session.parsed.date) || (session.handoff && session.handoff.date) || null;
+  if (!date) return true; // unfilterable -> included
+  return date >= since;
 }
 
 function matchesGrep(text, term) {
@@ -92,23 +126,26 @@ function matchesGrep(text, term) {
 }
 
 function grepFilterSession(session, term) {
-  if (session.legacy || !session.parsed) {
-    return matchesGrep(session.filePath || '', term) ? session : null;
-  }
-  const p = session.parsed;
-  const hitResume = matchesGrep(p.resume.whereWeAre, term) || matchesGrep(p.resume.nextAction, term) || matchesGrep(p.resume.inFlight, term);
-  const openItems = p.openItems.filter((it) => matchesGrep(it.text, term));
-  const decisions = p.decisions.filter((d) => matchesGrep(d.what, term) || matchesGrep(d.why, term));
-  const log = p.log.filter((e) => matchesGrep(e.text, term));
-  if (!hitResume && openItems.length === 0 && decisions.length === 0 && log.length === 0) return null;
+  const h = session.handoff;
+  const p = session.parsed || { decisions: [], log: [] };
+  const hitHandoff = Boolean(h) && (matchesGrep(h.where, term) || matchesGrep(h.next, term) || matchesGrep(h.inFlight, term));
+  const open = session.open.filter((it) => matchesGrep(it.text, term));
+  const decisions = (p.decisions || []).filter((d) => matchesGrep(d.what, term) || matchesGrep(d.why, term));
+  const log = (p.log || []).filter((e) => matchesGrep(e.text, term));
+  if (!hitHandoff && open.length === 0 && decisions.length === 0 && log.length === 0) return null;
   return {
     ...session,
-    parsed: { ...p, openItems, decisions, log, resume: hitResume ? p.resume : { whereWeAre: '', nextAction: '', inFlight: '' } },
+    open,
+    handoff: hitHandoff ? h : null,
+    parsed: { ...p, decisions, log },
   };
 }
 
 function collect({ sessionsDir, last, since, grepTerm }) {
-  const numbers = listSessionNumbers(sessionsDir).slice(0, last);
+  // v1.0 gate FIRST (pre-v1.0 sessions are invisible), THEN take the last N of what remains.
+  const numbers = listSessionNumbers(sessionsDir)
+    .filter((n) => sessionIsV1(sessionsDir, n))
+    .slice(0, last);
   let sessions = numbers.map((n) => loadSession(sessionsDir, n));
   sessions = sessions.filter((s) => withinSince(s, since));
   if (grepTerm) {
@@ -120,14 +157,20 @@ function collect({ sessionsDir, last, since, grepTerm }) {
 function renderOverview(sessions) {
   const lines = [];
   for (const s of sessions) {
-    if (s.legacy || !s.parsed) {
-      lines.push(`session-${s.number} — (legacy format — not token-parseable)${s.filePath ? ` — ${s.filePath}` : ' — no notes file found'}`);
-      continue;
+    const p = s.parsed || {};
+    const date = (p.date) || (s.handoff && s.handoff.date) || '?';
+    lines.push(`session-${s.number} — ${date} — ${p.theme || '(untitled)'}${p.sealedAt ? ` [SEALED ${p.sealedAt}]` : ''}`);
+    if (s.handoff && (s.handoff.where || s.handoff.next)) {
+      if (s.handoff.where) lines.push(`  Where: ${s.handoff.where}`);
+      if (s.handoff.next) lines.push(`  Next:  ${s.handoff.next}`);
+    } else {
+      // Fall back to the notes ledger (Decisions + latest Log line) when there is no handoff.
+      const lastDecision = (p.decisions || []).slice(-1)[0];
+      const lastLog = (p.log || []).slice(-1)[0];
+      if (lastDecision) lines.push(`  Decided: ${lastDecision.what} — ${lastDecision.why}`);
+      if (lastLog) lines.push(`  Log:   [${lastLog.status}] ${lastLog.text}`);
+      if (!lastDecision && !lastLog) lines.push('  (no handoff, no ledger entries yet)');
     }
-    const p = s.parsed;
-    lines.push(`session-${s.number} — ${p.date || '?'} — ${p.theme || '(untitled)'}${p.sealedAt ? ` [SEALED ${p.sealedAt}]` : ''}`);
-    if (p.resume.whereWeAre) lines.push(`  Where: ${p.resume.whereWeAre}`);
-    if (p.resume.nextAction) lines.push(`  Next:  ${p.resume.nextAction}`);
   }
   return lines.join('\n');
 }
@@ -135,9 +178,8 @@ function renderOverview(sessions) {
 function renderOpenItems(sessions) {
   const lines = [];
   for (const s of sessions) {
-    if (s.legacy || !s.parsed) continue;
-    for (const it of s.parsed.openItems) {
-      lines.push(`session-${s.number} — [${it.done ? 'x' : ' '}] OPEN(${it.owner}) #${it.id}: ${it.text}`);
+    for (const it of s.open) {
+      lines.push(`session-${s.number} — #${it.id} · ${it.text}  [${it.slug}, ${it.created}]`);
     }
   }
   return lines.length ? lines.join('\n') : 'No open items found in the selected sessions.';
@@ -146,8 +188,8 @@ function renderOpenItems(sessions) {
 function renderDecisions(sessions) {
   const lines = [];
   for (const s of sessions) {
-    if (s.legacy || !s.parsed) continue;
-    for (const d of s.parsed.decisions) {
+    if (!s.parsed) continue;
+    for (const d of s.parsed.decisions || []) {
       lines.push(`session-${s.number} — Decided: ${d.what} — ${d.why}`);
     }
   }
@@ -215,4 +257,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { listSessionNumbers, resolveNoteFile, loadSession, collect, renderOverview, renderOpenItems, renderDecisions };
+module.exports = { listSessionNumbers, resolveNoteFile, sessionIsV1, loadSession, collect, renderOverview, renderOpenItems, renderDecisions };

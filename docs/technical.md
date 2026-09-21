@@ -4,6 +4,11 @@ This is the deep dive: the innards of claude-tpm for anyone who's curious how th
 
 Note: **Claude wrote nearly all of this code and these docs.** I'm the ideas guy: I decided what it should do and why, argued with it about the design, and drove the rounds. Claude did the typing. That's not a disclaimer I'm embarrassed about; it's kind of the whole point of a tool that turns Claude into a disciplined engineering team.
 
+A couple of expectation-setters before the deep dive:
+
+- **This is a personal tool, v0.1.0.** Mac-first, works-on-my-machine energy. It's a methodology I lifted out of months of real use, not a product with a support line. I haven't tested it across a matrix of operating systems, so if you're on Linux or Windows, you're a little further out on the frontier than I am.
+- **Distribution is GitHub, not the npm registry.** claude-tpm installs from GitHub - as a project dependency (`npm install github:codercowboy/claude-tpm`) or from a local clone you point at your projects. There's no published `@codercowboy/claude-tpm` on the public npm registry, so nothing below assumes you can install it from there.
+
 ---
 
 ## The 10,000-foot view
@@ -190,7 +195,7 @@ The four suites are `session`, `task`, `workflow`, and `hooks`. On top of those 
 
 ### Self-locating, no environment variables
 
-The design goal that shapes all of this: **nothing in the `tpm …` chain needs `${TPM_HOME}` or any env var.** Every router self-locates its own scripts relative to `__dirname`. You can run `npx tpm …` from anywhere, in any consumer project, and it finds its own pieces. No setup step, no shell rc edits, no "did you export the path?" support questions. The one place a `${TPM_HOME}` placeholder *does* appear is in read-tool paths inside spawn prompts, and there's a hook that resolves it (see [Hooks](#hooks) below).
+The design goal that shapes all of this: **nothing in the `tpm …` chain needs `%TPM_HOME%` or any env var.** Every router self-locates its own scripts relative to `__dirname`. You can run `npx tpm …` from anywhere, in any consumer project, and it finds its own pieces. No setup step, no shell rc edits, no "did you export the path?" support questions. The one place a `%TPM_HOME%` placeholder *does* appear is in read-tool paths inside spawn prompts, and there's a hook that resolves it (see [Hooks](#hooks) below).
 
 ---
 
@@ -204,7 +209,7 @@ Capabilities in claude-tpm are **modules**, and the activation model is opt-*out
 - **`hygiene`** - periodic project-wide drift sweeps. **Planned, not fully shipped.** Its config is still being finalized and no hygiene doc directory ships in the bundle yet. Don't count on it working today.
 - **`motd`** - a boot greeting. Named in the design, but there's no config section or shipped implementation for it yet. Treat it as **planned**.
 
-Config lives in one file: **`.claude/claude-tpm/config.json`**, versioned (`"version": 1`). Every module ships with sensible built-in defaults, so an *absent* config file (or an absent section) just means "use the defaults." You only add config to *change* something. (The installer does not create the file. The full schema is documented in the [config guide](../claude-context/config-guide.md).)
+Config lives in one file: **`.claude/claude-tpm/config.json`**, versioned (`"version": 1`). Every module ships with sensible built-in defaults, so an *absent* config file (or an absent section) just means "use the defaults." You only add config to *change* something. (The installer does not create the file. The full schema is documented in the [config guide](config-guide.md).)
 
 ### Module opacity
 
@@ -252,9 +257,9 @@ The `tpm uninstall` reverses all of it (plugin uninstall → marketplace remove 
 claude-tpm auto-wires two [PreToolUse hooks](https://docs.claude.com/en/docs/claude-code/hooks) through `hooks/hooks.json` - no hand-wiring in the consumer's `settings.json`. Both are invoked by the harness under stable, path-independent `npx tpm hooks <verb>` commands, and the `hooks` suite router forwards the harness's payload/stdout/exit-code through unchanged.
 
 - **`gate-spawn`** - matches `Agent|Task` (the spawn tools). It's the **spawn gate**: it blocks a marked subagent spawn that fails the sign-off check. This is the enforcement behind "you can't fire off a formal round without the recorded two-token sign-off." The gate reads the sign-off ledger (`tpm-workflow-signoff.js`) and refuses a marked spawn that hasn't been signed off. Script: `tools/workflow/hooks/tpm-workflow-gate-spawn.js`.
-- **`expand-tpm-home`** - matches `Read|Glob|Grep|NotebookRead` (the read family). It resolves the `${TPM_HOME}/…` bundle placeholder in read-tool paths to the real bundle location, self-located from `__dirname`. It's **read-family only**, does containment checking, and **fails open**: if anything goes sideways, it gets out of the way rather than blocking your read. Script: `tools/consumer/hooks/expand-tpm-home.js`.
+- **`expand-tpm-home`** - matches `Read|Glob|Grep|NotebookRead` (the read family). It resolves the `%TPM_HOME%/…` bundle placeholder in read-tool paths to the real bundle location, self-located from `__dirname`. It's **read-family only**, does containment checking, and **fails open**: if anything goes sideways, it gets out of the way rather than blocking your read. Script: `tools/consumer/hooks/expand-tpm-home.js`.
 
-That `${TPM_HOME}` placeholder is how spawn prompts can reference bundle docs without knowing where the bundle physically lives: the prompt says `${TPM_HOME}/claude-context/methodology/…`, and the hook rewrites it to the real path at read time. It's the one env-var-shaped thing in the system, and it exists so the *rest* of the system can stay env-var-free.
+That `%TPM_HOME%` placeholder is how spawn prompts can reference bundle docs without knowing where the bundle physically lives: the prompt says `%TPM_HOME%/claude-context/methodology/…`, and the hook rewrites it to the real path at read time. It's the one env-var-shaped thing in the system, and it exists so the *rest* of the system can stay env-var-free.
 
 ---
 
@@ -283,14 +288,8 @@ Platform-wise: it's **Mac-first with works-on-my-machine energy.** I haven't don
 
 The dev/authoring toolkit, distinct from the runtime requirements above. These are the things *I* (and Claude) used to build it, not things you need to run it:
 
-- **[VS Code](https://code.visualstudio.com)** - editor.
-- **[Node.js](https://nodejs.org)** - the runtime everything's written for.
-- **[Claude Code](https://claude.com/claude-code)** - which is both the thing claude-tpm plugs into *and* the thing that wrote claude-tpm. Claude authored nearly all of the code and docs.
-- **[git](https://git-scm.com)** - version control.
-
----
-
-For the exact install steps, see [`docs/INSTALL.md`](INSTALL.md). For every config knob with defaults and worked examples, see the [config guide](../claude-context/config-guide.md). If something else might fit you better, the [alternatives](alternatives.md) doc is honest about it.
-
-Questions, comments, kudos, criticisms — all welcome.
-— Coder Cowboy
+- **[VS Code](https://code.visualstudio.com)** — the editor.
+- **[Node.js](https://nodejs.org)** — the runtime everything is written in. The test suite is plain `node --test` (run via `node tools/tests/run-all.js`), so there's no test framework to install.
+- **[Claude Code](https://claude.com/claude-code)** — claude-tpm was built with Claude Code, and it's what claude-tpm plugs into. Fully dogfooded.
+- **[git](https://git-scm.com)** — version control.
+- **[npm](https://www.npmjs.com/)** — packaging and distribution (claude-tpm installs as an optional dependency and enables as a Claude Code plugin).

@@ -17,10 +17,10 @@ its short-verb table and maps a verb to a sibling script. Both levels dispatch b
 Adding, renaming, or removing a verb touches only that suite's router — never `tpm.js`. The canonical
 tool ledger is [`tools/README.md`](README.md).
 
-**No `${TPM_HOME}` / env needed.** Every router self-locates its scripts from its own `__dirname`, so a
+**No `%TPM_HOME%` / env needed.** Every router self-locates its scripts from its own `__dirname`, so a
 `tpm …` invocation resolves the bundle on its own. This is why skill prose can call `npx tpm <suite>
-<verb>` instead of `node ${TPM_HOME}/tools/<suite>/<tool>.js` — routing through `tpm` removes the
-`${TPM_HOME}` token from Bash invocations entirely.
+<verb>` instead of `node %TPM_HOME%/tools/<suite>/<tool>.js` — routing through `tpm` removes the
+`%TPM_HOME%` token from Bash invocations entirely.
 
 ## Suites & verbs
 

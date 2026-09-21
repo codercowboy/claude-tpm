@@ -23,7 +23,7 @@
     ".claude/skills",
     "hooks",
     "claude-context/methodology",
-    "claude-context/config-guide.md",
+    "docs/config-guide.md",
     "tools",
     "!**/tests/**",
     "!**/*.test.js"

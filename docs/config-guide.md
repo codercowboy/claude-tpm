@@ -45,12 +45,14 @@ behavior is on, where notes live and what the boot/close messages say.
     ritual at all: no boot reading chain, no wrap-up, no notes).
   - `session.notes.enabled` gates ONLY the notes-writing behavior, independent of the outer flag:
     "bootstrap TPM's session lifecycle but keep my own notes system." `open`/`close`/`save` still run
-    their non-notes steps (reading chain, reap, MOTD, sign-off) when this is `false`; they just skip
-    every write to `session-NNN/session-notes.md`.
+    their non-notes steps (reading chain, boot-read pickup, reap, MOTD, sign-off) when this is `false`;
+    they just skip every write to the session's three files (`session-NNN/handoff.md`, `punchlist.md`,
+    `session-notes.md`).
   - Both default `true`; setting neither changes nothing for an existing project. (This is the fix for
     a self-contradictory single flag whose own prose used to claim "keep the lifecycle, disable the
     notes." A boolean cannot express that; nesting `notes.enabled` can.)
-- Full design: `claude-context/methodology/session-notes-format.md` (the note format itself).
+- Full design: `claude-context/methodology/session-notes-format.md` (the three-file session-memory
+  format — `handoff.md` + `punchlist.md` + `session-notes.md`).
 
 ---
 
@@ -224,7 +226,7 @@ Drift sweeps + living-document upkeep (`tpm-hygiene`).
 
 Set `"enabled": false` on any module. A disabled module costs **zero context**. Its docs, skills, and
 reading-list entries never load, and its vocabulary never appears in what the orchestrator reads (the
-module-opacity principle; see `methodology/overview.md`).
+module-opacity principle; see `claude-context/methodology/overview.md`).
 
 **Reading the enablement map.** `npx tpm session config --modules` reports every module's ON/OFF state
 as JSON (`{ "session": true, "workflow": true, "tasks": true, "hygiene": true }`). This is what boot

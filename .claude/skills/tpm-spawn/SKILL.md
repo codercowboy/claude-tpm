@@ -54,7 +54,7 @@ spawn; it does not run or reason about the loop.
 
 ## The spawn flow — scaffold → compose → lint → Agent
 
-Reference the tools by their promoted path (`${TPM_HOME}/tools/workflow/…`); a skill never bundles its own copy.
+Reference the tools by their promoted path (`%TPM_HOME%/tools/workflow/…`); a skill never bundles its own copy.
 
 1. **Scaffold the folder** (if not already present) — `npx tpm workflow scaffold …`
    (`add-phase` for a new phase, `add-round --role <role>` to append a kickback round in an existing
@@ -74,7 +74,7 @@ Reference the tools by their promoted path (`${TPM_HOME}/tools/workflow/…`); a
    0 = PASS, 1 = FAIL with a per-check missing-directive list. Do NOT spawn on a FAIL. The lint
    enforces the manifest reading chain, env ritual, working folder, charter-file-present, the sentinel
    taxonomy, and blocked filenames. **No `--manifest` needed** — it defaults to the ONE canonical
-   manifest, the **live subagent reading-list** (`${TPM_HOME}/claude-context/methodology/subagent/reading-list.md`),
+   manifest, the **live subagent reading-list** (`%TPM_HOME%/claude-context/methodology/subagent/reading-list.md`),
    which the tool SELF-LOCATES from its own bundle; it owns the base chain and the per-persona blocks
    (`--test-writer` / `--documentarian` / `--bug-fixer` gate their block in that same file). `--manifest`
    stays an OPTIONAL override for a consumer that wants a different one; if the manifest is found nowhere

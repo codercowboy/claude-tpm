@@ -206,7 +206,7 @@ When a workflow is run, you pick from six built-in teams. The array order is the
 | `docs` | documentarian → verifier | add docs to delivered code |
 | `research` | researcher | a one-off info-gathering pass |
 
-Any team with a verifier runs a bounded verify↔bug-fixer loop on a FAIL (capped, default 5 rounds). Configuration lives in one file, `.claude/claude-tpm/config.json`. Every module is on by default with sensible built-ins, so you only add config to *change* something. The exhaustive CLI verb tables and every config knob are in the [Technical details](docs/technical.md) doc; a fully worked config example lives in the [config guide](claude-context/config-guide.md).
+Any team with a verifier runs a bounded verify↔bug-fixer loop on a FAIL (capped, default 5 rounds). Configuration lives in one file, `.claude/claude-tpm/config.json`. Every module is on by default with sensible built-ins, so you only add config to *change* something. The exhaustive CLI verb tables and every config knob are in the [Technical details](docs/technical.md) doc; a fully worked config example lives in the [config guide](docs/config-guide.md).
 
 ## Caveats & gotchas
 

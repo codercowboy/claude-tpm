@@ -1,18 +1,21 @@
 #!/usr/bin/env node
 /**
- * tests/session/session-review/test.js — genuine tests for tools/session/session-review.js
- * (the read API, build-plan.md task B2).
+ * tests/session/tpm-session-review/test.js — genuine tests for tools/session/tpm-session-review.js,
+ * UPDATED for the #1094 naming sweep + version read-gate (spec §13.6).
  *
- * PURPOSE
- *   Seeds a fixture sandbox sessionsDir directly on disk (mixing canonical session-notes.md
- *   files, written via the REAL session-notes.js write API so read/write share the same
- *   ground truth, with a legacy freeform notes.md session), then drives session-review.js as
- *   a real subprocess and asserts on the actual printed output / JSON — overview, --open-items,
- *   --decisions, --since, --grep, and legacy-note graceful degradation (flagged, not crashed,
- *   not silently dropped).
+ * WHAT CHANGED FROM THE PRIOR SUITE
+ *   Files are now session-number-PREFIXED (session-NNNN-{handoff,punchlist,log}.md) and numbers are
+ *   padded-4. The reader is GATED on the `tpm-session-version: 1.0` preamble: a pre-v1.0 / unmarked /
+ *   unprefixed folder is IGNORED (not "flagged legacy", not crashed) — there is NO legacy tier and NO
+ *   `legacy` field in the JSON. A window with zero v1.0 sessions prints "No sessions found." A v1.0
+ *   session with a log but no handoff still shows via the ledger fallback (that is NOT legacy).
+ *
+ *   Fixtures are built via renderHandoff / renderPunchlist / renderNote (the SAME SSOT the write tools
+ *   use, so read/write share one ground truth) — every canonical file therefore carries the v1.0
+ *   preamble. A hand-made unmarked file exercises the IGNORE (read-gate) path.
  *
  * HOW TO RUN
- *   node tests/session/session-review/test.js
+ *   node tests/session/tpm-session-review/test.js
  */
 
 'use strict';
@@ -22,172 +25,196 @@ const fs = require('fs');
 const path = require('path');
 const { makeChecker, runNode, mkSandbox, TOOLS } = require('../lib/harness');
 
+const fmt = require(TOOLS.format);
 const { check, count } = makeChecker();
 
 function review(sessionsDir, args) {
   return runNode(TOOLS.sessionReview, ['--sessions-dir', sessionsDir, ...args]);
 }
 
-function writeCanonicalSession(sessionsDir, number, { theme, date, resume, openItems = [], decisions = [], logs = [] }) {
-  fs.mkdirSync(path.join(sessionsDir, `session-${number}`), { recursive: true });
-  // Build via the module directly (lib/format.js) so this fixture is a real, well-formed
-  // canonical note without depending on session-notes.js's CLI open/current-session machinery
-  // (this suite is testing the READ side; the WRITE side is covered independently in
-  // tests/session/session-notes/test.js). This still exercises the SAME renderNote() the write
-  // tool uses, so read/write share one ground truth.
-  const { renderNote } = require(TOOLS.format);
-  const content = renderNote({
-    number,
-    date,
-    theme,
-    resume: resume || { whereWeAre: '', nextAction: '', inFlight: 'Nothing in flight.' },
-    openItems,
-    decisions,
-    log: logs,
-    sealedAt: null,
-  });
-  fs.writeFileSync(path.join(sessionsDir, `session-${number}`, 'session-notes.md'), content);
+const TS = (d) => `${d}T10:00:00-07:00`; // a fixed created/decision stamp; shape is what matters elsewhere
+
+/**
+ * Write a full three-file canonical (v1.0) session at the PREFIXED paths, via the SSOT (so every file
+ * carries the tpm-session-version: 1.0 preamble). `open`/`done` are punchlist item texts; handoff (if
+ * given) supplies Where/Next; notes supply decisions/log.
+ */
+function writeCanonicalSession(dir, number, { theme, date, where, next, open = [], done = [], decisions = [], log = [], noHandoff = false }) {
+  const folder = path.join(dir, `session-${number}`);
+  fs.mkdirSync(folder, { recursive: true });
+  const num = Number(number);
+  const items = [
+    ...open.map((t, i) => ({ done: false, session: num, n: i + 1, text: t, slug: `op${number}${i}`.slice(0, 6).padEnd(6, '0'), created: TS(date), closed: null })),
+    ...done.map((t, i) => ({ done: true, session: num, n: open.length + i + 1, text: t, slug: `dn${number}${i}`.slice(0, 6).padEnd(6, '0'), created: TS(date), closed: TS(date) })),
+  ];
+  fs.writeFileSync(path.join(folder, `session-${number}-punchlist.md`), fmt.renderPunchlist({ number, date, items }));
+  fs.writeFileSync(path.join(folder, `session-${number}-log.md`), fmt.renderNote({
+    number, date, theme,
+    decisions: decisions.map((d) => ({ what: d.what, why: d.why, ts: TS(date) })),
+    log: log.map((l) => ({ status: l.status, text: l.text, ts: TS(date) })),
+  }));
+  if (!noHandoff) {
+    const openSpecs = items.filter((it) => !it.done).map((it) => ({ session: it.session, n: it.n, text: it.text, slug: it.slug, created: it.created }));
+    fs.writeFileSync(path.join(folder, `session-${number}-handoff.md`), fmt.renderHandoff({ where, next }, openSpecs, { number, date }));
+  }
 }
 
-function writeLegacySession(sessionsDir, number, prose) {
-  fs.mkdirSync(path.join(sessionsDir, `session-${number}`), { recursive: true });
-  fs.writeFileSync(path.join(sessionsDir, `session-${number}`, 'notes.md'), prose);
+/**
+ * Write a NON-v1.0 (pre-sweep / hand-made) session: a `session-NNNN-log.md` at the prefixed path but
+ * WITHOUT the tpm-session-version: 1.0 preamble. The reader must IGNORE it (read-gate), never parse or
+ * crash on it. The `mentions` string lets a grep test target its body if needed.
+ */
+function writeNonV1Session(dir, number, mentions = 'old freeform prose') {
+  const folder = path.join(dir, `session-${number}`);
+  fs.mkdirSync(folder, { recursive: true });
+  fs.writeFileSync(path.join(folder, `session-${number}-log.md`),
+    `# SESSION ${number} — 2020-01-01 — pre-sweep\n\n## RESUME\n**Where we are:** ${mentions}\n\n## Open items\n- [ ] an old open item\n`);
 }
 
-// ---- fixture set used by most checks below --------------------------------------
-//
-//   session-001 (legacy, freeform prose)
-//   session-002 (canonical) — open items #1 (open) #2 (done), one decision, one log line
-//   session-003 (canonical) — one open item mentioning "database", dated later than 002
+// ---- fixture set: 0001 non-v1 (IGNORED), 0002 canonical (older), 0003 canonical (newer) ----
 
 function buildFixtures() {
   const dir = mkSandbox('review-fixtures');
-  writeLegacySession(dir, '001', 'Old freeform notes. No structure. Mentions "database" once too.\n');
-  writeCanonicalSession(dir, '002', {
-    theme: 'first canonical session',
-    date: '2026-08-01',
-    resume: { whereWeAre: 'built the write API', nextAction: 'build the read API', inFlight: 'nothing' },
-    openItems: [
-      { id: 1, owner: 'jason', done: false, text: 'review the format doc' },
-      { id: 2, owner: 'claude', done: true, text: 'write lib/format.js' },
-    ],
+  writeNonV1Session(dir, '0001', 'old prose mentioning database once');
+  writeCanonicalSession(dir, '0002', {
+    theme: 'first canonical session', date: '2026-08-01',
+    where: 'built the write API', next: 'build the read API',
+    open: ['review the format doc'], done: ['write lib/format.js'],
     decisions: [{ what: 'single pointer mechanism', why: 'env var unreliable outside subagents' }],
-    logs: [{ status: 'WIP', date: '2026-08-01T10:00:00.000Z', text: 'started the write API' }],
+    log: [{ status: 'WIP', text: 'started the write API' }],
   });
-  writeCanonicalSession(dir, '003', {
-    theme: 'second canonical session',
-    date: '2026-08-15',
-    resume: { whereWeAre: 'built the read API', nextAction: 'write tests', inFlight: 'nothing' },
-    openItems: [{ id: 1, owner: 'jason', done: false, text: 'design the database schema' }],
-    decisions: [],
-    logs: [],
+  writeCanonicalSession(dir, '0003', {
+    theme: 'second canonical session', date: '2026-08-15',
+    where: 'built the read API', next: 'write tests',
+    open: ['design the database schema'],
   });
   return dir;
 }
 
-// ---- overview (no filter flags) --------------------------------------------------
+// ---- overview -----------------------------------------------------------------
 
-check('overview lists sessions most-recent-first, flags the legacy one instead of crashing on it', () => {
+check('overview lists v1.0 sessions most-recent-first (Where/Next from handoff) and IGNORES the non-v1.0 one', () => {
   const dir = buildFixtures();
   const r = review(dir, ['--last', '3']);
   assert.strictEqual(r.code, 0);
-  const idx001 = r.stdout.indexOf('session-001');
-  const idx002 = r.stdout.indexOf('session-002');
-  const idx003 = r.stdout.indexOf('session-003');
-  assert.ok(idx003 < idx002 && idx002 < idx001, 'must be descending (most recent first): 003, 002, 001');
-  assert.ok(/legacy format — not token-parseable/.test(r.stdout), 'the legacy session must be flagged, not silently dropped');
-  assert.ok(r.stdout.includes('second canonical session'), 'canonical theme must appear');
+  const idx0002 = r.stdout.indexOf('session-0002');
+  const idx0003 = r.stdout.indexOf('session-0003');
+  assert.ok(idx0003 >= 0 && idx0002 >= 0 && idx0003 < idx0002, 'must be descending: 0003 before 0002');
+  assert.ok(!r.stdout.includes('session-0001'), 'the non-v1.0 session must be INVISIBLE (ignored, not flagged)');
+  assert.ok(!/RESUME|old prose|not token-parseable/.test(r.stdout), 'a non-v1.0 file must NOT be parsed at all');
+  assert.ok(r.stdout.includes('second canonical session'), 'canonical theme appears');
+  assert.ok(/Where: built the read API/.test(r.stdout), 'Where comes from handoff');
+  assert.ok(/Next:  write tests/.test(r.stdout), 'Next comes from handoff');
 });
 
-check('overview honors --last N, taking only the N most recent', () => {
+check('overview FALLS BACK to the notes ledger (Decided/Log) when a v1.0 session has no handoff yet', () => {
+  const dir = mkSandbox('review-no-handoff');
+  writeCanonicalSession(dir, '0004', {
+    theme: 'ledger-only', date: '2026-09-01', noHandoff: true,
+    decisions: [{ what: 'ship it', why: 'good enough' }],
+    log: [{ status: 'DONE', text: 'the last thing' }],
+  });
+  const r = review(dir, ['--last', '1']);
+  assert.strictEqual(r.code, 0);
+  assert.ok(/Decided: ship it — good enough/.test(r.stdout), 'ledger Decided fallback shown (this is v1.0, NOT legacy)');
+  assert.ok(/Log:\s+\[DONE\] the last thing/.test(r.stdout), 'ledger Log fallback shown');
+});
+
+check('overview honors --last N, taking only the N most recent v1.0 sessions', () => {
   const dir = buildFixtures();
   const r = review(dir, ['--last', '1']);
   assert.strictEqual(r.code, 0);
-  assert.ok(r.stdout.includes('session-003'));
-  assert.ok(!r.stdout.includes('session-002'));
-  assert.ok(!r.stdout.includes('session-001'));
+  assert.ok(r.stdout.includes('session-0003'));
+  assert.ok(!r.stdout.includes('session-0002'));
+  assert.ok(!r.stdout.includes('session-0001'));
 });
 
-check('a session folder with no notes file at all is reported, not silently skipped', () => {
-  const dir = buildFixtures();
-  fs.mkdirSync(path.join(dir, 'session-004'), { recursive: true }); // empty folder, no notes file
-  const r = review(dir, ['--last', '4']);
-  assert.strictEqual(r.code, 0);
-  assert.ok(/session-004.*no notes file found/.test(r.stdout));
+// ---- version read-gate: a window with zero v1.0 sessions ----------------------
+
+check('READ-GATE: a dir of ONLY non-v1.0 sessions prints "No sessions found." (ignored, never crashes)', () => {
+  const dir = mkSandbox('review-only-nonv1');
+  writeNonV1Session(dir, '0001');
+  writeNonV1Session(dir, '0002');
+  const r = review(dir, ['--last', '5']);
+  assert.strictEqual(r.code, 0, 'a non-v1.0-only window must not crash');
+  assert.ok(/No sessions found/.test(r.stdout), 'zero v1.0 sessions → clean "No sessions found."');
+  assert.ok(!/session-0001|session-0002/.test(r.stdout), 'no non-v1.0 folder may leak into the output');
 });
 
-// ---- --open-items -------------------------------------------------------------------
+// ---- --open-items -------------------------------------------------------------
 
-check('--open-items prints every open item across the selected sessions, with done-state and owner', () => {
-  const dir = buildFixtures();
-  const r = review(dir, ['--last', '3', '--open-items']);
-  assert.strictEqual(r.code, 0);
-  assert.ok(/session-002 — \[ \] OPEN\(jason\) #1: review the format doc/.test(r.stdout));
-  assert.ok(/session-002 — \[x\] OPEN\(claude\) #2: write lib\/format\.js/.test(r.stdout));
-  assert.ok(/session-003 — \[ \] OPEN\(jason\) #1: design the database schema/.test(r.stdout));
-});
-
-check('--open-items excludes legacy sessions (nothing token-parseable to extract) without crashing', () => {
+check('--open-items prints open punchlist items per selected v1.0 session, with id/slug/created', () => {
   const dir = buildFixtures();
   const r = review(dir, ['--last', '3', '--open-items']);
   assert.strictEqual(r.code, 0);
-  assert.ok(!r.stdout.includes('session-001'));
+  assert.ok(/session-0002 — #2\.1 · review the format doc/.test(r.stdout));
+  assert.ok(/session-0003 — #3\.1 · design the database schema/.test(r.stdout));
+  assert.ok(!/write lib\/format\.js/.test(r.stdout), 'a CLOSED punchlist item must not appear in open-items');
 });
 
-check('--open-items on a selection with zero open items prints the explicit "no open items" message', () => {
+check('--open-items excludes non-v1.0 sessions without crashing', () => {
+  const dir = buildFixtures();
+  const r = review(dir, ['--last', '3', '--open-items']);
+  assert.strictEqual(r.code, 0);
+  assert.ok(!r.stdout.includes('session-0001'));
+});
+
+check('--open-items on a selection with zero open items prints the explicit message', () => {
   const dir = mkSandbox('review-no-open-items');
-  writeCanonicalSession(dir, '001', { theme: 't', date: '2026-01-01', openItems: [], decisions: [], logs: [] });
+  writeCanonicalSession(dir, '0001', { theme: 't', date: '2026-01-01', where: 'w', next: 'n' });
   const r = review(dir, ['--last', '1', '--open-items']);
   assert.strictEqual(r.code, 0);
   assert.ok(/No open items found/.test(r.stdout));
 });
 
-// ---- --decisions --------------------------------------------------------------------
+// ---- --decisions --------------------------------------------------------------
 
-check('--decisions prints every decision across the selected sessions with what/why', () => {
+check('--decisions prints every decision across selected v1.0 sessions with what/why', () => {
   const dir = buildFixtures();
   const r = review(dir, ['--last', '3', '--decisions']);
   assert.strictEqual(r.code, 0);
-  assert.ok(/session-002 — Decided: single pointer mechanism — env var unreliable outside subagents/.test(r.stdout));
+  assert.ok(/session-0002 — Decided: single pointer mechanism — env var unreliable outside subagents/.test(r.stdout));
 });
 
-check('--decisions on a selection with zero decisions prints the explicit "no decisions" message', () => {
+check('--decisions on a selection with zero decisions prints the explicit message', () => {
   const dir = mkSandbox('review-no-decisions');
-  writeCanonicalSession(dir, '001', { theme: 't', date: '2026-01-01', openItems: [], decisions: [], logs: [] });
+  writeCanonicalSession(dir, '0001', { theme: 't', date: '2026-01-01', where: 'w', next: 'n' });
   const r = review(dir, ['--last', '1', '--decisions']);
   assert.strictEqual(r.code, 0);
   assert.ok(/No decisions found/.test(r.stdout));
 });
 
-// ---- --since --------------------------------------------------------------------------
+// ---- --since ------------------------------------------------------------------
 
-check('--since <date> restricts to canonical sessions whose title date is >= the given date', () => {
+check('--since restricts to v1.0 sessions whose date is >= the given date', () => {
   const dir = buildFixtures();
   const r = review(dir, ['--last', '3', '--since', '2026-08-10']);
   assert.strictEqual(r.code, 0);
-  assert.ok(r.stdout.includes('session-003'), '003 (2026-08-15) is >= since — must be included');
-  assert.ok(r.stdout.includes('second canonical session'), 'theme text for the included session must appear');
-  assert.ok(!r.stdout.includes('first canonical session'), '002 (2026-08-01, before --since) must be excluded entirely');
+  assert.ok(r.stdout.includes('session-0003'), '0003 (2026-08-15) >= since — included');
+  assert.ok(r.stdout.includes('second canonical session'));
+  assert.ok(!r.stdout.includes('first canonical session'), '0002 (2026-08-01) is before --since — excluded');
 });
 
-check('--since always includes the legacy session (its date is unfilterable, so it is included, not excluded)', () => {
+check('--since with a far-future date excludes all v1.0 sessions AND still ignores non-v1.0 → "No sessions found."', () => {
   const dir = buildFixtures();
-  const r = review(dir, ['--last', '3', '--since', '2099-01-01']); // a date in the future — no canonical session qualifies
+  const r = review(dir, ['--last', '3', '--since', '2099-01-01']);
   assert.strictEqual(r.code, 0);
-  assert.ok(r.stdout.includes('session-001'), 'the unfilterable legacy session must still show up');
+  assert.ok(/No sessions found/.test(r.stdout), 'both v1.0 sessions are before --since; the non-v1.0 one is ignored');
+  assert.ok(!r.stdout.includes('session-0001'), 'a non-v1.0 session is never resurrected by --since');
 });
 
-// ---- --grep --------------------------------------------------------------------------
+// ---- --grep -------------------------------------------------------------------
 
-check('--grep is case-insensitive and filters to only sessions/lines containing the term', () => {
+check('--grep is case-insensitive and filters to only v1.0 sessions containing the term', () => {
   const dir = buildFixtures();
   const r = review(dir, ['--last', '3', '--grep', 'DATABASE']);
   assert.strictEqual(r.code, 0);
-  assert.ok(r.stdout.includes('session-003'), 'session-003 open item mentions "database"');
-  assert.ok(!r.stdout.includes('session-002'), 'session-002 has no match and must be excluded');
+  assert.ok(r.stdout.includes('session-0003'), 'session-0003 open item mentions "database"');
+  assert.ok(!r.stdout.includes('session-0002'), 'session-0002 has no match and must be excluded');
+  assert.ok(!r.stdout.includes('session-0001'), 'the non-v1.0 session is never grepped (it is invisible)');
 });
 
-check('--grep combined with --open-items shows only the matching open items, not unrelated ones', () => {
+check('--grep combined with --open-items shows only matching open items', () => {
   const dir = buildFixtures();
   const r = review(dir, ['--last', '3', '--open-items', '--grep', 'format']);
   assert.strictEqual(r.code, 0);
@@ -195,27 +222,24 @@ check('--grep combined with --open-items shows only the matching open items, not
   assert.ok(!r.stdout.includes('design the database schema'));
 });
 
-check('--grep on a legacy session matches against its file path (best-effort, since content is not token-parsed)', () => {
-  const dir = mkSandbox('review-grep-legacy');
-  writeLegacySession(dir, '001', 'irrelevant prose');
-  const r = review(dir, ['--last', '1', '--grep', 'session-001']);
-  assert.strictEqual(r.code, 0);
-  assert.ok(r.stdout.includes('session-001'));
-});
+// ---- --json -------------------------------------------------------------------
 
-// ---- --json -----------------------------------------------------------------------------
-
-check('--json emits machine-readable structured data matching the prose view', () => {
+check('--json emits the three-file loadSession shape (number, parsed, handoff, open) with NO legacy field', () => {
   const dir = buildFixtures();
   const r = review(dir, ['--last', '1', '--json']);
   assert.strictEqual(r.code, 0);
   const parsed = JSON.parse(r.stdout);
   assert.strictEqual(parsed.length, 1);
-  assert.strictEqual(parsed[0].number, '003');
-  assert.strictEqual(parsed[0].parsed.theme, 'second canonical session');
+  const s = parsed[0];
+  assert.strictEqual(s.number, '0003');
+  assert.strictEqual(s.parsed.theme, 'second canonical session');
+  assert.strictEqual(s.handoff.where, 'built the read API');
+  assert.strictEqual(s.open.length, 1);
+  assert.strictEqual(s.open[0].text, 'design the database schema');
+  assert.ok(!('legacy' in s), 'the removed no-back-compat model has NO legacy field in the JSON');
 });
 
-// ---- CLI usage errors ---------------------------------------------------------------------
+// ---- CLI usage errors ---------------------------------------------------------
 
 check('CLI: missing --sessions-dir or --last exits 1', () => {
   const dir = mkSandbox('review-missing-flags');
@@ -226,8 +250,7 @@ check('CLI: missing --sessions-dir or --last exits 1', () => {
 
 check('CLI: an empty (nonexistent) sessionsDir reports "No sessions found." rather than crashing', () => {
   const dir = mkSandbox('review-empty-dir');
-  const emptySessionsDir = path.join(dir, 'does-not-exist-yet');
-  const r = review(emptySessionsDir, ['--last', '5']);
+  const r = review(path.join(dir, 'does-not-exist-yet'), ['--last', '5']);
   assert.strictEqual(r.code, 0);
   assert.ok(/No sessions found/.test(r.stdout));
 });
@@ -238,5 +261,5 @@ check('CLI: --help exits 0', () => {
   assert.ok(/Usage: npx tpm session review/.test(r.stdout));
 });
 
-process.stdout.write(`\nALL PASS (${count()} checks) — tests/session/session-review/test.js\n`);
+process.stdout.write(`\nALL PASS (${count()} checks) — tests/session/tpm-session-review/test.js\n`);
 process.exit(0);

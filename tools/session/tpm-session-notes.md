@@ -1,155 +1,127 @@
-# `tpm-session-notes.js` — session-notes WRITE API
+# `tpm-session-notes.js` — the ledger WRITE API
 
-Writes the **current** session's `session-notes.md`: the canonical format's RESUME block
-(rewritten in place), Open items (rewritten in place), Decisions (append-only), and Log
-(append-only), plus the `SEALED <date>` trailer. Resolves "which session is current" via
-`tpm-session-current.js` — it never writes to a stale or arbitrary session by accident.
+Writes the **current** session's `session-NNNN-log.md` — the append-only ledger: `## Decisions` and
+`## Log`, plus the shared wayfinding header and the `SEALED <date>` trailer. Resolves "which session is
+current" via `tpm-session-current.js`, so it never writes to a stale or arbitrary session by accident.
 
-Every claim below was run against a disposable sandbox tree
-(`tmp/documentarian-r1/sandbox/sessions/`), never the live `claude-context/sessions/`.
+This is one of three writers behind a session's memory: `tpm-session-notes.js` owns the **ledger**
+(`session-NNNN-log.md`, renamed from the former `session-notes.md`), `tpm-session-punchlist.js` owns
+**`session-NNNN-punchlist.md`** (open/done work items), and `tpm-session-save.js` owns
+**`session-NNNN-handoff.md`** (the pickup doc). All three files are prefixed with the four-digit session
+number and carry a `tpm-session-version: 1.0` preamble in their shared header. The old `resume` and
+`open` verbs are **retired** — RESUME moved to the handoff head, open items moved to the punchlist.
+
+Every claim below was run against a disposable sandbox tree, never the live configured sessions dir.
 
 ## Purpose
 
-The orchestrator (or a caller acting on its behalf) supplies **content** — what to say in RESUME,
-which items are open, what got decided. This tool owns **format, placement, and discipline**: it
-enforces the two-zone rule (STATE = RESUME + Open items, rewritten in place; LOG = Log +
-Decisions, append-only) and refuses casual edits to a sealed (past) session.
+The orchestrator supplies **content** — what got decided and why, what to log. This tool owns **format,
+placement, and discipline**: the ledger is append-only (a decision or a log entry is a fact about the
+past, not live state to edit), and it refuses casual edits to a sealed (past) session.
 
 ## Requirements / invocation shape
 
 ```
-npx tpm session notes --sessions-dir <dir> [--edit-sealed <NNN> --confirm] <verb> [args]
+npx tpm session notes --sessions-dir <dir> [--edit-sealed <NNNN> --confirm] <verb> [args]
 ```
 
-- `--sessions-dir <dir>` — **required on every invocation.** No default (per
-  `tool-conventions.md`'s no-hardcoded-paths rule) — resolve it yourself, e.g. via
-  `npx tpm session config --sessions-dir`.
-- With no args, or `--help`/`-h`: prints usage. **No args → exit 1. `--help` → exit 0.** Verified:
-  bare invocation and `--help` both print the identical usage block; only the exit code differs.
+- `--sessions-dir <dir>` — **required on every invocation.** No default (per `tool-conventions.md`'s
+  no-hardcoded-paths rule) — resolve it yourself, e.g. via `npx tpm session config --sessions-dir`.
+- `--help`/`-h` prints usage and exits 0. A missing verb prints `a verb is required
+  (init|log|decide|seal).` and exits 1.
 
 ## Verbs
 
 | Verb | Effect | Zone |
 |---|---|---|
-| `init [--theme "<text>"] [--date <YYYY-MM-DD>]` | Creates the current session's `session-notes.md` skeleton if it doesn't exist. **Idempotent**: a second `init` call prints `... already exists — nothing to init.` and exits 0 — it does NOT overwrite or re-theme an existing file. | creates file |
-| `resume --where "<text>" --next "<text>" [--in-flight "<text>"]` | Rewrites the `## RESUME` block **in place**. `--in-flight` defaults to `"Nothing in flight."` if omitted. Both `--where` and `--next` are required — omitting either errors `resume requires --where and --next.` (exit 1). | STATE (in place) |
-| `open add --owner <name> "<text>"` | Appends a new open item: `- [ ] OPEN(<owner>) #<id>: <text>`. `<id>` is a monotonic per-note integer (max existing + 1, starting at 1) — stable across edits, not a line position. `<name>` is free text, no fixed enum. Both `--owner` and the text arg are required. | STATE (append) |
-| `open done <id>` | Marks open item `#<id>` as checked (`[x]`). Errors `no open item #<id> found.` (exit 1) if no such id exists — including a non-numeric `<id>` (e.g. `abc`), which also reports "no open item #abc found." | STATE (in place) |
-| `log --status <TAG> "<text>"` | Appends one entry to `## Log`: `- [<TAG>] <ISO-8601 timestamp> — <text>`. `<TAG>` is **free text, not a validated enum** — the design's suggested set (`DONE`/`WIP`/`BLOCKED`/`HELD`/`PARKED`/`DROPPED`) is a convention the tool does not enforce. Both `--status` and the text arg are required. | LOG (append-only) |
-| `decide "<what>" --why "<why>"` | Appends one entry to `## Decisions`: `- **Decided:** <what> — <why>`. Both are required. | LOG (append-only) |
-| `seal` | Stamps `SEALED <date>` (today, `YYYY-MM-DD`) at the end of the note, and — **only when sealing the current session** (not via `--edit-sealed`) — also marks the current-session pointer closed via `tpm-session-current.js`'s `sealSession`, so the next bare `tpm-session` invocation opens a fresh session instead of reusing this one. | trailer + pointer |
+| `init [--theme "<text>"] [--date <YYYY-MM-DD>]` | Creates the current session's `session-NNNN-log.md` skeleton (header + empty `## Decisions`/`## Log`) if it doesn't exist. **Idempotent**: a second `init` prints `… already exists — nothing to init.` and exits 0 — it does NOT overwrite or re-theme. | creates file |
+| `log --status <TAG> "<text>"` | Appends one entry to `## Log`: `- [<TAG>] <text>  [<ISO-TZ>]`. `<TAG>` is **free text, not a validated enum** — the suggested set (`DONE`/`WIP`/`BLOCKED`/`HELD`/`PARKED`/`DROPPED`) is a convention the tool does not enforce. Both `--status` and the text arg are required. | Log (append-only) |
+| `decide "<what>" --why "<why>"` | Appends one entry to `## Decisions`: `- **Decided:** <what> — <why>  [<ISO-TZ>]`. Both are required. | Decisions (append-only) |
+| `seal` | Stamps `SEALED <date>` (today, `YYYY-MM-DD`) at the end of the note, and — **only when sealing the current session** (not via `--edit-sealed`) — marks the current-session pointer closed via `tpm-session-current.js`, so the next bare `tpm-session` opens a fresh session instead of reusing this one. | trailer + pointer |
 
-**Verified quirk in the header docstring (not a doc bug in this file — flagged for the source):**
-`tpm-session-notes.js`'s own top-of-file docstring says "every verb ... except `init`/`resume` (which
-lazily open one)". This is **not what the code does.** Every verb — `init` and `resume` included —
-requires a session to already be open; calling any of them with no session open (confirmed for
-both `init` and `resume` directly) fails identically:
-```
-session-notes: no session is currently open. Run `tpm-session open` first, or pass --edit-sealed <NNN> --confirm to edit a past session.
-```
-exit 1. What genuinely IS lazy: if a session **is** already open but its `session-notes.md` file
-doesn't exist yet, the first `resume`/`log`/`decide`/`open` call creates the skeleton file
-automatically (confirmed: calling `log` with no prior `init` produced a fresh
-`# SESSION 003 — <today> — (untitled)` skeleton with the log line appended). That is "lazily
-create the file inside an already-open session," not "lazily open a new session" — the docstring's
-wording overstates it. See `findings/HANDOFF.md` for this discrepancy.
+Both `log` and `decide` stamp a trailing ISO-8601 timestamp with timezone (`2026-09-16T20:13:49-07:00`).
+The timestamp is **trailing** — this is the new ledger shape, not the old inline `- [TAG] <ISO> — text`.
 
-## Immutability guard — `--edit-sealed <NNN> --confirm`
+**Lazy file creation.** Every verb requires a session to already be open — calling any of them with no
+session open fails with `session-notes: no session is currently open. Run \`tpm-session open\` first …`
+(exit 1). What IS lazy: if a session is already open but its `session-NNNN-log.md` doesn't exist yet, the
+first `log`/`decide` call creates the skeleton (header + `# SESSION NNNN — <today> — (untitled)` + empty
+sections) automatically, then appends.
 
-Every verb operates **only** on the current open session by default. To touch a different
-(presumably sealed/past) session, pass both flags together:
+## Immutability guard — `--edit-sealed <NNNN> --confirm`
 
-- `--edit-sealed <NNN>` alone → refused: `--edit-sealed <NNN> requires --confirm as well —
-  refusing the casual path to a non-current session.` (exit 1). No partial/casual override exists.
-- `--edit-sealed <NNN> --confirm` against a **canonical** (tool-written) sealed note → succeeds,
-  still enforcing the two-zone rule (verified: a `log` call landed a new line in an already-sealed
-  session, after its `SEALED <date>` trailer stayed correctly at the end).
-- `--edit-sealed <NNN> --confirm` against a **legacy freeform** note (pre-canonical-format,
-  `notes.md` with no `# SESSION NNN — ...` title) → refused with an `ENOTCANONICAL`-coded error:
-  `... does not look like a canonical-format note (no "# SESSION NNN — ..." title found) — this
-  tool refuses to auto-rewrite a freeform legacy note into the new structure.` (exit 1). It does
-  NOT attempt to shoehorn prose into the new structure.
+Every verb operates **only** on the current open session by default. To touch a different (sealed/past)
+session, pass both flags together:
+
+- `--edit-sealed <NNNN>` alone → refused: `--edit-sealed <NNNN> requires --confirm as well — refusing the
+  casual path to a non-current session.` (exit 1). No partial override exists.
+- `--edit-sealed <NNNN>` must be a **four-digit** number — a three-digit id is refused with
+  `--edit-sealed 001: session number must be four digits (e.g. 0007). Refusing to write to an invalid
+  session id.` (exit 1). **Verified.** There is no path to a pre-v1.0 (three-digit) session.
+- `--edit-sealed <NNNN> --confirm` against a **canonical** (tool-written) sealed note → succeeds, still
+  appending and keeping the `SEALED <date>` trailer at the end.
+- `--edit-sealed <NNNN> --confirm` against a **non-canonical** note (no `# SESSION NNNN — …` title) →
+  refused with an `ENOTCANONICAL`-coded error rather than shoehorning prose into the new structure.
 
 ## Exit codes
 
 | Code | When |
 |---|---|
-| `0` | Verb succeeded, or `--help` was passed. |
-| `1` | No args passed; `--sessions-dir` missing; no verb given; unknown verb; missing required flags for a verb (e.g. `resume` without `--next`); no session open and no `--edit-sealed --confirm` override; `--edit-sealed` given without `--confirm`; `open done <id>` for a nonexistent id; `--edit-sealed --confirm` against a non-canonical (legacy) note. |
+| `0` | Verb succeeded (including an idempotent `init`), or `--help` was passed. |
+| `1` | `--sessions-dir` missing; no/unknown verb; missing required flags for a verb; no session open and no `--edit-sealed --confirm` override; `--edit-sealed` without `--confirm`; `--edit-sealed` with a non-four-digit id; `--edit-sealed --confirm` against a non-canonical note. |
 
-All error paths print a single-line `session-notes: <message>` to stderr (verb/arg-parsing errors
-additionally print the full usage block) — no stack trace, no double-prefixing observed in any
-case exercised above.
+All error paths print a single-line `tpm-session-notes.js: <message>` (or `session-notes: <message>`) to
+stderr — no stack trace.
 
-## Worked example — a full session lifecycle (run against the sandbox)
+## Worked example (run against the sandbox)
 
 ```
 $ npx tpm session current --sessions-dir "$SDIR" --open
-{ "number": "001", "sessionId": "...", "isNew": true, "pointerPath": "...sessions/.current-session.json" }
+{ "number": "0001", "sessionId": "...", "isNew": true, "pointerPath": "...sessions/.current-session.json" }
 
-$ npx tpm session notes --sessions-dir "$SDIR" init --theme "Documentarian sandbox verification"
-session-notes: created .../session-001/session-notes.md
+$ npx tpm session notes --sessions-dir "$SDIR" init --theme "Wire up CSV export"
+session-notes: created .../session-0001/session-0001-log.md
 
-$ npx tpm session notes --sessions-dir "$SDIR" resume \
-    --where "Verifying tpm-session-notes.js" --next "write tpm-session-review.js checks"
-session-notes: RESUME updated in .../session-001/session-notes.md
-
-$ npx tpm session notes --sessions-dir "$SDIR" open add --owner jason "review the config-guide patch"
-session-notes: added open item #1 in .../session-001/session-notes.md
-
-$ npx tpm session notes --sessions-dir "$SDIR" open add --owner claude "write the tool docs"
-session-notes: added open item #2 in .../session-001/session-notes.md
-
-$ npx tpm session notes --sessions-dir "$SDIR" open done 1
-session-notes: marked open item #1 done in .../session-001/session-notes.md
-
-$ npx tpm session notes --sessions-dir "$SDIR" log --status WIP "wrote tpm-session-format.js"
-session-notes: appended [WIP] log entry in .../session-001/session-notes.md
+$ npx tpm session notes --sessions-dir "$SDIR" log --status DONE "Wired the toolbar button to exportCsv()"
+session-notes: appended [DONE] log entry in .../session-0001/session-0001-log.md
 
 $ npx tpm session notes --sessions-dir "$SDIR" decide \
-    "single pointer, not a sessionId map" --why "env var unreliable outside subagents"
-session-notes: appended decision in .../session-001/session-notes.md
+    "Use the existing exportCsv() helper" --why "avoids duplicating CSV escaping logic"
+session-notes: appended decision in .../session-0001/session-0001-log.md
 
 $ npx tpm session notes --sessions-dir "$SDIR" seal
-session-notes: sealed .../session-001/session-notes.md (2026-08-30)
+session-notes: sealed .../session-0001/session-0001-log.md (2026-09-17)
 ```
 
-Resulting `session-001/session-notes.md` (verified byte-for-byte, one `## RESUME` block, both open
-items present with #1 checked, one decision, two log lines, sealed trailer):
+Resulting `session-0001/session-0001-log.md` (verified byte-for-byte):
 
-```
-# SESSION 001 — 2026-08-30 — Documentarian sandbox verification
+```markdown
+<!-- tpm-session: 0001 · 2026-09-17 · tpm-session-version: 1.0 · files: session-0001-handoff.md, session-0001-punchlist.md, session-0001-log.md -->
+> **Session 0001 memory — three files in this folder.  THIS FILE: log.**
+> • **session-0001-handoff.md** — READ FIRST: where we are, next action, what NOT to redo.
+> • **session-0001-punchlist.md** — open/done work items (numbered).
+> • **session-0001-log.md** — append-only ledger: Decisions + Log (log reads **bottom-to-top**).
 
-## RESUME
-**Where we are:** Verifying tpm-session-notes.js
-**Next action:** write tpm-session-review.js checks
-**In flight:** Nothing in flight.
-
-## Open items
-- [x] OPEN(jason) #1: review the config-guide patch
-- [ ] OPEN(claude) #2: write the tool docs
+# SESSION 0001 — 2026-09-17 — Wire up CSV export
 
 ## Decisions
-- **Decided:** single pointer, not a sessionId map — env var unreliable outside subagents
+- **Decided:** Use the existing exportCsv() helper — avoids duplicating CSV escaping logic  [2026-09-17T09:01:00-07:00]
 
 ## Log
-- [WIP] 2026-08-30T08:58:58.972Z — wrote tpm-session-format.js
-- [DONE] 2026-08-30T08:58:59.063Z — docs verified
+- [DONE] Wired the toolbar button to exportCsv()  [2026-09-17T09:01:00-07:00]
+
+SEALED 2026-09-17
 ```
 
-(the `[DONE]` line above came from a second `log` call in the same verification pass, omitted
-from the command list above for brevity — every command actually run is logged in
-`findings/HANDOFF.md`).
-
-After `seal`, `tpm-session-current.js --state` reports `not-opened` and `--next-number` returns
-the following number — confirming a bare invocation right after close correctly opens a NEW
-session rather than resuming the sealed one.
+After `seal`, `tpm-session-current.js --state` reports `not-opened` — confirming a bare invocation right
+after close opens a NEW session rather than resuming the sealed one.
 
 ## See also
 
-- `tools/session/tpm-session-review.md` — the read side (same token format).
-- `tools/session/tpm-session-format.js` — the header docstring there is the canonical format spec (the
-  exact headings/regexes this tool writes and `tpm-session-review.js` parses).
+- `tools/session/tpm-session-save.md` — the handoff writer (the pickup doc). What used to be RESUME.
+- `tools/session/tpm-session-punchlist.md` — the open/done work items. What used to be Open items.
+- `tools/session/tpm-session-review.md` — the read side (Decisions + Log come from here).
+- `claude-context/methodology/session-notes-format.md` — the canonical three-file format spec.
 - `tools/session/tpm-session-current.js` — resolves "what session is current" for this tool.
-- `out/skills/tpm-session/SKILL.md` + `modes-open.md` / `modes-close.md` — how the `tpm-session`
+- `.claude/skills/tpm-session/SKILL.md` + `modes-open.md` / `modes-close.md` — how the `tpm-session`
   skill drives this tool end-to-end.

@@ -233,7 +233,7 @@ found nowhere (a broken bundle) the lint also fails LOUD rather than silently sk
 
 > **The canonical lint manifest — one place, no duplicate chain.** There is exactly ONE reading-list
 > the lint enforces against: the **live subagent reading-list**
-> (`${TPM_HOME}/claude-context/methodology/subagent/reading-list.md`). It owns the base chain AND the per-persona
+> (`%TPM_HOME%/claude-context/methodology/subagent/reading-list.md`). It owns the base chain AND the per-persona
 > blocks (`test-writer` / `documentarian` / `bug-fixer`, gated by the matching `--<role>` flag) — the
 > persona blocks live in that ONE file. The orchestrator's own round-machinery docs (the pre-task
 > questions, the charters, `subagent-orchestration.md`) are separate and carry no second copy of the

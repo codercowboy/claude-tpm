@@ -93,4 +93,18 @@ check('`tpm install --help` alias still routes (exit 0)', () => {
   assert.ok(/install/i.test(r.out));
 });
 
+// ── flat bundle primitives (home / doc) ───────────────────────────────────────────
+check('`tpm home` routes → prints an absolute path (exit 0)', () => {
+  const r = tpm('home');
+  assert.strictEqual(r.status, 0);
+  assert.ok(path.isAbsolute(r.out.trim()), 'home prints an absolute bundle path');
+});
+check('`tpm doc` (no arg) routes → usage exit 2', () => {
+  assert.strictEqual(tpm('doc').status, 2);
+});
+check('bare `tpm` menu lists the home + doc primitives', () => {
+  const r = tpm();
+  assert.ok(r.out.includes('home') && r.out.includes('doc'), 'menu names home + doc');
+});
+
 process.stdout.write(`\nPASS — ${count}/${count} tpm dispatch assertions green\n`);

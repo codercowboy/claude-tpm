@@ -37,7 +37,7 @@ work. The carve-outs below are **never written without the user's explicit per-o
 
 **Writes the orchestrator routinely owns:** `tools/` (product tools + promotions), the task ledger under
 `.claude/claude-tpm/tasks/` (read/written via `npx tpm task`), the `docs/` / project-history it keeps
-current, `claude-context/sessions/session-NNN/session-notes.md`, `claude-context/methodology/*`,
+current, the session notes under the configured sessions dir (`session.notes.sessionsDir`), `claude-context/methodology/*`,
 `CLAUDE.md` (sparingly), `tmp/` (scratch), `output/` (regenerable, git-ignored). When the orchestrator runs
 a task itself, it owns that working folder directly.
 

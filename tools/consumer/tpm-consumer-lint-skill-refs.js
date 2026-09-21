@@ -4,16 +4,24 @@
  * where claude-tpm lives under `node_modules/@codercowboy/claude-tpm/`, so a skill must never reach the
  * SHARED BUNDLE by a bare path that dead-ends at the consumer root. Two relocatable forms are correct:
  *   - tool INVOCATIONS route through the bin — `npx tpm <suite> <verb>` (self-locating; env.TPM_HOME retired).
- *   - methodology doc READS carry the `${TPM_HOME}/` placeholder — the expand hook rewrites it at read time.
+ *   - methodology doc READS use `npx tpm doc <relpath>` (self-resolving, bypass-safe), OR carry the
+ *     `%TPM_HOME%/` placeholder in a prose CITATION — the PostToolUse content hook / `tpm doc` resolve it.
  * (The old Bash `$TPM_HOME` shell-resolution path is gone: nothing shell-expands $TPM_HOME anymore.)
  * A bare `node tools/…` or `claude-context/methodology/…` would dead-end at the consumer root.
  *
+ * SPELLING (#1102 respell): the shell-inert `%TPM_HOME%` is the PREFERRED placeholder. `${TPM_HOME}` is the
+ * legacy shell-EXPANDING spelling (`${…}` is bash parameter-expansion; on a command line it silently expands
+ * to empty and corrupts the path). Resolution accepts BOTH during the transition (the content hook and `tpm
+ * doc` each carry both spellings), so a tokenized ref in EITHER spelling is treated as relocatable — but a
+ * `${TPM_HOME}` in skill content is FLAGGED (rule 5) so the old spelling can't creep back in.
+ *
  * This lint flags the bundle-ref shapes that are NOT relocatable:
  *   1. bare tool INVOCATIONS / references:  `node tools/…`  and  `` `tools/… ``  (→ `npx tpm <suite> <verb>`)
- *   2. bare methodology doc READS:          `claude-context/methodology/…`  and  `` `methodology/… `` (→ `${TPM_HOME}/…`)
+ *   2. bare methodology doc READS:          `claude-context/methodology/…`  and  `` `methodology/… `` (→ `npx tpm doc …` / `%TPM_HOME%/…`)
+ *   3. the legacy shell-expanding placeholder `${TPM_HOME}` anywhere in content (→ respell to `%TPM_HOME%`)
  *
  * It deliberately does NOT flag:
- *   • already-tokenized refs (`${TPM_HOME}/…`),
+ *   • already-tokenized refs in the PREFERRED spelling (`%TPM_HOME%/…`) — nor `npx tpm doc …` reads,
  *   • the `out/…`-prefixed staged-tool paths (a build-phase concern),
  *   • WORKSPACE refs that live in the CONSUMER's own tree, not the bundle — `dev/<task>/`,
  *     `claude-context/sessions/`, `claude-context/tasks/`,
@@ -27,13 +35,16 @@
 const fs = require('fs');
 const path = require('path');
 
-// A violation = a bundle ref MISSING the ${TPM_HOME}/ prefix. Each rule: {re, why}. The negative
-// lookbehind on the methodology rules lets an already-tokenized `${TPM_HOME}/claude-context/…` pass.
+// A violation = a bundle ref MISSING a relocatable prefix, OR the legacy shell-expanding spelling. Each
+// rule: {re, why}. The negative lookbehinds on the methodology rule let an already-tokenized ref in EITHER
+// spelling (`%TPM_HOME%/…` preferred, `${TPM_HOME}/…` legacy) or a `npx tpm doc …` read pass rule 2 —
+// while rule 5 still flags the legacy `${TPM_HOME}` spelling so it prefers/enforces `%TPM_HOME%`.
 const RULES = [
   { re: /\bnode\s+tools\//, why: 'bare tool invocation — route through the bin: `npx tpm <suite> <verb>`' },
-  { re: /`tools\//, why: 'bare bundle tool ref — invoke via `npx tpm <suite> <verb>` (or cite the file as `${TPM_HOME}/tools/…`)' },
-  { re: /(?<!\$\{TPM_HOME\}\/)claude-context\/methodology\//, why: 'bare methodology read — use `${TPM_HOME}/claude-context/methodology/…`' },
-  { re: /`methodology\//, why: 'bare methodology shorthand — use `${TPM_HOME}/claude-context/methodology/…`' },
+  { re: /`tools\//, why: 'bare bundle tool ref — invoke via `npx tpm <suite> <verb>` (or cite the file as `%TPM_HOME%/tools/…`)' },
+  { re: /(?<!%TPM_HOME%\/)(?<!\$\{TPM_HOME\}\/)(?<!doc )claude-context\/methodology\//, why: 'bare methodology read — use `npx tpm doc claude-context/methodology/…` (or cite as `%TPM_HOME%/claude-context/methodology/…`)' },
+  { re: /`methodology\//, why: 'bare methodology shorthand — use `npx tpm doc claude-context/methodology/…` (or cite as `%TPM_HOME%/claude-context/methodology/…`)' },
+  { re: /\$\{TPM_HOME\}/, why: 'legacy shell-EXPANDING placeholder `${TPM_HOME}` — respell to the shell-inert `%TPM_HOME%` (both resolve, but `${…}` expands to empty on a command line)' },
 ];
 
 function collectMdFiles(target) {
@@ -67,10 +78,10 @@ function main(argv) {
   let all = [];
   for (const f of files) all = all.concat(lintFile(f));
   if (all.length === 0) {
-    process.stdout.write(`✓ skill refs clean — ${files.length} file(s), every bundle ref carries \${TPM_HOME}/\n`);
+    process.stdout.write(`✓ skill refs clean — ${files.length} file(s): tools via \`npx tpm …\`, methodology via \`npx tpm doc …\`/%TPM_HOME%/, no legacy \${TPM_HOME}\n`);
     process.exit(0);
   }
-  process.stdout.write(`✗ ${all.length} bare bundle ref(s) — must be \${TPM_HOME}/-prefixed:\n`);
+  process.stdout.write(`✗ ${all.length} non-relocatable bundle ref(s) — route tools through \`npx tpm …\`, methodology through \`npx tpm doc …\`/%TPM_HOME%/, and respell any \${TPM_HOME} → %TPM_HOME%:\n`);
   for (const v of all) process.stdout.write(`  ${v.file}:${v.line}  ${v.why}\n      ${v.text}\n`);
   process.exit(1);
 }

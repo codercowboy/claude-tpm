@@ -35,6 +35,13 @@ npm install --save-optional github:codercowboy/claude-tpm
 npx tpm install .
 ```
 
+> **⚠️ Order matters.** Run the `npm install` **first**. That's what places a real `tpm` in your
+> project (`node_modules/.bin/tpm`) so `npx tpm` resolves to *this* tool. Run `npx tpm` before the
+> dependency exists and npx can fall through to an **unrelated package of the same name** on the npm
+> registry - a silent wrong-tool, not an error. (`--save-optional` records it as an optional
+> dependency so a plain `npm install` in CI never hard-fails on it; use `--save` if you'd rather it be
+> a regular dependency.)
+
 The installer walks through each step. **prints the exact command it's about to run, and asks before it changes anything** - decline and it stops without touching your project. When it finishes, you launch `claude` in the project and the `/tpm-*` commands are there.
 
 Once claude-tpm is wired into a project, use the following commands to manage the installation:
@@ -151,7 +158,7 @@ Common overrides:
 - **Boot / close messages** — `session.showTPMOpenMessage`, or `session.additionalOpenMessage` (a path
   to your own `.md` shown after TPM's open message).
 
-The full schema is in `claude-context/config-guide.md` in the bundle.
+The full schema is in `docs/config-guide.md` in the bundle.
 
 ---
 
@@ -185,10 +192,5 @@ project-only). The same `--quiet` / `--force` / `--check` modes apply. It never 
   `npm install` finished, so npx grabbed an unrelated registry package of the same name. Run `npm
   install --save-optional github:codercowboy/claude-tpm` first, confirm `node_modules/.bin/tpm` exists,
   then re-run `npx tpm install .`.
-- **"package.json not found"** — run `npm init -y` in the project first, then re-run the installer.
-- **Preflight fails on `claude`** — install the Claude Code CLI and confirm `claude --version` works.
-- **Commands don't show up in `claude`** — run `npx tpm install . --check`; if the plugin isn't
-  enabled, `npx tpm install . --force`, then restart `claude`.
-- **"already enabled at project scope"** — harmless; the installer treats an already-enabled plugin as
-  a skip.
-- **Reset a broken setup** — `npx tpm install . --force` re-runs every step from scratch.
+- **"package.json not found"** — run `npm init -y` to create one first. claude-tpm installs *into* an existing Node project; it doesn't scaffold one for you.
+- **Anything else** — run `npx tpm doctor .` (the read-only health check from **Verify** above). It names what's wrong and the fix for each row, without changing anything.

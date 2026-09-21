@@ -40,6 +40,9 @@ const TOOLS = {
   format: path.join(TOOLS_DIR, 'tpm-session-format.js'),
   sessionNotes: path.join(TOOLS_DIR, 'tpm-session-notes.js'),
   sessionReview: path.join(TOOLS_DIR, 'tpm-session-review.js'),
+  sessionSave: path.join(TOOLS_DIR, 'tpm-session-save.js'),
+  sessionPunchlist: path.join(TOOLS_DIR, 'tpm-session-punchlist.js'),
+  sessionBootRead: path.join(TOOLS_DIR, 'tpm-session-boot-read.js'),
 };
 
 /** One counter per test file (call once at the top of each test.js). */

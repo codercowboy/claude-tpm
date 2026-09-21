@@ -52,7 +52,7 @@ The **mode is the first token**; the rest of the line is freeform, interpreted b
 | **`reconcile`** | Judge the verdict + log the call → reconcile delivery+verifier output → update `00-epic-plan/` → epic-close (promotion + cost rollup) | `modes-reconcile.md` |
 | **`reap`** | Stray subagent/subshell cleanup | **delegates to `tpm-reap`** |
 | **`status`** | Report round/epic state — read `00-epic-plan/` (phase map · punchlist · decisions), phase `findings/HANDOFF.md`, and `tpm-workflow-audit.js` output; summarize. No spawn | (inline, below) |
-| **`doctor`** | Fail-loud PREFLIGHT before a round: checks charters resolve, signoff is writable, compose emits a marker + `${TPM_HOME}` paths. No spawn | (inline, below) |
+| **`doctor`** | Fail-loud PREFLIGHT before a round: checks charters resolve, signoff is writable, compose emits a marker + `%TPM_HOME%` paths. No spawn | (inline, below) |
 
 ## Interpreting the mode token (forgiving)
 
@@ -78,17 +78,17 @@ The **mode is the first token**; the rest of the line is freeform, interpreted b
 
 ## Pre-flight gate (anti-skip)
 
-Before you spawn / plan / scaffold, silently walk the pre-task questions
-(`${TPM_HOME}/claude-context/methodology/orchestrator/pre-task-questions.md`). If any answer is fuzzy, follow its
+Before you spawn / plan / scaffold, silently walk the pre-task questions —
+`npx tpm doc claude-context/methodology/orchestrator/pre-task-questions.md`. If any answer is fuzzy, follow its
 pointer and re-read before proceeding. This is a *workflow* gate, not a boot gate — when you are
 just operating, there is nothing to gate.
 
 ## Where the deep reference + tools live
 
-- **Deep shared reference** (read on demand): `${TPM_HOME}/claude-context/methodology/workflow-setup/` — `charters/`,
+- **Deep shared reference** (read on demand — fetch a file with `npx tpm doc claude-context/methodology/workflow-setup/<file>`): `charters/`,
   `plan-template.md`, and `subagent-orchestration.md` (the spawn → verify → loop round machinery).
-  The pre-task questions live at `${TPM_HOME}/claude-context/methodology/orchestrator/pre-task-questions.md`.
-- **Tools** (mechanics — reference by their promoted path, all under `${TPM_HOME}/tools/workflow/`):
+  Read the pre-task questions with `npx tpm doc claude-context/methodology/orchestrator/pre-task-questions.md`.
+- **Tools** (mechanics — reference by their promoted path, all under `%TPM_HOME%/tools/workflow/`):
   `tpm-workflow-config-resolver.js` · `tpm-workflow-scaffold-subagent.js` · `tpm-workflow-compose-spawn-prompt.js` ·
   `tpm-workflow-lint-subagent-prompt.js` · `tpm-workflow-audit.js` · `tpm-workflow-cost-ledger.js` · `tpm-workflow-check-filename.js`.
   A skill never bundles its own tool copy — tools are shared project infra.
@@ -112,7 +112,7 @@ round — especially the FIRST round in a fresh consumer:
 
 1. `npx tpm workflow doctor` (add `--json` for machine output; `--project-root <dir>`
    to check another install). It self-locates the bundle.
-2. Checks: charters resolve · signoff store writable · compose emits a quoted marker + `${TPM_HOME}/…`
+2. Checks: charters resolve · signoff store writable · compose emits a quoted marker + `%TPM_HOME%/…`
    methodology paths. (PreToolUse hooks are plugin-delivered now — the doctor no longer checks hook wiring.)
 3. Relay the ✓/✗ report verbatim. On any ✗, **stop and fix it before spawning** — each failure prints
    its own fix line. Exit 0 = clear to run; exit 1 = do not spawn yet.

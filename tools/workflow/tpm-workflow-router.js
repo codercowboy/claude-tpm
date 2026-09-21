@@ -8,7 +8,7 @@
  *   knowing the verbs (design: dev/tpm-cli-design.md §0). Verbs are SHORT — the `workflow` suite name
  *   namespaces them (e.g. `scaffold`, not `scaffold-subagent`).
  *
- *   Sibling scripts resolve against THIS file's dir (`__dirname`) — no `${TPM_HOME}`/env dependency.
+ *   Sibling scripts resolve against THIS file's dir (`__dirname`) — no `%TPM_HOME%`/env dependency.
  *   Dispatch is by CHILD PROCESS (`spawnSync('node', …, {stdio:'inherit'})`); child exit propagated.
  *
  *   NOTE: the skill MODES `plan`/`verify`/`reconcile` are NOT here — those are the `/tpm-workflow`

@@ -5,7 +5,7 @@ description: Use to capture, track, and manage a project's lightweight task ledg
 
 `tpm-task` is the task-ledger skill. It is a **thin router**: it interprets a fuzzy mode token,
 does the small amount of JUDGMENT each mode needs (draft content, detect an epic, resolve + echo a
-selector, confirm destructive ops), then forwards the MECHANICS to `${TPM_HOME}/tools/task/tpm-task.js` and relays
+selector, confirm destructive ops), then forwards the MECHANICS to `%TPM_HOME%/tools/task/tpm-task.js` and relays
 its compact output. **The skill never hand-reads or hand-writes the store** — one clean write path,
 the tool.
 
@@ -33,7 +33,7 @@ the tool.
 - `npx tpm task --tasks-dir <dir> <subcommand> [args]` — ALL mechanics. Its header
   docstring / [`tpm-task.md`](../../tools/task/tpm-task.md) is the full reference.
 
-All of `${TPM_HOME}/tools/task/` is self-contained (zero shared imports, per `tool-conventions.md` Part I §2).
+All of `%TPM_HOME%/tools/task/` is self-contained (zero shared imports, per `tool-conventions.md` Part I §2).
 Run every invocation from the project root; `--tasks-dir` is the resolved absolute store path.
 
 ## Config gate

@@ -9,8 +9,8 @@
  *   namespaces them (design: dev/tpm-cli-design.md §0).
  *
  *   Sibling scripts are resolved against THIS file's own directory (`__dirname`), so nothing here
- *   depends on `${TPM_HOME}` or any env var — the whole point of routing skill invocations through
- *   `tpm`: it eliminates the `${TPM_HOME}` token from Bash invocations (Path A).
+ *   depends on `%TPM_HOME%` or any env var — the whole point of routing skill invocations through
+ *   `tpm`: it eliminates the `%TPM_HOME%` token from Bash invocations (Path A).
  *
  *   Dispatch is by CHILD PROCESS (`spawnSync('node', [tool, …args], {stdio:'inherit'})`) — process
  *   isolation + faithful argv/stdio pass-through; the child's exit code is propagated.
@@ -20,7 +20,7 @@
  *   scripts those modes shell out to.
  *
  * USAGE
- *   tpm session <config|current|notes|review> [args…]
+ *   tpm session <config|current|notes|punchlist|save|boot-read|review> [args…]
  *   tpm session --help | -h
  */
 
@@ -34,6 +34,9 @@ const VERBS = {
   config: 'tpm-session-config.js',
   current: 'tpm-session-current.js',
   notes: 'tpm-session-notes.js',
+  punchlist: 'tpm-session-punchlist.js',
+  save: 'tpm-session-save.js',
+  'boot-read': 'tpm-session-boot-read.js',
   review: 'tpm-session-review.js',
 };
 
@@ -44,14 +47,18 @@ Usage:
   tpm session <verb> [args…]
 
 Verbs:
-  config    resolve session config / sessions-dir (--json / --sessions-dir / --get)
-  current   the current-session pointer (--state / --open / --seal / --next-number)
-  notes     the notes WRITE API (init / resume / open / log / decide / seal)
-  review    the notes READ API (--last N …)
+  config     resolve session config / sessions-dir (--json / --sessions-dir / --get)
+  current    the current-session pointer (--state / --open / --seal / --next-number)
+  notes      the ledger WRITE API (init / log / decide / seal)
+  punchlist  the open/done work items (add / close / list / reopen / drop)
+  save       the gated, linted checkpoint (--payload <file.json>): rewrites session-NNNN-handoff.md
+  boot-read  the boot-time pickup emit (prior handoff + open punchlist); never crashes boot
+  review     the notes READ API (--last N …)
 
 Remaining args pass straight through, e.g.:
   tpm session current --sessions-dir .claude/claude-tpm/sessions --open
-  tpm session notes resume --where "…" --next "…"`);
+  tpm session punchlist --sessions-dir .claude/claude-tpm/sessions add "wire the save lint"
+  tpm session save --sessions-dir .claude/claude-tpm/sessions --payload handoff.json`);
 }
 
 function main(argv) {

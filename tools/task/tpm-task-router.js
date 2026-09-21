@@ -10,7 +10,7 @@
  *   config-gate calls (`--tasks-dir` / `--get enabled` / `--json`).
  *
  *   The top-level `tpm.js` forwards `task <anything…>` here without knowing verbs
- *   (design: dev/tpm-cli-design.md §0). Sibling scripts resolve against `__dirname` — no `${TPM_HOME}`/
+ *   (design: dev/tpm-cli-design.md §0). Sibling scripts resolve against `__dirname` — no `%TPM_HOME%`/
  *   env dependency. Dispatch is by CHILD PROCESS; child exit propagated. `tpm-task.js` owns its own
  *   `--help` / bare-invocation listing, so those pass straight through.
  *

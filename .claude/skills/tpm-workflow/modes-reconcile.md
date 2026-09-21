@@ -29,7 +29,7 @@ After a phase reaches a verified PASS (or accepted partial-with-gap):
 4. **Advance** per the phase map + parallelism (respecting stage barriers), or hold at a
    user-set breakpoint.
 
-Within an epic, a later phase that needs an earlier phase's tool **copies it** into its own `${TPM_HOME}/tools/`
+Within an epic, a later phase that needs an earlier phase's tool **copies it** into its own `%TPM_HOME%/tools/`
 (noting lineage) — it does NOT promote. The train never stops mid-run for a promotion.
 
 ## Epic-close ritual (user-gated)
@@ -42,7 +42,7 @@ Runs when the deliverable ships AND every `punchlist.md` item is done OR explici
    - **Planned deliverables auto-promote** per the plan.
    - **Unplanned artifacts** (a verifier's bonus tool, an unplanned helper) → **confirm with the
      user** before promoting.
-   - Apply the promotion criteria + **move-and-breadcrumb** to project-level `${TPM_HOME}/tools/` (leave a
+   - Apply the promotion criteria + **move-and-breadcrumb** to project-level `%TPM_HOME%/tools/` (leave a
      breadcrumb at the old path). Reusable verifier/ builder tools flagged for promotion are graded
      here; one-off probes stay in `tmp/`.
    - Cross-epic: outputs another epic depends on are promoted **before** that epic starts.
@@ -52,7 +52,7 @@ Runs when the deliverable ships AND every `punchlist.md` item is done OR explici
 4. **Structure audit** — `npx tpm workflow audit --out <tmp>/audit.md` to confirm numbering
    integrity, one-plan-one-charter per phase, and `00-epic-plan/` charter-cleanliness before sealing.
 5. **Update project state** — the **task queue** (mark the epic done + log deferred gaps as follow-on
-   tasks/epics), **project-history**, and **`${TPM_HOME}/tools/README`** (any promoted tools). **NOT `CLAUDE.md`**
+   tasks/epics), **project-history**, and **`%TPM_HOME%/tools/README`** (any promoted tools). **NOT `CLAUDE.md`**
    — it stays frozen (always-injected canon; it points at manifests, doesn't hold status). A
    standing-convention change is a rare, separately user-approved edit, never a routine close step.
 6. **Seal `00-epic-plan/`** — mark complete; the epic records go immutable (like sealed session notes).
