@@ -195,7 +195,7 @@ test('MATRIX: runDoctor classifies every case correctly', () => {
     // old-format
     const migratable = report.oldFormat.find((o) => o.migratable);
     assert.ok(migratable, 'a migratable old-format session detected');
-    assert.ok(/tpm-session-migrate\.js --in/.test(migratable.suggestion), 'suggestion names the real migrator');
+    assert.ok(/npx tpm session migrate --in/.test(migratable.suggestion), 'suggestion names the real migrator');
     assert.strictEqual(migratable.number, '0007', 'detected number from the marked filenames');
     const refused = report.oldFormat.find((o) => !o.migratable);
     assert.ok(refused, 'a not-auto-migratable old-format dir is reported');
@@ -325,7 +325,7 @@ test('CLI: exits non-zero and prints a FAIL line for an invalid store; JSON mode
     const human = spawnSync(process.execPath, [TOOL, '--sessions-dir', dir], { encoding: 'utf8' });
     assert.strictEqual(human.status, 1, 'CLI exits 1 on a hard FAIL');
     assert.ok(/session-0034\.json\s+FAIL \[read\]/.test(human.stdout), 'human report shows the read FAIL');
-    assert.ok(/tpm-session-migrate\.js --in/.test(human.stdout), 'human report shows the migrate suggestion');
+    assert.ok(/npx tpm session migrate --in/.test(human.stdout), 'human report shows the migrate suggestion');
 
     const j = spawnSync(process.execPath, [TOOL, '--sessions-dir', dir, '--json'], { encoding: 'utf8' });
     assert.strictEqual(j.status, 1, 'JSON mode exits 1 too');

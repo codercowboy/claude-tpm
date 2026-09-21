@@ -59,7 +59,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (argv[i] === '--tasks-root') TASKS_ROOT_ARG = argv[++i];
   else if (argv[i] === '--strict') STRICT = true;
   else if (argv[i] === '--help' || argv[i] === '-h') {
-    console.log('usage: tpm-workflow-audit.js --out <path-to-output.md> [--tasks-root <dir>] [--strict]');
+    console.log('usage: npx tpm workflow audit --out <path-to-output.md> [--tasks-root <dir>] [--strict]');
     console.log('  Classifies each top-level entry as EPIC (has 00-epic-plan/) or FLAT task.');
     console.log('  EPIC checks: numbering integrity, one-plan-one-charter per phase, 00-epic-plan charter-cleanliness.');
     console.log('  FLAT checks: legacy plan/findings presence, scratch-in-findings, stray files.');

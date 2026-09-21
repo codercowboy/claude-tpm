@@ -12,7 +12,7 @@
  *   - lib/validate.js       · validateEnvelope(record, …)   — envelope + kind gate.
  *   - lib/session-schema.js · validatePayload               — the LOCKED payload validator.
  *   - lib/session-model.js  · canonicalNumber / loadSession — canonical number + round-trip load.
- *   - lib/session-converter · render                        — the optional derived `.md` (--emit-md).
+ *   - lib/session-converter · render                        — the derived `.md` (on by default; --no-emit-md skips).
  *   - lib/timestamp.js      · nowIsoTz                       — the handoff.updatedAt stamp.
  *
  * ── SAFETY RAILS (build-plan §2c; Jason's locked rulings) ──
@@ -39,14 +39,14 @@
  *  selected from the data, never a fabricated one; if the session carries no real timestamp at all
  *  the migrator REFUSES rather than invent one. No new schema marker field is added.
  *
- * ── NODE-INVOKABLE, NO BIN (Q5) ── run via bare `node session-tooling/tpm-session-migrate.js …`;
+ * ── NODE-INVOKABLE ── run via `npx tpm session migrate …` (routed), or bare `node tools/session/tpm-session-migrate.js …`;
  *  programmatic callers `require()` it for `runMigration(...)` / `parseOldSession(...)`.
  *
  * Zero third-party deps; Node built-ins only.
  *
  * USAGE
  *   node tpm-session-migrate.js --in <old-session-dir> --out-dir <dir> \
- *       [--number NNNN] [--dry-run] [--emit-md] [--force] [--now <iso>]
+ *       [--number NNNN] [--dry-run] [--emit-md|--no-emit-md] [--force] [--now <iso>]
  *
  * FLAGS
  *   --in <dir>       REQUIRED. Directory holding the old marked 3-file session. READ-ONLY.
@@ -55,14 +55,15 @@
  *                    must not resolve inside a live .claude/claude-tpm/sessions tree.
  *   --number NNNN    Optional. Override the session number (else parsed from the banner/filename).
  *   --dry-run        Validate + report what WOULD be written; write nothing.
- *   --emit-md        Also write the derived human-readable session-<NNNN>.md (via the converter).
+ *   --emit-md        Also write the derived human-readable session-<NNNN>.md (via the converter). DEFAULT: on.
+ *   --no-emit-md     Opt OUT of the derived .md — write only the canonical .json.
  *   --force          Overwrite an existing output file (otherwise refuse if it exists).
  *   --now <iso>      Reference stamp for handoff.updatedAt (default: now, local offset). Injectable
  *                    so goldens are byte-stable.
  *   --help           Show this usage.
  *
  * EXAMPLE
- *   node session-tooling/tpm-session-migrate.js \
+ *   npx tpm session migrate \
  *     --in  .claude/claude-tpm/sessions/session-0021 \
  *     --out-dir /tmp/migrated
  */
@@ -499,7 +500,8 @@ function looksLikeLiveSessions(outDir) {
  *   opts.outDir    — REQUIRED output dir (write-only; must differ from inDir + not live sessions).
  *   opts.number    — OPTIONAL number override.
  *   opts.dryRun    — validate + report, write nothing.
- *   opts.emitMd    — also write the derived session-<NNNN>.md via the converter.
+ *   opts.emitMd    — also write the derived session-<NNNN>.md via the converter. DEFAULT true; pass
+ *                    `false` (CLI `--no-emit-md`) to opt out.
  *   opts.force     — overwrite an existing output file.
  *   opts.now       — reference stamp for handoff.updatedAt (default nowIsoTz(); injectable).
  *   opts.loadSession — injected loader (default session-model.loadSession) for the post-write check.
@@ -525,7 +527,10 @@ function runMigration(opts) {
   // <outDir>/session-<NNNN>/session-<NNNN>.json (+ .md on --emit-md).
   const sessionDir = path.join(outDir, `session-${record.meta.number}`);
   const outPath = path.join(sessionDir, `session-${record.meta.number}.json`);
-  const mdPath = options.emitMd ? path.join(sessionDir, `session-${record.meta.number}.md`) : null;
+  // #4 (smoke): the derived .md is emitted BY DEFAULT (the rest of the tooling assumes the .md half
+  // exists); only an explicit `emitMd:false` (CLI `--no-emit-md`) opts out.
+  const emitMd = options.emitMd !== false;
+  const mdPath = emitMd ? path.join(sessionDir, `session-${record.meta.number}.md`) : null;
 
   if (!options.dryRun) {
     if (fs.existsSync(outPath) && !options.force) {
@@ -568,7 +573,8 @@ function parseArgv(argv) {
       case '--number': opts.number = next(); break;
       case '--now': opts.now = next(); break;
       case '--dry-run': opts.dryRun = true; break;
-      case '--emit-md': opts.emitMd = true; break;
+      case '--emit-md': opts.emitMd = true; break;          // #4: default now ON — kept for back-compat / explicitness
+      case '--no-emit-md': opts.emitMd = false; break;      // #4: opt OUT of the derived .md
       case '--force': opts.force = true; break;
       case '-h': case '--help': opts.help = true; break;
       default: throw new Error(`unknown argument '${a}'`);
@@ -578,14 +584,15 @@ function parseArgv(argv) {
 }
 
 const USAGE = `tpm-session-migrate — OPT-IN old→new session migrator (#1114.C)
-  run: node session-tooling/tpm-session-migrate.js --in <dir> --out-dir <dir> [flags]
+  run: npx tpm session migrate --in <dir> --out-dir <dir> [flags]
 
   --in <dir>       REQUIRED  old marked 3-file session dir (READ-ONLY)
   --out-dir <dir>  REQUIRED  where session-<NNNN>.json is written (must differ from --in;
                              refused inside a live .claude/claude-tpm/sessions tree)
   --number NNNN    override the session number (else parsed from the banner)
   --dry-run        validate + report; write nothing
-  --emit-md        also write the derived human-readable session-<NNNN>.md
+  --emit-md        also write the derived human-readable session-<NNNN>.md (DEFAULT: on)
+  --no-emit-md     opt OUT of writing the derived .md (write only the canonical .json)
   --force          overwrite an existing output file
   --now <iso>      reference stamp for handoff.updatedAt (default: now, local offset)
   --help           show this usage

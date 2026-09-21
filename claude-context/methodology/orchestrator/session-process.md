@@ -16,10 +16,10 @@ around it.
 ## On start (boot)
 
 `tpm-session open` (see `.claude/skills/tpm-session/modes-open.md`):
-1. Allocates or confirms the current session via `tools/session/tpm-session-current.js --open`
+1. Allocates or confirms the current session via `npx tpm session current --open`
    (idempotent — reuses the current session's number if one is already open this session; it manages the
    `.current-session.json` pointer, not the folder, which `ops open` creates on first write).
-2. Runs `tools/session/tpm-session-boot-read.js` to pull the PRIOR session's state into context. This is
+2. Runs `npx tpm session boot-read` to pull the PRIOR session's state into context. This is
    a **tool call, not the model choosing to open a file** — its stdout is the pickup payload. Because it
    runs after step 1's `--open`, it excludes the just-opened current session and iterates the priors
    descending, emitting the highest readable record:
@@ -77,7 +77,7 @@ told), so they are ritual, never a mechanical requirement that would false-fail 
    sections) so the derived `.md` reveals where memory lives.
 3. A genuinely NEW session (no session currently open — a fresh `tpm-session open`, or the prior
    session's pointer was closed by `current --seal`) allocates the NEXT number: highest existing
-   `session-NNNN` + 1, zero-padded to **four** digits, allocated automatically by `tpm-session-current.js`.
+   `session-NNNN` + 1, zero-padded to **four** digits, allocated automatically by the current-session pointer (`npx tpm session current`).
 4. A prior session's record is **never** overwritten by a later one — `close`'s seal step
    (`ops close`) stamps `meta.closedAt`, and `current --seal` marks the pointer closed.
 

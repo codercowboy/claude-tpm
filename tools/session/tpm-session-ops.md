@@ -1,6 +1,6 @@
-# `tpm-session-ops.js` — session ops + import (#1115)
+# `tpm-session-ops.js` — session write-ops + import (#1115)
 
-The node-invokable session **ops** + **#1115 import** tool for `kind:"session"` records (P06). It
+The node-invokable session **write-ops** + **#1115 import** tool for `kind:"session"` records (P06). It
 operates off the canonical JSON and, on every write, regenerates the derived human `.md` via the
 converter (`now` bound in a closure). Composes `lib/session-model.js` + `lib/session-converter.js` —
 re-implements none of the model/converter/IO primitives.
@@ -9,9 +9,10 @@ Format authorities (cross-referenced, not restated here): [`../json-format-spec.
 (the JSON envelope + editable-vs-mechanical table) and [`../export-spec.md`](../export-spec.md) (the human
 render). Overview + file map: [`README.md`](README.md). Export tool: [`tpm-session-export.md`](tpm-session-export.md).
 
-**Run (Q5 — no bin, no npm-run):**
+**Run (Q5 — no bin, no npm-run):** each verb is a TOP-LEVEL session verb — the old `ops` grouping was
+flattened away, so call the verb directly (typing the removed `ops` token now just hints at this form).
 ```
-node session-tooling/tpm-session-ops.js <verb> [flags]
+npx tpm session <verb> [flags]
 ```
 Programmatic callers `require('./tpm-session-ops')` for `opOpen / opSave / opNote / opPunchlist /
 opClose / opImportHandoff / opImportLog / opImportPunchlist` (each returns the persisted record).
@@ -20,7 +21,7 @@ opClose / opImportHandoff / opImportLog / opImportPunchlist` (each returns the p
 | Flag | Meaning |
 |------|---------|
 | `--sessions-dir <dir>` | directory of `session-<NNNN>.json` (a SCRATCH or real dir; created for `open`). **Required.** |
-| `--session <NNNN>` | session number (aka `--number`). |
+| `--session <NNNN>` | session number (aka `--number`). **Always 4-digit zero-padded** — `--session 1` is normalized to `0001`, so the on-disk folder (`session-0001/`) and the stored `meta.number` always agree (#3). |
 | `--now <iso>` | reference time for punchlist age (default: now, local offset). |
 
 Each write: canonical JSON is written **atomically first**, then the derived `session-<NNNN>.md` is
@@ -38,22 +39,25 @@ regenerated **only after** the JSON write succeeds.
 ## Import (#1115) — honors the LOCKED editable table (mechanical fields ignored; state never set by import)
 | Verb | Flags | Semantics |
 |------|-------|-----------|
-| `import-handoff` | `--json-file <f>` \| `--txt-file <f> (--next "…" \| --next-file <f>) [--in-flight "…"]… [--must-not-redo "…"]…` | **REPLACE.** JSON = a handoff object OR a full session record (`.handoff` extracted). Text = raw file → `where`; `next` supplied via flag/file (replace-semantics cannot invent the required `next` → fails loud if absent). |
-| `import-log` | `--txt-file <f> [--status NOTE \| --decision --why "…"]` | **APPEND-ONLY.** File contents become one log entry's body; existing entries never rewritten; monotonic seq preserved. Removes the thin-log friction (multi-line body, no shell-escaping). |
-| `import-punchlist` | `--file <f>` | **ADD/merge.** File = a JSON array (strings or `{text}`), or one item per non-empty text line. Each becomes a new **open** item; state is never set by import. |
+| `import-handoff` | `--json-file <f>` \| `(--txt-file\|--file) <f> (--next "…" \| --next-file <f>) [--in-flight "…"]… [--must-not-redo "…"]…` | **REPLACE.** JSON = a handoff object OR a full session record (`.handoff` extracted). Text = raw file → `where`; `next` supplied via flag/file (replace-semantics cannot invent the required `next` → fails loud if absent). |
+| `import-log` | `(--txt-file\|--file) <f> [--status NOTE \| --decision --why "…"]` | **APPEND-ONLY.** File contents become one log entry's body; existing entries never rewritten; monotonic seq preserved. Removes the thin-log friction (multi-line body, no shell-escaping). |
+| `import-punchlist` | `(--file\|--txt-file) <f>` | **ADD/merge.** File = a JSON array (strings or `{text}`), or one item per non-empty text line. Each becomes a new **open** item; state is never set by import. |
+
+> **#2 (smoke): `--txt-file` and `--file` are aliases** — every import verb accepts both spellings, so
+> you never have to remember which flag a given `import-*` uses.
 
 The loosened all-or-none rule (#1115 D): partial file-driven writes are allowed by design, but each
 write's canonical JSON is still atomic.
 
 ## Examples
 ```
-node session-tooling/tpm-session-ops.js open --sessions-dir /tmp/s --session 0021 \
+npx tpm session open --sessions-dir /tmp/s --session 0021 \
     --session-id abc --tpm-version 1.0.0 --prior-session-path /tmp/s/session-0020.json
-node session-tooling/tpm-session-ops.js import-handoff --sessions-dir /tmp/s --session 0021 \
+npx tpm session import-handoff --sessions-dir /tmp/s --session 0021 \
     --txt-file where.txt --next "wire the router"
-node session-tooling/tpm-session-ops.js import-log --sessions-dir /tmp/s --session 0021 --txt-file entry.txt
-node session-tooling/tpm-session-ops.js punchlist --sessions-dir /tmp/s --session 0021 --action add --text "do X"
-node session-tooling/tpm-session-ops.js close --sessions-dir /tmp/s --session 0021
+npx tpm session import-log --sessions-dir /tmp/s --session 0021 --file entry.txt
+npx tpm session punchlist --sessions-dir /tmp/s --session 0021 --action add --text "do X"
+npx tpm session close --sessions-dir /tmp/s --session 0021
 ```
 
 Tests: `session-tooling/tests/session-ops.test.js` (auto-discovered by `tests/run-all.js`).

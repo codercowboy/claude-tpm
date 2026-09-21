@@ -1,6 +1,6 @@
 {
   "name": "@codercowboy/claude-tpm",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A project-agnostic Claude Code plugin for running Claude as a disciplined multi-agent TPM/SDLC system (orchestrator + researcher/builder/verifier subagents). Ships the tpm-* skills, the methodology library, and the zero-dep tool suites; installed from GitHub as a dependency of downstream projects or from a local clone.",
   "license": "MIT",
   "author": "Jason Baker <jason@onejasonforsale.com>",

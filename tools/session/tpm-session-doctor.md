@@ -9,7 +9,7 @@ migrator — it never writes, mutates, migrates, converts, or re-renders anythin
 ## Usage
 
 ```
-node session-tooling/tpm-session-doctor.js --sessions-dir <dir> [--json] [--strict]
+npx tpm session doctor --sessions-dir <dir> [--json] [--strict]
 ```
 
 | Flag | |
@@ -68,7 +68,7 @@ collision C-A):
 
 - clean marked 3-file session **with no** `session-<NNNN>.json` → prints a ready-to-run suggestion:
   ```
-  node tpm-session-migrate.js --in "<dir>" --out-dir "<choose-an-output-dir>"
+  npx tpm session migrate --in "<dir>" --out-dir "<choose-an-output-dir>"
   ```
   plus a total count.
 - clean marked 3-file session that **already has** a JSON → nothing to report.

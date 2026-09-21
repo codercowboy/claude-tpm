@@ -128,7 +128,7 @@ test('NESTED MATRIX: valid / drift / corrupt / unknown-newer / old-format each g
     const migratable = report.oldFormat.find((o) => o.migratable);
     assert.ok(migratable, 'the old-format nested subdir is detected as migratable');
     assert.strictEqual(migratable.number, '0007', 'detected number from the marked filenames');
-    assert.ok(/tpm-session-migrate\.js --in/.test(migratable.suggestion), 'suggestion names the real migrator + --in');
+    assert.ok(/npx tpm session migrate --in/.test(migratable.suggestion), 'suggestion names the real migrator + --in');
 
     // summary + exit code
     assert.strictEqual(report.summary.invalid, 2, 'two hard FAILs (corrupt + unknown-newer)');
@@ -169,7 +169,7 @@ test('NESTED CLI: exits 1, prints the nested FAIL + the migrate suggestion; --js
     const human = spawnSync(process.execPath, [TOOL, '--sessions-dir', root], { encoding: 'utf8' });
     assert.strictEqual(human.status, 1, 'CLI exits 1 on the nested hard FAILs');
     assert.ok(/session-0034[\/\\]session-0034\.json\s+FAIL \[read\]/.test(human.stdout), 'human report shows the nested read FAIL with its nested key');
-    assert.ok(/tpm-session-migrate\.js --in/.test(human.stdout), 'human report shows the migrate suggestion');
+    assert.ok(/npx tpm session migrate --in/.test(human.stdout), 'human report shows the migrate suggestion');
 
     const j = spawnSync(process.execPath, [TOOL, '--sessions-dir', root, '--json'], { encoding: 'utf8' });
     assert.strictEqual(j.status, 1, 'JSON mode exits 1 too');

@@ -106,5 +106,14 @@ check('bare `tpm` menu lists the home + doc primitives', () => {
   const r = tpm();
   assert.ok(r.out.includes('home') && r.out.includes('doc'), 'menu names home + doc');
 });
+check('`tpm reading-list orchestrator` routes → anchor-form chain (exit 0)', () => {
+  const r = tpm('reading-list', 'orchestrator');
+  assert.strictEqual(r.status, 0);
+  assert.ok(r.out.includes('npx tpm resolve-home'), 'emits the resolve-home anchor');
+  assert.ok(r.out.includes('npx tpm doc '), 'emits at least one doc line');
+});
+check('`tpm reading-list` (no role) routes → usage exit 2', () => {
+  assert.strictEqual(tpm('reading-list').status, 2);
+});
 
 process.stdout.write(`\nPASS — ${count}/${count} tpm dispatch assertions green\n`);

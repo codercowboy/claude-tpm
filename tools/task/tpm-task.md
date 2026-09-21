@@ -13,7 +13,7 @@ table) and [`../task-export-spec.md`](../task-export-spec.md) (the human render)
 
 **Run:**
 ```
-node tpm-task.js <verb> --tasks-dir <dir> [flags]
+npx tpm task <verb> --tasks-dir <dir> [flags]
 ```
 Programmatic callers `require('./tpm-task')` for `opAdd / opEdit / opImport / opAddSubtask / opCheck /
 opTransition / opReindex / opHistory / opList / opShow` (each mutating op returns the persisted record).
@@ -72,21 +72,21 @@ never breaks a store op (it falls back to ON).
 
 ## Examples
 ```
-node tpm-task.js add --tasks-dir /tmp/t --headline "Wire the router" --label infra --summary "port it"
-node tpm-task.js list --tasks-dir /tmp/t --now 2026-09-20T15:00:00-07:00
-node tpm-task.js start --tasks-dir /tmp/t 1000
-node tpm-task.js add-subtask --tasks-dir /tmp/t 1000 --text "first sub"
-node tpm-task.js check --tasks-dir /tmp/t 1000 A
-node tpm-task.js finish --tasks-dir /tmp/t 1000 --action "shipped in PR 42" --ref "PR#42"
-node tpm-task.js import --template > patch.json      # fill it in, then:
-node tpm-task.js import --tasks-dir /tmp/t 1500 --file patch.json
-node tpm-task.js history --tasks-dir /tmp/t 1500 --json
-node tpm-task.js reindex --tasks-dir /tmp/t
+npx tpm task add --tasks-dir /tmp/t --headline "Wire the router" --label infra --summary "port it"
+npx tpm task list --tasks-dir /tmp/t --now 2026-09-20T15:00:00-07:00
+npx tpm task start --tasks-dir /tmp/t 1000
+npx tpm task add-subtask --tasks-dir /tmp/t 1000 --text "first sub"
+npx tpm task check --tasks-dir /tmp/t 1000 A
+npx tpm task finish --tasks-dir /tmp/t 1000 --action "shipped in PR 42" --ref "PR#42"
+npx tpm task import --template > patch.json      # fill it in, then:
+npx tpm task import --tasks-dir /tmp/t 1500 --file patch.json
+npx tpm task history --tasks-dir /tmp/t 1500 --json
+npx tpm task reindex --tasks-dir /tmp/t
 ```
 
 Real close-guard refusal (open subtask `A` blocks `finish`):
 ```
-$ node tpm-task.js finish --tasks-dir /tmp/t 1000
+$ npx tpm task finish --tasks-dir /tmp/t 1000
 tpm-task: finishTask: refused — 1 open subtask(s) block close (#1111): A. Check or remove them first.
 # exit 1
 ```

@@ -107,7 +107,7 @@ function findProjectRoot(startDir, marker = 'CLAUDE.md') {
 //
 // RELOCATABLE: the DEFAULT charter home resolves to an ABSOLUTE path anchored at the
 // BUNDLE (this file lives at `<bundle>/tools/workflow/tpm-workflow-config-resolver.js`, so up 2 =
-// bundle root — same self-location trick as tools/consumer/hooks/expand-tpm-home.js).
+// bundle root — same self-location trick as tools/tpm-home.js).
 // Why: a CONSUMER install vendors the bundle under node_modules/@codercowboy/claude-tpm/,
 // and scaffold-subagent resolves a RELATIVE charterFile against the CONSUMER's projectRoot
 // — where the charters don't exist → a placeholder charter for every phase (found live in
@@ -423,7 +423,7 @@ function main() {
   }
 
   if (!args.json && !args.validate && !args.get) {
-    process.stderr.write('tpm-workflow-config-resolver.js: nothing to do — pass one of --json / --get / --validate.\n\n');
+    process.stderr.write('tpm workflow config: nothing to do — pass one of --json / --get / --validate.\n\n');
     printHelp();
     process.exit(1);
   }

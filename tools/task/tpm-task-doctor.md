@@ -18,7 +18,7 @@ Overview + file map: [`README.md`](README.md). The old-format detector + migrate
 ## Usage
 
 ```
-node tpm-task-doctor.js --tasks-dir <dir> [--json]
+npx tpm task doctor --tasks-dir <dir> [--json]
 ```
 
 | Flag | |
@@ -98,7 +98,7 @@ nonzero, so a strict/advisory split would only muddy it.)
 Verified runs against scratch stores:
 
 ```
-$ node tpm-task-doctor.js --tasks-dir <clean>
+$ npx tpm task doctor --tasks-dir <clean>
 task doctor · <clean>
 2 task(s) · 2 valid · 0 invalid · 0 drift · label-index OK
   bodies/1000-1999/task-1000.json  OK
@@ -107,15 +107,15 @@ task doctor · <clean>
 Clean — no problems found. (Read-only: the doctor never writes.)
 # exit 0
 
-$ node tpm-task-doctor.js --tasks-dir <json-hand-edited>
+$ npx tpm task doctor --tasks-dir <json-hand-edited>
 2 task(s) · 2 valid · 0 invalid · 1 drift · label-index OK
   bodies/1000-1999/task-1119.json  OK · DRIFT (banner 855e551c5933 · current e981f136e25d — body out of date; re-save via `tpm task`)
 # exit 1
 
-$ node tpm-task-doctor.js --tasks-dir <old-markdown-store>
+$ npx tpm task doctor --tasks-dir <old-markdown-store>
 OLD-FORMAT task store detected (2 markdown body(ies), Next ID marker 1150).
   → SUGGEST migrate (the doctor never converts):
-      node tpm-task-migrate.js --in "<old-markdown-store>" --out-dir "<choose-an-output-dir>"
+      npx tpm task migrate --in "<old-markdown-store>" --out-dir "<choose-an-output-dir>"
 # exit 1
 ```
 

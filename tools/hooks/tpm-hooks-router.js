@@ -3,7 +3,7 @@
  * tpm-hooks-router.js — the `hooks` sub-router for the `tpm` dispatcher.
  *
  * PURPOSE
- *   `tpm hooks <verb> [args…]` dispatches to a claude-tpm HOOK program (PreToolUse or PostToolUse).
+ *   `tpm hooks <verb> [args…]` dispatches to a claude-tpm HOOK program (PreToolUse).
  *   This router OWNS
  *   the hook verb table; the top-level `tpm.js` forwards `hooks <anything…>` here without knowing the
  *   verbs (design: dev/tpm-cli-design.md §0). It exists so a plugin `hooks.json` can invoke a hook by
@@ -11,14 +11,14 @@
  *   `node "${CLAUDE_PLUGIN_ROOT}/tools/<suite>/hooks/<script>.js"` path that breaks whenever a script
  *   moves or is renamed.
  *
- *   The hook scripts still LIVE in their owning suite (gate-spawn under `workflow/`, expand-tpm-home
- *   under `consumer/`) — a workflow gate belongs to the workflow suite, and gate-spawn deep-requires
- *   its sibling `tpm-workflow-signoff.js`. This router does NOT relocate them; it only exposes them
- *   under one `hooks` verb table. Each target therefore runs from its OWN `__dirname`, so its relative
- *   requires and self-location keep resolving exactly as before.
+ *   The hook script still LIVES in its owning suite (gate-spawn under `workflow/`) — a workflow gate
+ *   belongs to the workflow suite, and gate-spawn deep-requires its sibling `tpm-workflow-signoff.js`.
+ *   This router does NOT relocate it; it only exposes it under one `hooks` verb table. The target runs
+ *   from its OWN `__dirname`, so its relative requires and self-location keep resolving exactly as
+ *   before. (The retired %TPM_HOME% resolution hooks were removed in #1126 — see docs/technical.md.)
  *
  *   HOOK CONTRACT PRESERVED: dispatch is by CHILD PROCESS with `stdio:'inherit'`, so the harness's
- *   PreToolUse payload on stdin flows straight to the hook, the hook's stdout (e.g. expand-tpm-home's
+ *   PreToolUse payload on stdin flows straight to the hook, the hook's stdout (e.g. gate-spawn's
  *   decision JSON) flows straight back out, and the hook's EXIT CODE (0 = allow, 2 = block) propagates
  *   up through this router and `tpm.js` unchanged.
  *
@@ -27,7 +27,6 @@
  *
  * USAGE
  *   tpm hooks gate-spawn         # → workflow/hooks/tpm-workflow-gate-spawn.js  (PreToolUse: Agent|Task)
- *   tpm hooks expand-tpm-home    # → consumer/hooks/expand-tpm-home.js          (PreToolUse: Read|Glob|Grep|NotebookRead)
  *   tpm hooks --help | -h
  */
 
@@ -39,8 +38,6 @@ const { spawnSync } = require('child_process');
 // short verb -> the hook script, relative to THIS file's dir. Targets live in their owning suite.
 const VERBS = {
   'gate-spawn': '../workflow/hooks/tpm-workflow-gate-spawn.js',
-  'expand-tpm-home': '../consumer/hooks/expand-tpm-home.js',
-  'expand-tpm-home-content': '../consumer/hooks/expand-tpm-home-content.js',
 };
 
 function help() {
@@ -51,14 +48,11 @@ Usage:
 
 Verbs:
   gate-spawn               block a tpm-workflow round spawn without a fresh kickoff  (PreToolUse: Agent|Task)
-  expand-tpm-home          resolve %TPM_HOME%/… in read-tool PATHS to the bundle    (PreToolUse: Read|Glob|Grep|NotebookRead)
-  expand-tpm-home-content  resolve \${TPM_HOME}/%TPM_HOME% in read CONTENT           (PostToolUse: Read|Grep|Glob) — bypass-safe
 
   tpm hooks --help, -h
 
-These are harness-invoked hooks. A PreToolUse hook's exit code decides the tool's fate (0 = allow,
-2 = block); a PostToolUse hook rewrites the tool RESULT via hookSpecificOutput.updatedToolOutput. In
-both cases the payload arrives on stdin and stdout flows back to the harness. Wire them from a plugin
+This is a harness-invoked hook. A PreToolUse hook's exit code decides the tool's fate (0 = allow,
+2 = block); the payload arrives on stdin and stdout flows back to the harness. Wire it from a plugin
 hooks.json, e.g.:
   { "type": "command", "command": "npx tpm hooks gate-spawn" }`);
 }

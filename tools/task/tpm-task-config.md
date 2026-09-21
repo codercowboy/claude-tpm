@@ -12,7 +12,7 @@ Overview + file map: [`README.md`](README.md). Verb tool that consumes the gate:
 
 **Run:**
 ```
-node tpm-task-config.js [--config <path>] (--json | --get <dotted.key> | --tasks-dir) [--help]
+npx tpm task config [--config <path>] (--json | --get <dotted.key> | --tasks-dir) [--help]
 ```
 Programmatic callers `require('./tpm-task-config')` for `resolveTasksConfig / mergeTasksConfig /
 getDefaults / tasksDirAbs / getDotted`.
@@ -44,16 +44,16 @@ config accepts either `history: { enabled: <bool> }` or a bare boolean `history`
 
 ## Examples
 ```
-$ node tpm-task-config.js --get history.enabled
+$ npx tpm task config --get history.enabled
 true
-$ node tpm-task-config.js --get startId
+$ npx tpm task config --get startId
 1000
-$ node tpm-task-config.js --tasks-dir
+$ npx tpm task config --tasks-dir
 /…/claude-tpm-dev/.claude/claude-tpm/tasks
-$ node tpm-task-config.js --config /nope/config.json --json
+$ npx tpm task config --config /nope/config.json --json
 config: --config path does not exist: /nope/config.json
 # exit 1
-$ node tpm-task-config.js --get no.such.key
+$ npx tpm task config --get no.such.key
 config: no such key "no.such.key" in resolved config.
 # exit 1
 ```

@@ -181,7 +181,7 @@ first, then the five derived files). It re-implements none of the model/converte
 [`tpm-task.md`](tpm-task.md).
 
 ```
-node tpm-task.js <verb> --tasks-dir <dir> [flags]
+npx tpm task <verb> --tasks-dir <dir> [flags]
 ```
 
 | Verb | Effect |
@@ -218,7 +218,7 @@ only when `--match` or `--closed-since` needs it). Export emits the RECORDS, sea
 `id·file·line·snippet` POINTERS. Full reference: [`tpm-task-export.md`](tpm-task-export.md).
 
 ```
-node tpm-task-export.js <export|search> --tasks-dir <dir> [SELECTORS…] [SHAPE…]
+npx tpm task <export|search> --tasks-dir <dir> [SELECTORS…] [SHAPE…]
 ```
 
 - **Selectors** (AND together): ids/ranges (also the comma form `"1112,1119"`) · `--state <s>[,<s>]`

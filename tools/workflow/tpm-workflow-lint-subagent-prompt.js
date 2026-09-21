@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * tpm-workflow-lint-subagent-prompt.js (v2) - validate a subagent spawn prompt AND catch
+ * npx tpm workflow lint (v2) - validate a subagent spawn prompt AND catch
  * unresolved template sentinels before a subagent is spawned or a plan/charter
  * is handed to a worker.
  *
@@ -390,17 +390,26 @@ function buildStructuralChecks() {
       test: body => reAny(body, /dev\//),
     },
     {
-      // RELOCATABLE: a spawned worker resolves a bundle doc only through a mechanism that self-locates
-      // the bundle. Post-#1099 the PreToolUse path-hook is GONE, so `${TPM_HOME}/…` read-PATHS no longer
-      // resolve — the load-bearing form is now `npx tpm doc <relpath>` (self-resolving, bypass-safe).
-      // A BARE `claude-context/methodology/…` still dead-ends at the consumer root, so require ONE of the
-      // resolving forms: `npx tpm doc <path>` (preceding `doc `), or a `%TPM_HOME%/` / `${TPM_HOME}/`
-      // token prefix (both accepted through the respell transition, #1102).
+      // RELOCATABLE + ANCHOR-FIRST (#1126): a spawned worker resolves a bundle doc only through a
+      // mechanism that self-locates the bundle. The token-resolving hooks are retired, so a bare
+      // `claude-context/methodology/…` dead-ends at the consumer root AND an un-anchored `%TPM_HOME%/…`
+      // read-path is no longer sufficient on its own — nothing resolves the token for the worker. Two
+      // resolving forms are accepted: `npx tpm doc <path>` (self-resolving, bypass-safe), or a
+      // `%TPM_HOME%/` / `${TPM_HOME}/` token prefix PAIRED WITH a `npx tpm resolve-home` anchor
+      // instruction (the worker runs it once and resolves the token paths against the printed root).
       id: 'bundle-paths-tokenized',
-      name: 'Bundle methodology paths resolve (via `tpm doc`, %TPM_HOME%/ or ${TPM_HOME}/)',
-      docPointer: 'tpm-doc.js / child-project-path-resolution.md — bundle-relative resolution',
+      name: 'Bundle methodology paths resolve (via `tpm doc`, or %TPM_HOME%/ + a resolve-home anchor)',
+      docPointer: 'tpm-doc.js / tpm-home.js (resolve-home) — anchor-first bundle-relative resolution',
       applies: (_b, o) => !o.sentinelsOnly,
-      test: body => !/(?<!\$\{TPM_HOME\}\/)(?<!%TPM_HOME%\/)(?<!doc )claude-context\/methodology\//.test(body),
+      test: body => {
+        // No BARE methodology path may survive — each must be prefixed by a token or `npx tpm doc `.
+        if (/(?<!\$\{TPM_HOME\}\/)(?<!%TPM_HOME%\/)(?<!doc )claude-context\/methodology\//.test(body)) return false;
+        // A %TPM_HOME%/ (or ${TPM_HOME}/) read-path only resolves once the worker has run the anchor,
+        // so whenever that token form is used, the resolve-home anchor instruction must accompany it.
+        const usesToken = /(?:%TPM_HOME%|\$\{TPM_HOME\})\/claude-context\/methodology\//.test(body);
+        if (usesToken && !/\btpm\s+resolve-home\b/.test(body)) return false;
+        return true;
+      },
     },
     {
       id: 'verifier-hard-rule',

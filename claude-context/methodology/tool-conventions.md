@@ -8,6 +8,15 @@ or restructuring project-level tools; read Part II every time you touch a tool i
 > under `tools/**` or `dev/*/tools/**` (and the orchestrator when building task-folder tools). Part I:
 > whenever a project-level tool is created or restructured.
 
+> **These are conventions — a best-practices guide, not hard rules.** They're the defaults that serve
+> most tools here (and in consuming projects), and you should follow them by default. But real situations
+> occasionally warrant a deliberate, judgment-based exception, and that's expected — not a violation.
+> *Example:* the self-contained / zero-shared-imports rule (§2, §6) is intentionally set aside for the
+> shared JSON base library that the `session` and `task` suites both build on — those two backbones
+> genuinely intertwine, and that shared foundation is part of what makes tpm what it is. Use judgment;
+> call out a notable exception where it helps the next reader, but don't treat every convention as
+> strictly enforced.
+
 > **Related docs:** [`./project-workspace.md`](./project-workspace.md) (write-boundary table — WHERE a
 > task-folder tool goes) · [`./shared-conventions.md`](./shared-conventions.md) (shared workflow
 > conventions) · [`./verification.md`](./verification.md) (verification depends on the tools you build)
@@ -27,18 +36,18 @@ Project-level tools live in **portable per-suite folders**:
 tools/
   README.md                      # THE canonical ledger: every tool + a tests ledger, one bullet each (SSOT — §4)
   <suite>/                       # e.g. task, spawn, session, workflow — a self-contained suite
-    <tool>.js (or .sh)           # the executable
+    <tool>                       # the executable (a Node script, or .sh)
     <tool>.md                    # its reference doc  (tool + its .md at the suite ROOT)
     lib/                         # the suite's OWN library code (or flat helpers beside the tool)
     tests/
-      <tool>/test.js             # human-readable tests for that tool
+      <tool>/                    # human-readable test script(s) for that tool
       lib/                       # shared test helpers WITHIN this suite
 ```
 
 There is **one** ledger (`tools/README.md`) — suites do **not** each keep their own README.
 
 At the suite root: only the tool executables + their `.md`s + `README.md` + `lib/` + `tests/`. Anything
-a tool needs beyond a single file goes in `lib/`. `<tool>.md` sits beside `<tool>.js`. A suite name may
+a tool needs beyond a single file goes in `lib/`. `<tool>.md` sits beside the tool executable. A suite name may
 be skill-branded (`task`, `spawn`) or functional (`workflow` for scaffold/lint/cost) — either way it's a
 portable folder.
 
@@ -51,7 +60,7 @@ suite is self-contained.
 - **Tradeoff, accepted deliberately:** if two suites need the same helper, **each carries its own copy**
   in its `lib/`. Copy-portability wins over DRY-shared-lib.
 - **Zero runtime dependencies:** tools use only Node built-ins (or POSIX for `.sh`). No third-party npm
-  deps. A tool stays runnable with a bare `node tools/<suite>/<tool>.js`.
+  deps. A tool stays runnable with nothing but Node — a bare `node` invocation of the tool script, no install step.
 
 ## 3. Running tools — `npm run` and/or a `tpm`-style bin
 
@@ -61,16 +70,16 @@ project wires its tools to be run in one or both of two ways:
 - **npm scripts** — one `scripts` entry per tool, run as `npm run <name>` (args after `--`, e.g.
   `npm run task -- list`):
   ```jsonc
-  { "scripts": { "task": "node tools/task/tpm-task.js" } }
+  { "scripts": { "task": "node tools/task/<tool>" } }
   ```
 - **A `bin` dispatcher** — a single git-style front-door command declared as the package `bin`, run as
-  `npx <bin> <suite> <verb>`. claude-tpm ships `"bin": { "tpm": "tools/tpm.js" }`, so its tools run as
+  `npx <bin> <suite> <verb>`. claude-tpm ships a `"bin"` entry mapping `tpm` to the top-level dispatcher, so its tools run as
   `npx tpm session export`, `npx tpm task list`, etc. (claude-tpm exposes only this bin — no per-tool
   `npm run` scripts beyond `npm test`; another project may prefer npm scripts, or both.)
 
 Either style is fine, and a tool wired **neither** way (an internal helper, a hook script the harness
 invokes, a one-off utility) simply has **no** run command. Every tool also stays runnable by a bare
-`node tools/<suite>/<tool>.js` regardless (§2). The `tools/README.md` ledger records a tool's run command
+a bare `node` invocation of the tool script regardless (§2). The `tools/README.md` ledger records a tool's run command
 **only when it's actually wired** (§4).
 
 ## 4. Docs — the canonical ledger + per-tool references
@@ -85,14 +94,14 @@ invokes, a one-off utility) simply has **no** run command. Every tool also stays
     helper — imported, not a CLI") so the ledger is complete without implying they're runnable.
   - **A tests ledger** below the tools ledger — how to run everything (`npm test`) and each suite's runner.
   - **Kept in sync in the same change** that adds, removes, or renames a tool.
-- **`<tool>.md`** — the tool's own reference (flags, subcommands, examples), beside `<tool>.js`.
+- **`<tool>.md`** — the tool's own reference (flags, subcommands, examples), beside the tool executable.
 - Test files carry a header docstring (purpose / guards / how-to-run).
 
 ## 5. CLI conventions (uniform across project-level tools)
 
 - **Standard flag vocabulary:** `--in`, `--out`, `--force`, `--help`.
 - **No silent defaults for REQUIRED inputs** — a required flag with no value fails loudly with usage
-  (e.g. `tpm-workflow-audit.js --out`). No guessing a path/target. (Full rationale in Part II §"No hardcoded paths.")
+  (e.g. `npx tpm workflow audit --out`). No guessing a path/target. (Full rationale in Part II §"No hardcoded paths.")
 - **Every tool supports `--help`** and carries a header docstring (purpose, usage, flags, what it guards).
 - **Run-wired where applicable** — via `npm run` and/or the project's `bin` (`npx …`) per §3; not every
   tool is wired, and unwired tools carry no run command in the ledger.
@@ -106,7 +115,7 @@ invokes, a one-off utility) simply has **no** run command. Every tool also stays
 shape, with `package.json` + the `tpm` bin dispatcher wiring them (`npx tpm <suite> <verb>`).
 
 **⚠️ Deliberate DIVERGENCE from ggaitk — no shared tool lib.** ggaitk used a shared `tools/lib/`
-(`GGAITKPaths.js`, `#paths` subpath imports) every tool `require()`d. **We reject that** for the §2
+(a shared `GGAITKPaths` module, `#paths` subpath imports) every tool `require()`d. **We reject that** for the §2
 portability rule: each suite carries its own `lib/`, duplication accepted. Do NOT port a shared
 `#paths`/subpath-imports module. Any paths/root-finding helper a suite needs lives in that suite's `lib/`
 (copied, not shared).
@@ -132,7 +141,7 @@ If a root-level tool does exactly what you need — call it. If ~80% — use cop
 ## The copy-then-modify pattern
 
 When you need a modified version of a project-level tool:
-1. **Copy the file into your task's `tools/` subfolder** (`dev/<your-task>/tools/<name>.js`); create the
+1. **Copy the file into your task's `tools/` subfolder** (`dev/<your-task>/tools/<name>`); create the
    folder on demand per [`./project-workspace.md`](./project-workspace.md).
 2. **Modify the copy.** Run the copy. The canonical version stays byte-exact for everyone else.
 3. **Aim for generalizations, not special cases.** A change that satisfies both the original use case AND
@@ -148,7 +157,7 @@ modifications get pulled back to the project-level tool; special-cased ones stay
 
 Append-only, one entry per forked tool:
 ```markdown
-## tools/<suite>/<tool>.js → dev/<task>/tools/<tool>.js
+## tools/<suite>/<tool> → dev/<task>/tools/<tool>
 **Why:** <what forced the fork>
 **Original use cases preserved:** <YES — all flags unchanged / NO — hardcoded to this task>
 **New use case added:** <the flag/codepath you added>
@@ -186,8 +195,8 @@ path** (`/Volumes/…`, `/Users/<user>/…`) and never do `__dirname`-relative `
 rot the moment the tool moves or the same tree is viewed from a different filesystem mount.
 
 **The principle survives; the mechanism is per-suite (not a shared module).** Per Part I §2 there is NO
-shared project paths module. Instead, a suite that needs root resolution keeps a **small `lib/paths.js`
-of its own** — typically a `findRoot({ startDir, marker })` that walks upward for a repo marker — and the
+shared project paths module. Instead, a suite that needs root resolution keeps a **small `lib/paths`
+helper of its own** — typically a `findRoot({ startDir, marker })` that walks upward for a repo marker — and the
 tool resolves through that. Copied across suites, per the portability rule.
 
 ```js
@@ -229,7 +238,7 @@ Draw the line by **intent**, not size or cleverness:
 
 - A **ship-intended tool** — one you expect to promote to a project-level `tools/<suite>/`, OR a durable
   deliverable a later round is meant to re-run — owes, **delivered alongside the executable**:
-  1. **tests** (`tests/<tool>/test.js`, per Part I §1) that exercise its real behaviour and exit non-zero
+  1. **tests** (under `tests/<tool>/`, per Part I §1) that exercise its real behaviour and exit non-zero
      on failure, and
   2. a **`<tool>.md`** reference doc beside the executable (flags, subcommands, one worked example).
 
@@ -253,7 +262,7 @@ Any friction with a project-level tool (awkward CLI, a hardcoded path that force
 export, a bug, a wished-for helper, a spotted duplicate) → log it in `findings/tool-feedback.md` (skip
 entirely if zero friction). Append-only:
 ```markdown
-## 2026-MM-DD — Tool: `tools/<suite>/foo.js`
+## 2026-MM-DD — Tool: `tools/<suite>/foo`
 **Category:** complaint | wish | bug | workaround | dupe-spotted | generalized-tool-idea
 **Observation:** what you hit, what you wanted, what you did.
 **Cross-ref:** finding doc / HANDOFF section / code file with the detail.

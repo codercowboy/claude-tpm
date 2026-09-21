@@ -149,6 +149,40 @@ function tasksDirAbs(resolved, projectRoot) {
   return path.isAbsolute(dir) ? dir : path.join(projectRoot, dir);
 }
 
+/**
+ * resolveTasksDir(flagValue, configPathArg, opts) -> { tasksDir, source, configPath }   (F4)
+ *
+ * The ONE store-dir resolver every task VERB uses so `--tasks-dir` can be OMITTED. Precedence:
+ *   1. explicit `--tasks-dir` flag        (source: 'flag')      — always wins.
+ *   2. the LOCAL project's config.json     (source: 'config')    — a CLAUDE.md-marked project root
+ *      whose `.claude/claude-tpm/config.json` exists; its resolved `tasks.tasksDir` is used.
+ *   3. FAIL LOUD                                                  — no flag AND no local project config.
+ *
+ * SAFETY (the whole reason `--tasks-dir` used to be mandatory): we NEVER silently fall back to a
+ * global/home/live store. `findRoot` FALLS BACK to cwd when no CLAUDE.md marker is found, so a bare
+ * cwd that merely happens to contain a stray config.json is NOT treated as a project — the marker
+ * must be present (unless an explicit `--config` was given, which the operator opted into by hand).
+ */
+function resolveTasksDir(flagValue, configPathArg, opts) {
+  const options = opts || {};
+  if (flagValue) return { tasksDir: flagValue, source: 'flag', configPath: null };
+
+  // No flag → resolve from the local project config (throws ENOENT for an explicit missing --config).
+  const res = resolveTasksConfig(configPathArg, options);
+  const markerFound = configPathArg
+    ? true                                                   // an explicit --config is a hand opt-in
+    : fs.existsSync(path.join(res.projectRoot, 'CLAUDE.md')); // else require a real project root marker
+  if (res.configExists && markerFound) {
+    return { tasksDir: tasksDirAbs(res.resolved, res.projectRoot), source: 'config', configPath: res.configPath };
+  }
+  const err = new Error(
+    '--tasks-dir is required: pass --tasks-dir <dir>, or set "tasks": { "tasksDir": … } in a local ' +
+    '.claude/claude-tpm/config.json (refusing to default to a live store).',
+  );
+  err.storeResolveFail = true;
+  throw err;
+}
+
 function getDotted(obj, dottedKey) {
   const parts = String(dottedKey).split('.');
   let cur = obj;
@@ -164,7 +198,7 @@ function getDotted(obj, dottedKey) {
 function printHelp() {
   process.stdout.write(
     [
-      'Usage: node tpm-task-config.js [--config <path>] (--json | --get <dotted.key> | --tasks-dir) [--help]',
+      'Usage: npx tpm task config [--config <path>] (--json | --get <dotted.key> | --tasks-dir) [--help]',
       '',
       "Resolves the 'tasks' section of a claude-tpm config.json over built-in defaults.",
       '',
@@ -198,7 +232,7 @@ function main(argv) {
   if (args.help) { printHelp(); return 0; }
 
   if (!args.json && !args.get && !args.tasksDir) {
-    process.stderr.write('tpm-task-config.js: nothing to do — pass one of --json / --get / --tasks-dir.\n\n');
+    process.stderr.write('tpm task config: nothing to do — pass one of --json / --get / --tasks-dir.\n\n');
     printHelp();
     return 1;
   }
@@ -227,6 +261,7 @@ function main(argv) {
 
 module.exports = {
   resolveTasksConfig,
+  resolveTasksDir,
   mergeTasksConfig,
   getDefaults,
   tasksDirAbs,

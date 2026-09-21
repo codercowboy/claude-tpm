@@ -1,5 +1,8 @@
 # `tpm-session close` — wrap-up ritual
 
+> In this file, `%TPM_HOME%` is the claude-tpm **installation home** — it is NOT always
+> `<project>/node_modules/@codercowboy/claude-tpm`. If you need its actual value, run `npx tpm resolve-home`.
+
 Loaded ONLY when `SKILL.md` resolves mode `close`. Parallels `modes-open.md` — the wrap-up
 counterpart. Collapses the old `session-close` skill into five steps + the universal footer.
 
@@ -17,16 +20,16 @@ follow your spawn prompt instead.
 
 2. **Finalize session notes — delegate to `save`.** Run `SKILL.md`'s `save` body verbatim — the fixed
    3-step ritual: reconcile the punchlist (close finished items, add any new ones), append any final
-   decisions/log lines, then replace the handoff via `ops import-handoff` and persist via `ops save`
+   decisions/log lines, then replace the handoff via `session import-handoff` and persist via `session save`
    (honoring the exit codes — a refused `import-handoff` (exit 1) wrote nothing, so fix the named field
    and re-run before sealing). Module-gated: a no-op if `session.notes.enabled` is false. This is the
    one path — `close` does NOT duplicate the notes-writing logic.
 
-3. **Seal the session.** After `save` finishes, call `npx tpm session ops --sessions-dir <dir>
-   --session <NNNN> close` — the seal. It **REFUSES (exit 1, naming what's missing) unless a handoff
+3. **Seal the session.** After `save` finishes, call `npx tpm session close --sessions-dir <dir>
+   --session <NNNN>` — the seal. It **REFUSES (exit 1, naming what's missing) unless a handoff
    AND at least one punchlist item are present**; otherwise it stamps `meta.closedAt` on the record.
    Then call `npx tpm session current --sessions-dir <dir> --seal` to mark the current-session pointer
-   closed (`%TPM_HOME%/tools/session/tpm-session-current.js`'s `sealSession`), so the NEXT bare
+   closed (the current-session pointer's seal), so the NEXT bare
    `tpm-session` invocation (this session or a future one) opens fresh instead of reusing this folder.
 
 4. **`/export` nudge.** One-line reminder that `/export` (a Claude Code CLI command) saves a readable

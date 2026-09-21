@@ -2,7 +2,7 @@
 'use strict';
 /**
  * tpm-task-doctor.js — the READ-ONLY task-store validator / drift detector (#1119 for tasks; the
- * task-side mirror of `../../20260919-session-features/session-tooling/tpm-session-doctor.js`).
+ * task-side mirror of the session doctor, `tools/session/tpm-session-doctor.js`).
  *
  * It DIAGNOSES a task store and NEVER mutates it. There is no `--fix`, no write path of any kind —
  * it reads, recomputes, and REPORTS. Four checks:
@@ -38,11 +38,11 @@
  *   - lib/task-model.js   · listBodyPaths / deriveLabelIndex / indexPathFor — nested scan + label map.
  *   - tpm-task-migrate.js · detectStore / MigrateError — the ONE old-format detector.
  *
- * ── NODE-INVOKABLE, NO BIN ── run via bare `node tpm-task-doctor.js …`; programmatic callers
- *   `require()` it for `runDoctor(...)`. Zero third-party deps; Node built-ins only.
+ * ── NODE-INVOKABLE ── run via `npx tpm task doctor …` (routed), or bare `node tools/task/tpm-task-doctor.js …`;
+ *   programmatic callers `require()` it for `runDoctor(...)`. Zero third-party deps; Node built-ins only.
  *
  * USAGE
- *   node tpm-task-doctor.js --tasks-dir <dir> [--json]
+ *   npx tpm task doctor --tasks-dir <dir> [--json]
  *
  * FLAGS
  *   --tasks-dir <dir>  REQUIRED. The task store root (holds bodies/<bucket>/ + tasks-index.json).
@@ -153,7 +153,7 @@ function checkDrift(jsonPath, raw) {
  */
 function checkLabelIndex(tasksDir, bodyCount) {
   const indexPath = model.indexPathFor(tasksDir);
-  const reindexHint = 'tpm task reindex   (or: node tpm-task.js reindex --tasks-dir "' + tasksDir + '")';
+  const reindexHint = 'npx tpm task reindex --tasks-dir "' + tasksDir + '"';
 
   if (!fs.existsSync(indexPath)) {
     if (bodyCount > 0) {
@@ -202,7 +202,7 @@ function checkOldFormat(tasksDir) {
     bodyCount: store.bodies.length,
     marker: store.marker,
     // Read-only: name the migrator + a placeholder out-dir; the human runs it.
-    suggestion: `node tpm-task-migrate.js --in "${tasksDir}" --out-dir "<choose-an-output-dir>"`,
+    suggestion: `npx tpm task migrate --in "${tasksDir}" --out-dir "<choose-an-output-dir>"`,
   };
 }
 
@@ -365,10 +365,12 @@ function parseArgv(argv) {
 }
 
 const USAGE = `tpm-task-doctor — READ-ONLY task-store validator + drift detector (#1119)
-  run: node tpm-task-doctor.js --tasks-dir <dir> [--json]
+  run: npx tpm task doctor [--tasks-dir <dir>] [--json]
 
-  --tasks-dir <dir>  REQUIRED  the task store root (READ-ONLY): bodies/<bucket>/task-<id>.json
-                               (nested bucket layout) + tasks-index.json
+  --tasks-dir <dir>  OPTIONAL (F4)  the task store root (READ-ONLY): bodies/<bucket>/task-<id>.json
+                               (nested bucket layout) + tasks-index.json. Omitted → resolved from the
+                               LOCAL project's .claude/claude-tpm/config.json (tasks.tasksDir); the flag
+                               OVERRIDES. With NEITHER, FAILS LOUD (never defaults to a live store).
   --json             emit the structured report as JSON
   --help             show this usage
 
@@ -388,6 +390,14 @@ function main(argv) {
     return 2;
   }
   if (opts.help) { process.stdout.write(USAGE + '\n'); return 0; }
+  // F4: --tasks-dir is OPTIONAL — resolve (flag > local project config > FAIL LOUD). A resolution
+  // failure (no flag AND no local config) is a usage error → 2, same class as a missing flag was.
+  try {
+    opts.tasksDir = require('./tpm-task-config').resolveTasksDir(opts.tasksDir, opts.config).tasksDir;
+  } catch (e) {
+    process.stderr.write('tpm-task-doctor: ' + String(e.message) + '\n\n' + USAGE + '\n');
+    return 2;
+  }
   let report;
   try {
     report = runDoctor(opts);

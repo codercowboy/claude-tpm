@@ -26,7 +26,7 @@ Format authorities (cross-referenced, not restated): [`../task-json-format-spec.
 ## Usage
 
 ```
-node tpm-task-migrate.js --in <oldTasksDir> --out-dir <newTasksDir> \
+npx tpm task migrate --in <oldTasksDir> --out-dir <newTasksDir> \
     [--offset ±HH:MM] [--dry-run] [--emit-derived] [--force] [--now <iso>]
 ```
 
@@ -48,7 +48,7 @@ Exit codes: `0` success (or `--help` / a clean `--dry-run`) · `1` refusal / run
 ### Example (verified against a scratch store)
 
 ```
-$ node tpm-task-migrate.js --in /tmp/old --out-dir /tmp/new --offset -07:00 --emit-derived
+$ npx tpm task migrate --in /tmp/old --out-dir /tmp/new --offset -07:00 --emit-derived
 store /tmp/old → WROTE
   out:        /tmp/new
   bodies:     2 task(s) converted
@@ -89,7 +89,7 @@ A body that fails `validateEnvelope` (validate-before-write) is a refusal too �
 Verified — a no-`Created` body refuses the whole store:
 
 ```
-$ node tpm-task-migrate.js --in <old-with-no-Created-body> --out-dir <scratch>
+$ npx tpm task migrate --in <old-with-no-Created-body> --out-dir <scratch>
 tpm-task-migrate (refused): refusing to migrate '…': 1 of 1 body(ies) cannot be converted (STRICT
 all-or-nothing whole-store; NO partial write). Fix by hand, then re-run:
   - task-1200 (…/task-1200.md): task-1200: missing '- **Created:**' — T-Q1 refuses a body with no
@@ -145,10 +145,10 @@ labels, so `labels: []` (and the index `labels` reverse-map is `{}`).
 All verified:
 
 ```
-$ node tpm-task-migrate.js --in <old> --out-dir <old>/sub
+$ npx tpm task migrate --in <old> --out-dir <old>/sub
 tpm-task-migrate (refused): --out-dir '…/old/sub' is (or is inside) --in '…/old'; write output somewhere else.   # exit 1
 
-$ node tpm-task-migrate.js --in <old> --out-dir <new>          # target already has bodies, no --force
+$ npx tpm task migrate --in <old> --out-dir <new>          # target already has bodies, no --force
 tpm-task-migrate (refused): output already holds 2 target body file(s) (e.g. …/task-1000.json) — pass --force to overwrite.   # exit 1
 ```
 

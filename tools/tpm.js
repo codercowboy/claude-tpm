@@ -25,7 +25,9 @@
  *   tpm install [dir] [options]     # graft claude-tpm onto an existing project
  *   tpm uninstall [dir] [options]   # reverse it (scope-aware: this project vs the whole system)
  *   tpm doctor [dir]                # read-only health check (= `install --check`)
- *   tpm home                        # print the absolute bundle root (self-located, bypass-safe)
+ *   tpm resolve-home                # print the absolute bundle root — its output IS %TPM_HOME% (bypass-safe)
+ *   tpm home                        # alias of resolve-home (self-located, bypass-safe)
+ *   tpm reading-list <role>         # emit a role's reading chain in anchor form (orchestrator | subagent)
  *   tpm doc <bundle-relative-path>  # print a bundle doc with ${TPM_HOME}/%TPM_HOME% resolved
  *   tpm --help | -h
  *
@@ -55,6 +57,8 @@ const ALIASES = {
   uninstall: 'consumer/tpm-consumer-uninstall.js',
   doctor: 'consumer/tpm-consumer-install.js', // read-only health check = `install --check`
   home: 'tpm-home.js',                         // print the absolute bundle root (self-located)
+  'resolve-home': 'tpm-home.js',               // self-documenting alias of `home` (anchor-first doctrine)
+  'reading-list': 'tpm-reading-list.js',       // emit a role's reading chain in anchor form (self-located)
   doc: 'tpm-doc.js',                           // print a bundle doc with ${TPM_HOME}/%TPM_HOME% resolved
 };
 
@@ -74,7 +78,7 @@ Suites:
   session    session-notes tooling   (ops / export / migrate / doctor)
   task       task ledger             (add / list / show / … / config / export / migrate / doctor)
   workflow   multi-agent rounds      (audit / compose / lint / scaffold / cost / signoff / doctor / config)
-  hooks      PreToolUse hooks        (gate-spawn / expand-tpm-home)
+  hooks      PreToolUse hooks        (gate-spawn)
 
 Consumer adoption:
   install [dir] [options]     graft claude-tpm onto an existing project
@@ -82,8 +86,10 @@ Consumer adoption:
   doctor [dir]                read-only health check (= install --check)
 
 Bundle primitives (self-locating; work in every permission mode):
-  home                        print the absolute bundle root
-  doc <bundle-relative-path>  print a bundle doc with \${TPM_HOME}/%TPM_HOME% resolved
+  resolve-home                print the absolute bundle root — its output IS %TPM_HOME%
+  home                        alias of resolve-home
+  reading-list <role>         emit a role's reading chain in anchor form (orchestrator | subagent)
+  doc <bundle-relative-path> print a bundle doc with \${TPM_HOME}/%TPM_HOME% resolved
 
   tpm <suite> --help          list that suite's verbs
   tpm --help, -h              show this message

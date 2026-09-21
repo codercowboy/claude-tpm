@@ -351,7 +351,8 @@ function opList(opts) {
 function opShow(opts) {
   const o = opts || {};
   const record = loadCurrent(o.tasksDir, o.id);
-  return converter.render(record, { now: o.now || nowIsoTz() });
+  // F2: pass the resolved tasksDir so the history hint prints a FULLY RUNNABLE command.
+  return converter.render(record, { now: o.now || nowIsoTz(), tasksDir: o.tasksDir });
 }
 
 // ── file read helper ──────────────────────────────────────────────────────────────
@@ -457,10 +458,14 @@ function parseArgs(argv) {
   return { globals, sub, args };
 }
 
-const USAGE = `tpm-task — JSON-backed task verbs (run: node tpm-task.js <verb> --tasks-dir <dir> …)
+const USAGE = `tpm-task — JSON-backed task verbs (run: npx tpm task <verb> [--tasks-dir <dir>] …)
 
-Common:  --tasks-dir <dir>   the task store (a SCRATCH or real dir; REQUIRED — never defaults to live)
-         --config <path>     config.json for the #1109 history gate (default: <root>/.claude/…/config.json)
+Common:  --tasks-dir <dir>   the task store (a SCRATCH or real dir). OPTIONAL (F4): when omitted it is
+                             resolved from the LOCAL project's .claude/claude-tpm/config.json
+                             (tasks.tasksDir); the flag OVERRIDES. With NEITHER flag nor a local project
+                             config, the verb FAILS LOUD — it NEVER silently defaults to a live store.
+         --config <path>     config.json for the #1109 history gate + the --tasks-dir resolution
+                             (default: <root>/.claude/…/config.json)
          --history on|off    override the history gate for this run
          --now <iso>         reference time for list/show ages (default: now, local offset)
 
@@ -473,8 +478,8 @@ Verbs:
                    [--body-txt-file <f> --field summary|context]
   import        <id> (--file <f> | stdin) [--prune]          #1106 JSON import (editable fields only)
   import        --template                                    emit a blank editable-fields JSON skeleton
-  add-subtask   <id> --text "…" [--key K]
-  check         <id> <key>                                    flip a subtask to done
+  add-subtask   <id> [<key>] --text "…" [--key K]            key as POSITIONAL or --key (F5)
+  check         <id> <key> | <id> --key <key>                 flip a subtask to done (key both ways, F5)
   label         <id> <label…>                                 add label(s) to a task (also --label L)
   unlabel       <id> <label…>                                 remove label(s) from a task
   labels        [--json]                                      list every label + its task ids (reverse index)
@@ -489,7 +494,7 @@ Verbs:
 Every mutation writes the canonical task-<id>.json atomically, then regenerates the derived body .md,
 the machine tasks-index.json, and the three human index .md views. Import IGNORES mechanical fields
 (id/state/timestamps/history/endAction); state moves only via the lifecycle verbs (G3 enforced).
-export / search are phase 07 (tpm-task-export.js).`;
+export / search route to the export tool — run \`npx tpm task export\` / \`npx tpm task search\`.`;
 
 function applyHistoryGate(globals) {
   // Explicit --history wins; else resolve config (tolerant — default ON if resolution fails).
@@ -506,6 +511,17 @@ function applyHistoryGate(globals) {
 
 function resolveId(args) {
   return args.id !== undefined ? args.id : args.positional[0];
+}
+
+/**
+ * resolveSubtaskKey(args) -> the subtask key for `add-subtask`/`check` (F5).
+ * Accepts the key as `--key K` OR as a POSITIONAL — the positional AFTER the id (`<id> <key>`), or
+ * the FIRST positional when the id came from `--id`. Symmetric across both verbs so a user needn't
+ * carry a per-verb mental model of whether the key is a flag or a positional.
+ */
+function resolveSubtaskKey(args) {
+  if (args.key !== undefined) return args.key;
+  return args.id !== undefined ? args.positional[0] : args.positional[1];
 }
 
 /**
@@ -558,13 +574,13 @@ function dispatch(sub, globals, args) {
       return 0;
     }
     case 'add-subtask': {
-      const rec = opAddSubtask(Object.assign({ id: resolveId(args), text: args.text, key: args.key }, common));
+      const rec = opAddSubtask(Object.assign({ id: resolveId(args), text: args.text, key: resolveSubtaskKey(args) }, common));
       const last = rec.subtasks[rec.subtasks.length - 1];
       process.stderr.write(`tpm-task add-subtask: added subtask ${last.key} to task #${rec.id}.\n`);
       return 0;
     }
     case 'check': {
-      const key = args.key !== undefined ? args.key : args.positional[1];
+      const key = resolveSubtaskKey(args);
       const rec = opCheck(Object.assign({ id: resolveId(args), key }, common));
       process.stderr.write(`tpm-task check: subtask ${key} of #${rec.id} marked done.\n`);
       return 0;
@@ -613,7 +629,7 @@ function dispatch(sub, globals, args) {
       return 0;
     }
     case 'export': case 'search':
-      process.stderr.write(`tpm-task: '${sub}' is phase 07 — use tpm-task-export.js (not built in this tool).\n`);
+      process.stderr.write(`tpm-task: '${sub}' is handled by the export tool — use \`npx tpm task ${sub}\` (not built in this tool).\n`);
       return 2;
     default:
       throw new Error(`unknown verb '${sub}'`);
@@ -627,6 +643,21 @@ function formatHistory(ev) {
   if (ev.op === 'state') return `${at}  state ${ev.from} → ${ev.to}`;
   if (ev.op === 'subtask') return `${at}  subtask ${ev.key} ${ev.action}`;
   return `${at}  ${ev.op || '?'}`;
+}
+
+/**
+ * prefixOnce(prefix, msg) -> string   (F3)
+ * Apply the tool-name prefix EXACTLY once. An op may throw a message that ALREADY carries the tool
+ * prefix (e.g. `tpm-task: --tasks-dir …`); re-prefixing produced the doubled `tpm-task: tpm-task: …`.
+ * We strip a leading `<toolname>` (optionally `<toolname> <verb>`) + `:` before re-adding it, so the
+ * fix is at the FORMATTER SOURCE and cannot recur for any message this tool emits. A sub-scope prefix
+ * that is NOT the tool name (e.g. `check:`) is left intact.
+ */
+function prefixOnce(prefix, msg) {
+  const bare = prefix.replace(/:\s*$/, '');
+  const esc = bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp('^' + esc + '(?:[ \\t][\\w-]+)?:\\s*');
+  return prefix + String(msg == null ? '' : msg).replace(re, '');
 }
 
 function main(argv) {
@@ -655,14 +686,19 @@ function main(argv) {
 
   applyHistoryGate(globals);
   try {
+    // F4: --tasks-dir is OPTIONAL — resolve it (flag > local project config.json > FAIL LOUD). Every
+    // verb needs a store EXCEPT `import --template` (which only emits a skeleton to stdout).
+    if (!(sub === 'import' && args.template)) {
+      globals.tasksDir = config.resolveTasksDir(globals.tasksDir, globals.config).tasksDir;
+    }
     return dispatch(sub, globals, args);
   } catch (e) {
     const msg = String(e && e.message ? e.message : e);
     if (e && e.usageExit) { // T-Q7: a flag-VALUE misuse (e.g. an invalid --state) is a usage error → 2
-      process.stderr.write('tpm-task: ' + msg + '\n\n' + USAGE + '\n');
+      process.stderr.write(prefixOnce('tpm-task: ', msg) + '\n\n' + USAGE + '\n');
       return 2;
     }
-    process.stderr.write('tpm-task: ' + msg + '\n');
+    process.stderr.write(prefixOnce('tpm-task: ', msg) + '\n');
     return 1;
   }
 }
@@ -672,7 +708,8 @@ module.exports = {
   opAdd, opEdit, opImport, opAddSubtask, opCheck, opTransition, opHardRemove, opReindex, opHistory, opList, opShow,
   opLabel, opUnlabel, opLabels,
   // helpers (exported for tests)
-  persist, loadCurrent, blankTemplate, collectLabels, labelArgsFor, statesFor, parseArgs, main,
+  persist, loadCurrent, blankTemplate, collectLabels, labelArgsFor, statesFor, parseArgs,
+  resolveSubtaskKey, prefixOnce, main,
 };
 
 if (require.main === module) {

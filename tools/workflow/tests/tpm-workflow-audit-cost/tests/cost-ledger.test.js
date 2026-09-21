@@ -126,7 +126,7 @@ function run(args) {
 
   const help = run(['--help']);
   ok(help.status === 0, `--help exits 0 (got ${help.status})`);
-  ok(/cost-ledger\.js/.test(help.stdout), '--help prints usage');
+  ok(/tpm workflow cost/.test(help.stdout), '--help prints usage');
 })();
 
 // ===========================================================================

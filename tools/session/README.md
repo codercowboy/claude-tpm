@@ -2,7 +2,8 @@
 
 The greenfield session store for `kind:"session"` records: one canonical JSON file per session
 (source of truth), a derived human `.md` regenerated on every write, and node-invokable tools —
-session ops + `#1115` import, export, the `#1114` migrator, a read-only doctor, config resolution,
+the write-ops + `#1115` import (the `open`/`save`/`note`/`punchlist`/`close`/`import-*` verbs), export,
+the `#1114` migrator, a read-only doctor, config resolution,
 the current-session pointer, and the JSON-first boot pickup — dispatched behind a `tpm session` router.
 
 **Status: promoted.** This store was built and hardened in the
@@ -82,7 +83,7 @@ The load-bearing guarantees, all enforced in the base lib and proven by the suit
 ```
 tools/session/
   README.md                      this file
-  tpm-session-ops.js  / .md      session ops + #1115 import (open/save/note/punchlist/close/import-*)
+  tpm-session-ops.js  / .md      notes write-ops + #1115 import (open/save/note/punchlist/close/import-*)
   tpm-session-export.js / .md    export tool (single/multi · JSON/human · composes the search seam)
   tpm-session-migrate.js / .md   #1114 opt-in old 3-file markdown -> canonical JSON migrator
   tpm-session-doctor.js / .md    #1119 READ-ONLY doctor: validate + hash-drift + detect/suggest-migrate
@@ -148,14 +149,15 @@ suite is also runnable standalone, e.g. `node tools/session/tests/session-ops.te
 
 ---
 
-## Session ops + import (`tpm-session-ops.js`)
+## Session write-ops + import (`tpm-session-ops.js`)
 
 Operates off the canonical JSON. Every write persists the JSON atomically first, then regenerates the
 derived `session-<NNNN>.md` via the converter (with `now` bound in a closure for punchlist ages). Full
-reference: [`tpm-session-ops.md`](tpm-session-ops.md).
+reference: [`tpm-session-ops.md`](tpm-session-ops.md). These are TOP-LEVEL session verbs — the old
+`ops` grouping was flattened away, so call each verb directly.
 
 ```
-node tools/session/tpm-session-ops.js <verb> --sessions-dir <dir> --session <NNNN> [flags]
+npx tpm session <verb> --sessions-dir <dir> --session <NNNN> [flags]
 ```
 
 **Ops**
@@ -195,7 +197,7 @@ human render, one or many sessions, combined or per-file. Full reference:
 [`tpm-session-export.md`](tpm-session-export.md).
 
 ```
-node tools/session/tpm-session-export.js --sessions-dir <dir> \
+npx tpm session export --sessions-dir <dir> \
   [--last N | --session <NNNN>[,NNNN] …] --style json|human|both [--combine one-file|per-file] [--out <dir|file>]
 ```
 
@@ -230,7 +232,7 @@ pre-JSON `session-<NNNN>-{handoff,log,punchlist}.md` shape) into a canonical `se
 envelope. Full reference: [`tpm-session-migrate.md`](tpm-session-migrate.md).
 
 ```
-node tools/session/tpm-session-migrate.js --in <old-session-dir> --out-dir <dir> \
+npx tpm session migrate --in <old-session-dir> --out-dir <dir> \
     [--number NNNN] [--dry-run] [--emit-md] [--force] [--now <iso>]
 ```
 
@@ -276,7 +278,7 @@ A strictly **READ-ONLY** health check over a sessions dir — no `--fix`, no wri
 [`tpm-session-doctor.md`](tpm-session-doctor.md).
 
 ```
-node tools/session/tpm-session-doctor.js --sessions-dir <dir> [--json] [--strict]
+npx tpm session doctor --sessions-dir <dir> [--json] [--strict]
 ```
 
 - **Validate** every canonical `session-<NNNN>.json` (read → migrate → validate), stage-labeling any
@@ -303,7 +305,7 @@ $ tpm-session-doctor --sessions-dir <scratch>/store
   session-0021/session-0021.json  OK · DRIFT (banner cf6696eb45d1 · current 8ed4d6acd732)
 
 Old-format sessions (1; 1 auto-migratable):
-  session-0007  → node tpm-session-migrate.js --in "…/session-0007" --out-dir "<choose-an-output-dir>"
+  session-0007  → npx tpm session migrate --in "…/session-0007" --out-dir "<choose-an-output-dir>"
 # exit 0 ; with --strict, exit 2
 ```
 

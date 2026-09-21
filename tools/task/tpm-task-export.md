@@ -13,7 +13,7 @@ Format authorities (cross-referenced, not restated here):
 
 **Run:**
 ```
-node tpm-task-export.js <export|search> --tasks-dir <dir> [SELECTORS…] [SHAPE…]
+npx tpm task <export|search> --tasks-dir <dir> [SELECTORS…] [SHAPE…]
 ```
 `export` is the default mode when no mode token leads. Programmatic callers `require('./tpm-task-export')`
 for `buildSelector / selectCandidates / matchesRow / runExport / runSearch / pointerFor`.
@@ -65,25 +65,25 @@ line/snippet.
 
 ## Examples
 ```
-node tpm-task-export.js export --tasks-dir /tmp/t --state open --json          # open tasks, full records
-node tpm-task-export.js export --tasks-dir /tmp/t --open --human               # human dump, open + in-progress
-node tpm-task-export.js export --tasks-dir /tmp/t --closed --json --thin       # recently closed, history dropped
-node tpm-task-export.js export --tasks-dir /tmp/t 1000-1500 --json --per-file --out ./out
-node tpm-task-export.js export --tasks-dir /tmp/t --last 1 --by created --json
-node tpm-task-export.js search --tasks-dir /tmp/t --match router              # id·file·line·snippet pointers
-node tpm-task-export.js search --tasks-dir /tmp/t --match router --json
+npx tpm task export --tasks-dir /tmp/t --state open --json          # open tasks, full records
+npx tpm task export --tasks-dir /tmp/t --open --human               # human dump, open + in-progress
+npx tpm task export --tasks-dir /tmp/t --closed --json --thin       # recently closed, history dropped
+npx tpm task export --tasks-dir /tmp/t 1000-1500 --json --per-file --out ./out
+npx tpm task export --tasks-dir /tmp/t --last 1 --by created --json
+npx tpm task search --tasks-dir /tmp/t --match router              # id·file·line·snippet pointers
+npx tpm task search --tasks-dir /tmp/t --match router --json
 ```
 
 Real invalid-window guard (EXIT 2, not a silent empty result):
 ```
-$ node tpm-task-export.js export --tasks-dir /tmp/t --opened-since garbage
+$ npx tpm task export --tasks-dir /tmp/t --opened-since garbage
 tpm-task-export: invalid window 'garbage' — expected a relative window (Nd | Nh | Nw) or a date (YYYY-MM-DD)
 # exit 2
 ```
 
 Real search pointer:
 ```
-$ node tpm-task-export.js search --tasks-dir /tmp/t --match router
+$ npx tpm task search --tasks-dir /tmp/t --match router
 #1000  bodies/1000-1999/task-1000.json:6  "headline": "Wire the router",
 ```
 

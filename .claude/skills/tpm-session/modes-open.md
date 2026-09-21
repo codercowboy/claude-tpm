@@ -1,5 +1,8 @@
 # `tpm-session open` — boot the TPM engine
 
+> In this file, `%TPM_HOME%` is the claude-tpm **installation home** — it is NOT always
+> `<project>/node_modules/@codercowboy/claude-tpm`. If you need its actual value, run `npx tpm resolve-home`.
+
 ## Purpose
 
 `tpm-session open` boots the TPM engine: it reads config for enabled modules, loads the core reading
@@ -28,11 +31,13 @@ the workflow module, not by gatekeeping who may boot.)
    crashes boot (it degrades to all-enabled + a warning) — surfacing a malformed config is the
    doctor's job (`npx tpm session doctor`, the READ-ONLY health check), not boot's.
 
-3. **Walk the core reading list** — fetch the orchestrator reading-list manifest with
-   `npx tpm doc claude-context/methodology/orchestrator/reading-list.md` (it prints the doc with the
-   bundle path resolved). It is the single source of truth — read it FRESH (it evolves), walk its Tier-1
-   in order; do not paraphrase from memory. (`CLAUDE.md` is
-   harness-auto-injected context, not a thing you "read" as a step here.)
+3. **Walk the core reading list** — run `npx tpm reading-list orchestrator`. It reads the live
+   orchestrator manifest, resolves the chain for you, and prints it in anchor form: a leading
+   `npx tpm resolve-home` line, then one ready-to-run `npx tpm doc <bundle-relpath>` line per Tier-1
+   doc, in order. Run those emitted `doc` lines top to bottom to read the core list — no hand-walking
+   of the manifest's `../`-relative links. The manifest is the single source of truth and it evolves,
+   so take the chain FRESH from the verb every boot and read each doc rather than paraphrasing from
+   memory. (`CLAUDE.md` is harness-auto-injected context, not a thing you "read" as a step here.)
 
 4. **Load project state — module-gated:**
    - **Prior session pickup** (only if `session.notes.enabled`): call `npx tpm session boot-read`

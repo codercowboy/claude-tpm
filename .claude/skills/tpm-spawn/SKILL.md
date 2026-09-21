@@ -3,6 +3,9 @@ name: tpm-spawn
 description: Use when the orchestrator is about to spawn a SINGLE subagent via the Agent tool for a task in this project — a lone builder, researcher, verifier, planner, test-writer, documentarian, or bug-fixer. Forgiving role interpretation (normalize → intent-match → confidence-gate → echo) then the scaffold → compose → lint → Agent flow. For two or more roles with ordering/counts, use tpm-spawn-team. For a full round lifecycle, use tpm-workflow. Orchestrator-only — a subagent never invokes this (subagents don't spawn their own subagents).
 ---
 
+> In this file, `%TPM_HOME%` is the claude-tpm **installation home** — it is NOT always
+> `<project>/node_modules/@codercowboy/claude-tpm`. If you need its actual value, run `npx tpm resolve-home`.
+
 `/tpm-spawn` fires **one** subagent. It owns *role* judgment (which role, resolved forgivingly) and
 drives the standard spawn flow. It is judgment + routing only: the **charter owns posture**, the
 **tools own mechanics**. Usable standalone (fire one worker without a full round) or as `tpm-workflow`
@@ -61,7 +64,7 @@ Reference the tools by their promoted path (`%TPM_HOME%/tools/workflow/…`); a 
    phase — the tool auto-numbers the phase `NN` / round `r<N>` and drops the skeleton: `plan.md`
    stub, `charter-<role>.md` copied from the resolved `charterFile`, `spawn-prompt-<role>-r<N>.md`,
    `findings/ tools/ tests/ tmp/`, and the per-subagent `tmp/<role>-r<N>[-v<M>]/` scratch folder).
-   The role's charter + model come from `tpm-workflow-config-resolver.js`.
+   The role's charter + model come from the resolved config (`npx tpm workflow config`).
 2. **Fill `plan.md`** — pure structure (DoD triple table · task/method · Tools & MCP · curated
    Context · deliverables · constraints · budget). No posture — that's the charter file.
 3. **Compose the spawn prompt** — `npx tpm workflow compose --role <role>

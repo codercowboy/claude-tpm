@@ -170,12 +170,14 @@ function sealSession({ sessionsDir }) {
 function printHelp() {
   process.stdout.write(
     [
-      'Usage: npx tpm session current --sessions-dir <dir> (--state | --open | --seal | --next-number) [--help]',
+      'Usage: npx tpm session current [--sessions-dir <dir>] (--state | --open | --seal | --next-number) [--help]',
       '',
       'Resolves / mutates the current-session pointer under <dir>/.current-session.json.',
       '',
       'Flags:',
-      '  --sessions-dir <dir>  REQUIRED. The resolved sessionsDir (see tpm-session-config.js --sessions-dir).',
+      '  --sessions-dir <dir>  OPTIONAL (F4). Omitted → resolved from the LOCAL project config.json',
+      '                        (session.notes.sessionsDir); the flag OVERRIDES; with NEITHER, FAILS LOUD',
+      '                        (never defaults to a live store). See npx tpm session config --sessions-dir.',
       '  --state               Print the resolved { state, number, sessionId, ... } as JSON. No side effect.',
       '  --open                Ensure a session is open (idempotent); print the result as JSON.',
       '  --seal                Close the current open session; print { number, closedAt }. Errors if none open.',
@@ -215,14 +217,17 @@ function main() {
     process.exit(0);
   }
 
-  if (!args.sessionsDir) {
-    process.stderr.write('tpm-session-current.js: --sessions-dir is required.\n\n');
-    printHelp();
+  // F4: --sessions-dir is OPTIONAL — resolve (flag > local project config.json > FAIL LOUD). It
+  // NEVER silently defaults to a live store; the resolver throws loud when neither is present.
+  try {
+    args.sessionsDir = require('./tpm-session-config').resolveSessionsDir(args.sessionsDir, undefined).sessionsDir;
+  } catch (err) {
+    process.stderr.write(`tpm session current: ${err.message}\n`);
     process.exit(1);
   }
 
   if (!args.state && !args.open && !args.seal && !args.nextNumber) {
-    process.stderr.write('tpm-session-current.js: nothing to do — pass one of --state / --open / --seal / --next-number.\n\n');
+    process.stderr.write('tpm session current: nothing to do — pass one of --state / --open / --seal / --next-number.\n\n');
     printHelp();
     process.exit(1);
   }

@@ -86,7 +86,7 @@ test('GOLDEN body: section order + required landmarks present', () => {
   const iSummary = out.indexOf('## Summary');
   const iContext = out.indexOf('## Context');
   const iSubs = out.indexOf('**Subtasks:** (1/3)');
-  const iHist = out.indexOf('_History: 4 events — see `tpm task history 1119`._');
+  const iHist = out.indexOf('_History: 4 events — see `npx tpm task history 1119 --tasks-dir <dir>`._');
   assert.ok(iBanner === 0, 'banner comment is first');
   assert.ok(iBanner < iGen && iGen < iTitle, 'generated-from line follows the banner, before the title');
   assert.ok(iTitle < iState && iState < iSummary && iSummary < iContext && iContext < iSubs && iSubs < iHist,
@@ -160,7 +160,11 @@ test('BODY: no subtasks -> (0/0) with a placeholder; history pointer singular fo
   rec.history = [{ at: '2026-09-19T09:12:00-07:00', op: 'create' }];
   const out = render(rec, { now: GOLDEN_NOW });
   assert.ok(out.includes('**Subtasks:** (0/0)\n\n_No subtasks._'), 'empty subtask block placeholder');
-  assert.ok(out.includes('_History: 1 event — see `tpm task history 1119`._'), 'singular "event" for a single history entry');
+  assert.ok(out.includes('_History: 1 event — see `npx tpm task history 1119 --tasks-dir <dir>`._'), 'singular "event" for a single history entry');
+  // F2: with a resolved tasksDir the hint is fully runnable — inlined + quoted store path.
+  const withDir = render(rec, { now: GOLDEN_NOW, tasksDir: '/scratch/store' });
+  assert.ok(withDir.includes('see `npx tpm task history 1119 --tasks-dir "/scratch/store"`._'),
+    'history hint inlines the resolved --tasks-dir when known');
 });
 
 // ── GOLDEN: index view ───────────────────────────────────────────────────────

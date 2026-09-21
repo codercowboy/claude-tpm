@@ -87,7 +87,7 @@ function render(record, opts) {
     renderContext(record),
     renderResolution(record),          // #1074: close-time resolution/provenance (null → omitted)
     renderSubtasks(record, options.now),
-    renderHistoryPointer(record),
+    renderHistoryPointer(record, options.tasksDir),
   ].filter((s) => s != null);
   return sections.join('\n\n') + '\n';
 }
@@ -184,12 +184,18 @@ function renderSubtasks(record /* , now */) {
 
 // ── one-line history pointer ───────────────────────────────────────────────────
 
-// `_History: N events — see \`tpm task history <id>\`_` (format-spec §"Derived human files").
-function renderHistoryPointer(record) {
+// `_History: N events — see \`npx tpm task history <id> --tasks-dir "<dir>"\`_` (format-spec
+// §"Derived human files"). F2: the hint is FULLY RUNNABLE — command-emission (`npx tpm …`) + the
+// required `--tasks-dir`. When `tasksDir` is known (e.g. `task show`, which knows the resolved store)
+// it is inlined and quoted; the persisted body .md renders with no dir, so it shows a `<dir>`
+// placeholder (keeps the derived file portable + byte-stable) while still carrying the flag's shape.
+function renderHistoryPointer(record, tasksDir) {
   const n = Array.isArray(record.history) ? record.history.length : 0;
   const id = record.id != null ? String(record.id) : '?';
   const noun = n === 1 ? 'event' : 'events';
-  return '_History: ' + n + ' ' + noun + ' — see `tpm task history ' + id + '`._';
+  const dir = tasksDir ? '"' + tasksDir + '"' : '<dir>';
+  return '_History: ' + n + ' ' + noun +
+    ' — see `npx tpm task history ' + id + ' --tasks-dir ' + dir + '`._';
 }
 
 // ── renderIndexView (public) — a human index .md view ─────────────────────────

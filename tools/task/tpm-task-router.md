@@ -16,7 +16,7 @@ Overview + file map: [`README.md`](README.md). The tools it forwards to: [`tpm-t
 
 **Run** (via the `tpm` bin at promotion; standalone in the sandbox):
 ```
-node tpm-task-router.js <subcommand> [args…]
+npx tpm task <subcommand> [args…]
 ```
 Programmatic callers `require('./tpm-task-router')` for `main`, `MAIN`, `CONFIG`, `EXPORT_TOOL`,
 `DOCTOR`, `MIGRATE`.
@@ -35,22 +35,22 @@ The child's exit code is returned unchanged (a signal-killed child maps to `1`);
 
 ## Examples (verified, sandbox)
 ```
-$ node tpm-task-router.js list --tasks-dir /tmp/t --now 2026-09-20T17:00:00-07:00
+$ npx tpm task list --tasks-dir /tmp/t --now 2026-09-20T17:00:00-07:00
 # → tpm-task.js list … (renders the human index view)
 
-$ node tpm-task-router.js config --get history.enabled
+$ npx tpm task config --get history.enabled
 true                                    # → tpm-task-config.js
 
-$ node tpm-task-router.js export --tasks-dir /tmp/t --state finished --json
+$ npx tpm task export --tasks-dir /tmp/t --state finished --json
 [ … ]                                   # → tpm-task-export.js (mode token kept)
 
-$ node tpm-task-router.js search --tasks-dir /tmp/t --match router
+$ npx tpm task search --tasks-dir /tmp/t --match router
 #1000  bodies/1000-1999/task-1000.json:6  "headline": "Wire the router",
 
-$ node tpm-task-router.js --help
+$ npx tpm task --help
 tpm-task — JSON-backed task verbs …      # → tpm-task.js --help (pass-through)
 
-$ node tpm-task-router.js bogus --tasks-dir /tmp/t   # → tpm-task.js, unknown verb
+$ npx tpm task bogus --tasks-dir /tmp/t   # → unknown verb
 # exit 2 (propagated from the child)
 ```
 

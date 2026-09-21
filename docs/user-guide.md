@@ -75,7 +75,7 @@ A healthy consumer project reports 9 of 9 checks passing and exits 0:
   [PASS] plugin claude-tpm@claude-tpm-market installed
   [PASS] plugin claude-tpm@claude-tpm-market enabled for this project
   [PASS] plugin claude-tpm@claude-tpm-market cache present (loads)
-  [PASS] plugin delivers its PreToolUse hooks (gate-spawn + expand-tpm-home)
+  [PASS] plugin delivers its hook (gate-spawn PreToolUse)
   [PASS] consumer config.json is valid JSON (if present)
 ```
 
@@ -765,7 +765,7 @@ Suites:
   session    session-notes tooling   (config / current / notes / review)
   task       task ledger             (add / list / show / … / config)
   workflow   multi-agent rounds      (audit / compose / lint / scaffold / cost / signoff / doctor / config)
-  hooks      PreToolUse hooks        (gate-spawn / expand-tpm-home)
+  hooks      PreToolUse hooks        (gate-spawn)
 
 Consumer adoption:
   install [dir] [options]     graft claude-tpm onto an existing project
@@ -788,8 +788,9 @@ Four suites plus three flat consumer aliases:
   orchestrator plumbing the skills invoke for you. You'll rarely type them directly. The exhaustive
   verb tables are in [technical.md](technical.md).
 
-- **`hooks`** (`gate-spawn`, `expand-tpm-home`) are harness-invoked `PreToolUse` hooks delivered by the
-  plugin. You do not wire these by hand — they're how the kickoff gate is enforced.
+- **`hooks`** (`gate-spawn`) is a harness-invoked `PreToolUse` hook delivered by the
+  plugin. You do not wire it by hand — it's how the kickoff gate is enforced. (The `%TPM_HOME%`
+  resolution hooks were retired in #1126; resolution is anchor-first via `npx tpm resolve-home`.)
 
 - **`install` / `uninstall` / `doctor`** are the consumer lifecycle aliases; see [INSTALL.md](INSTALL.md).
 

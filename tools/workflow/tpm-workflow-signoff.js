@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * tpm-workflow-signoff.js — the two-token user-sign-off ledger for tpm-workflow kickoffs.
+ * npx tpm workflow signoff — the two-token user-sign-off ledger for tpm-workflow kickoffs.
  *
  * WHY
  *   Kicking off a workflow round spawns subagents = real work + tokens. Prose rules
@@ -37,7 +37,7 @@
  *   npx tpm workflow signoff clear                                  # remove ALL tokens: questions + every per-round spawn (round done / reset)
  *   npx tpm workflow signoff --help
  *
- * CONVENTIONS: zero deps (Node built-ins only). `node tpm-workflow-signoff.js …`. Also a module
+ * CONVENTIONS: zero deps (Node built-ins only). Run via `npx tpm workflow signoff …`. Also a module
  * (module.exports) so the hook + tests drive the pure helpers directly.
  *
  * DEFAULT FRESHNESS: 1800s (30 min). Long enough for a round's spawns to follow one

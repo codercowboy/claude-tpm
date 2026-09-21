@@ -363,18 +363,17 @@ check('readPackageJson: absent → {exists:false, value:null, error:null}', () =
 });
 
 // ── parseHooksManifest (2a: hooks-delivery health, pure) ─────────────────────────────────────────────
+// After #1126 gate-spawn is the SOLE auto-wired hook (the %TPM_HOME% resolution hooks were retired), so
+// the real delivered manifest carries only a PreToolUse gate-spawn entry.
 const REAL_MANIFEST = {
   hooks: {
     PreToolUse: [
       { matcher: 'Agent|Task', hooks: [{ type: 'command', command: 'npx tpm hooks gate-spawn' }] },
     ],
-    PostToolUse: [
-      { matcher: 'Read|Grep|Glob', hooks: [{ type: 'command', command: 'npx tpm hooks expand-tpm-home-content' }] },
-    ],
   },
 };
-check('parseHooksManifest: the real hooks.json → both hooks detected', () => {
-  assert.deepStrictEqual(inst.parseHooksManifest(REAL_MANIFEST), { gateSpawn: true, expandContent: true });
+check('parseHooksManifest: the real hooks.json → gate-spawn detected', () => {
+  assert.deepStrictEqual(inst.parseHooksManifest(REAL_MANIFEST), { gateSpawn: true });
 });
 check('parseHooksManifest: matches by substring so a `node …` command form still detects', () => {
   const legacy = { hooks: { PreToolUse: [
@@ -385,19 +384,19 @@ check('parseHooksManifest: matches by substring so a `node …` command form sti
   const routed = { hooks: { PreToolUse: [{ hooks: [{ command: 'tpm hooks gate-spawn' }] }] } };
   assert.strictEqual(inst.parseHooksManifest(routed).gateSpawn, true);
 });
-check('parseHooksManifest: only one hook present → the other stays false', () => {
+check('parseHooksManifest: gate-spawn present in PreToolUse → detected', () => {
   const partial = { hooks: { PreToolUse: [{ hooks: [{ command: 'npx tpm hooks gate-spawn' }] }] } };
-  assert.deepStrictEqual(inst.parseHooksManifest(partial), { gateSpawn: true, expandContent: false });
+  assert.deepStrictEqual(inst.parseHooksManifest(partial), { gateSpawn: true });
 });
-check('parseHooksManifest: the content hook is only detected in PostToolUse, not PreToolUse', () => {
-  // A stray content-hook wired under PreToolUse must NOT count — resolution is a PostToolUse concern.
-  const misplaced = { hooks: { PreToolUse: [{ hooks: [{ command: 'npx tpm hooks expand-tpm-home-content' }] }] } };
-  assert.strictEqual(inst.parseHooksManifest(misplaced).expandContent, false);
+check('parseHooksManifest: the retired %TPM_HOME% content hook is NOT detected (no such field)', () => {
+  // The content hook was retired in #1126 — a stray one must not resurrect any field or affect gate-spawn.
+  const stray = { hooks: { PostToolUse: [{ hooks: [{ command: 'npx tpm hooks expand-tpm-home-content' }] }] } };
+  assert.deepStrictEqual(inst.parseHooksManifest(stray), { gateSpawn: false });
 });
-check('parseHooksManifest: garbage/empty input → both false, no throw', () => {
-  assert.deepStrictEqual(inst.parseHooksManifest(null), { gateSpawn: false, expandContent: false });
-  assert.deepStrictEqual(inst.parseHooksManifest({}), { gateSpawn: false, expandContent: false });
-  assert.deepStrictEqual(inst.parseHooksManifest({ hooks: { PreToolUse: 'nope' } }), { gateSpawn: false, expandContent: false });
+check('parseHooksManifest: garbage/empty input → gate-spawn false, no throw', () => {
+  assert.deepStrictEqual(inst.parseHooksManifest(null), { gateSpawn: false });
+  assert.deepStrictEqual(inst.parseHooksManifest({}), { gateSpawn: false });
+  assert.deepStrictEqual(inst.parseHooksManifest({ hooks: { PreToolUse: 'nope' } }), { gateSpawn: false });
 });
 
 // ── bundleHooksHealth (2a: disk read from the target's node_modules) ─────────────────────────────────
@@ -409,13 +408,13 @@ function writeBundleHooks(dir, manifestOrRaw) {
 }
 check('bundleHooksHealth: absent manifest → present:false (degrades to skip)', () => {
   assert.deepStrictEqual(inst.bundleHooksHealth(mkTmp()),
-    { present: false, error: null, gateSpawn: false, expandContent: false });
+    { present: false, error: null, gateSpawn: false });
 });
-check('bundleHooksHealth: real delivered manifest → present + both hooks', () => {
+check('bundleHooksHealth: real delivered manifest → present + gate-spawn', () => {
   const dir = mkTmp();
   writeBundleHooks(dir, REAL_MANIFEST);
   assert.deepStrictEqual(inst.bundleHooksHealth(dir),
-    { present: true, error: null, gateSpawn: true, expandContent: true });
+    { present: true, error: null, gateSpawn: true });
 });
 check('bundleHooksHealth: malformed manifest JSON → present:true + error, hooks false', () => {
   const dir = mkTmp();

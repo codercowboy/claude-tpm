@@ -2,13 +2,11 @@
 /**
  * base.js — the ONE indirection to the shared base lib (OQ5: reference-in-place).
  *
- * ── THE SINGLE CROSS-SANDBOX PATH ──
- * Per 01-plan §3 (OQ5 → reference-in-place), the base lib stays the ONE physical copy in
- * `dev/20260919-session-features/session-tooling/lib/`. task-tooling reaches it through THIS
- * file — the only place the cross-sandbox path is spelled. Nothing session imports moves; the
- * two kinds share one copy so they cannot diverge (#1121). At promotion (design-notes cutover),
- * the base lib moves into `../claude-tpm` for BOTH consumers at once, and THIS file is the one
- * that gets rewritten.
+ * ── THE SINGLE SHARED-LIB PATH ──
+ * PROMOTED (Stage A / #1123): the base lib is now the ONE physical copy at this bundle's
+ * `tools/lib/`. task-tooling reaches it through THIS file — the only place the shared-lib path is
+ * spelled. The session and task suites share one copy so they cannot diverge (#1121). This is the
+ * one file a future relayout rewrites (as its own docstring foretold at promotion).
  *
  * ── WHAT IS RE-EXPORTED ── the 9 kind-agnostic base modules + the shared `paths` (#1058):
  *   io · envelope · version · validate · update · normalize · timestamp · exportScaffold ·

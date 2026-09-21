@@ -452,7 +452,7 @@ function parseArgv(argv) {
 }
 
 const USAGE = `tpm-task-migrate — OPT-IN whole-store old-markdown→JSON task migrator (#1114.B)
-  run: node tpm-task-migrate.js --in <oldTasksDir> --out-dir <newTasksDir> [flags]
+  run: npx tpm task migrate --in <oldTasksDir> --out-dir <newTasksDir> [flags]
 
   --in <dir>       REQUIRED  old task store (task-index.md + bodies/<lo>-<hi>/task-<id>.md); READ-ONLY
   --out-dir <dir>  REQUIRED  where the JSON store is written (must differ from --in;

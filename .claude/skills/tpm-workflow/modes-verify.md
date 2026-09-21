@@ -61,7 +61,7 @@ orchestrator turns its concerns into the fixer kickback.
 
 **Both retries re-run in the SAME phase folder, coordinated by `HANDOFF.md`** (the single rolling
 doc; the numbered `spawn-prompt-<role>-r<N>.md` + `verifier-r<N>-v<M>-verdict.md` are the history).
-`tpm-workflow-scaffold-subagent.js add-round` auto-numbers `r<N>` — never hand-track it. A retry is NOT a new
+`npx tpm workflow scaffold add-round` auto-numbers `r<N>` — never hand-track it. A retry is NOT a new
 phase; only a deliberate later stage (a dedicated verification sweep, a distinct post-build bug-hunt)
 is an appended numbered phase.
 

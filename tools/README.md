@@ -22,6 +22,7 @@ routers own their verb tables and self-locate their scripts via `__dirname`, so 
 needed. Dispatch is by child process with faithful arg/stdio pass-through and exit-code propagation.
 
 - **`tools/tpm.js`** — the top dispatcher / front door; routes `<suite> <verb>` to the per-suite router, plus the flat consumer aliases `install` / `uninstall` / `doctor` (unknown → exit 2; bare / `--help` → menu). Run: `npx tpm <suite> <verb>` · Doc: `tpm.md`
+- **`tools/tpm-reading-list.js`** — emit a role's methodology reading chain in anchor form (a `npx tpm resolve-home` line + one `npx tpm doc <bundle-relpath>` per entry), derived from the live reading-list manifests; self-locating, zero-dep. Run: `npx tpm reading-list <role>` (orchestrator | subagent) · Doc: `tpm-reading-list.md`
 
 ---
 
@@ -54,7 +55,7 @@ The JSON-first session-memory subsystem behind the `tpm-session` skill's modes: 
 
 - **`tools/session/tpm-session-config.js`** — resolve the `session` config section over built-in defaults (`--json` / `--get` / `--sessions-dir` / `--modules` — the cross-module ENABLED map for the boot MOTD). Run: `npx tpm session config` · Doc: `tpm-session-config.md`
 - **`tools/session/tpm-session-current.js`** — the current-session pointer: open-vs-not state, next-`session-NNNN` allocation, idempotent `--open`, `--seal` at close. Run: `npx tpm session current` · Doc: `tpm-session-current.md`
-- **`tools/session/tpm-session-ops.js`** — the notes WRITE surface + `#1115` import: `open` / `save` / `note (--log|--decision)` / `punchlist --action add|close|reopen|drop|carry-in` / `close` (close-guard: refuses without a handoff AND a punchlist) / `import-handoff|import-log|import-punchlist`. Every write is atomic; the `.md` is regenerated from the JSON. Run: `npx tpm session ops` · Doc: `tpm-session-ops.md`
+- **`tools/session/tpm-session-ops.js`** — the notes WRITE surface + `#1115` import: `open` / `save` / `note (--log|--decision)` / `punchlist --action add|close|reopen|drop|carry-in` / `close` (close-guard: refuses without a handoff AND a punchlist) / `import-handoff|import-log|import-punchlist`. Every write is atomic; the `.md` is regenerated from the JSON. These are TOP-LEVEL session verbs (the `ops` grouping was flattened away). Run: `npx tpm session <open|save|note|punchlist|close|import-handoff|import-log|import-punchlist>` · Doc: `tpm-session-ops.md`
 - **`tools/session/tpm-session-export.js`** — the READ / export API: `--last N | --session NNNN[,NNNN]` · `--style json|human|both` · `--out <dir|file>` (default: JSON to stdout). Run: `npx tpm session export` · Doc: `tpm-session-export.md`
 - **`tools/session/tpm-session-migrate.js`** — `#1114` opt-in convert ONE old 3-file markdown session → canonical JSON (`--in` / `--out-dir`). Run: `npx tpm session migrate` · Doc: `tpm-session-migrate.md`
 - **`tools/session/tpm-session-boot-read.js`** — the boot-time pickup emit: the prior session's handoff verbatim + open punchlist headlines + the JSON/`.md` file locations; self-resolves the sessions dir via config; degrades to one clean line, always exits 0. Run: `npx tpm session boot-read` · Doc: `tpm-session-boot-read.md`
@@ -104,7 +105,6 @@ live in their owning suite (a workflow gate under `workflow/`, the read-path res
 
 - **`tools/hooks/tpm-hooks-router.js`** — the `hooks` sub-router: exposes each hook under one stable verb table (`npx tpm hooks <verb>`), dispatching by child process so the harness's PreToolUse payload/stdout/exit-code pass through unchanged. Internal plumbing. Doc: header
 - **`tools/workflow/hooks/tpm-workflow-gate-spawn.js`** — PreToolUse hook on `Agent|Task`: the spawn gate (blocks a marked subagent spawn that fails the sign-off check). Run: `npx tpm hooks gate-spawn` · Doc: header
-- **`tools/consumer/hooks/expand-tpm-home.js`** — PreToolUse hook on `Read|Glob|Grep|NotebookRead`: resolves the `%TPM_HOME%/…` bundle placeholder in read-tool paths to the real bundle (self-located from `__dirname`; read-family only + containment + fail-open). Run: `npx tpm hooks expand-tpm-home` · Doc: header
 
 ---
 
@@ -140,7 +140,7 @@ Every suite's tests are self-contained (zero-dep) and safe to run anywhere (they
 - **`tools/workflow/tests/run-all.js`** — the workflow suite. Run: `node tools/workflow/tests/run-all.js`
 - **`tools/session/tests/run-all.js`** (+ `tools/session/tests/mutation-check.js`) — the session suite (27 suites, 0 failed). Run: `node tools/session/tests/run-all.js`
 - **`tools/task/tests/run-all.js`** (+ `tools/task/tests/mutation-check.js`) — the task suite (16 suites, 0 failed). Run: `node tools/task/tests/run-all.js`
-- **`tools/consumer/tests/run-all.js`** — install / uninstall (pure exported helpers, incl. `parsePluginList`) + the `expand-hook` unit tests; `expand-hook/smoke.sh` is the LLM smoke. Run: `node tools/consumer/tests/run-all.js`
+- **`tools/consumer/tests/run-all.js`** — install / uninstall (pure exported helpers, incl. `parsePluginList`) + the skill-ref lint. (The `expand-hook` suites were retired in #1126 with the %TPM_HOME% resolution hooks.) Run: `node tools/consumer/tests/run-all.js`
 - **`tools/misc/fix-git-rename/tests/tpm-fix-git-rename-refs/test.js`** — the rename migrator (hermetic temp-dir fixtures). Run: `node tools/misc/fix-git-rename/tests/tpm-fix-git-rename-refs/test.js`
 - **`tools/tests/lib/`** — shared test-support (the scratch-dir helper), not a suite.
 

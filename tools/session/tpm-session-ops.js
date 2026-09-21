@@ -30,8 +30,9 @@
  *                    item per non-empty text line); state is NEVER set by import.
  *
  * ── NODE-INVOKABLE, NO BIN (Q5) ──
- * Runs via bare `node session-tooling/tpm-session-ops.js <verb> …` — there is NO package.json `bin`
- * / npm-run entry. Programmatic callers `require()` it for the `op*` functions.
+ * Each verb is a TOP-LEVEL session verb (the old `ops` grouping was flattened away): run via
+ * `npx tpm session <verb> …` (routed through the `tpm` bin), or bare
+ * `node tools/session/tpm-session-ops.js <verb> …`. Programmatic callers `require()` it for the `op*` functions.
  *
  * Zero third-party deps; Node built-ins only.
  */
@@ -41,6 +42,7 @@ const path = require('path');
 const model = require('./lib/session-model');
 const { render } = require('./lib/session-converter');
 const { nowIsoTz } = require('../lib/timestamp');
+const sessionConfig = require('./tpm-session-config');
 
 // ── paths ────────────────────────────────────────────────────────────────────
 
@@ -265,7 +267,7 @@ function opImportHandoff(opts) {
     if (o.inFlight && o.inFlight.length) handoffObj.in_flight = o.inFlight;
     if (o.mustNotRedo && o.mustNotRedo.length) handoffObj.must_not_redo = o.mustNotRedo;
   } else {
-    throw new Error('import-handoff: a source is required — --json-file <f> OR --txt-file <f>');
+    throw new Error('import-handoff: a source is required — --json-file <f> OR --txt-file/--file <f>');
   }
 
   record = model.importHandoff(record, handoffObj);   // REPLACE; editable-only; re-stamps updatedAt
@@ -357,12 +359,14 @@ function parseArgv(argv) {
       case '--id': o.idOrSlug = next(); break;
       // import
       case '--json-file': o.jsonFile = next(); break;
-      case '--txt-file': o.txtFile = next(); break;
+      // #2 (smoke): --txt-file and --file are ALIASES — every import verb accepts BOTH spellings.
+      // import-handoff/import-log read o.txtFile; import-punchlist reads o.file; keep both in sync.
+      case '--txt-file': case '--file': { const v = next(); o.txtFile = v; o.file = v; break; }
       case '--next': o.next = next(); break;
       case '--next-file': o.nextFile = next(); break;
       case '--in-flight': o.inFlight.push(next()); break;
       case '--must-not-redo': o.mustNotRedo.push(next()); break;
-      case '--file': o.file = next(); break;
+      case '-v': case '--verbose': o.verbose = true; break;   // F1: also print the written file paths
       case '-h': case '--help': o.help = true; break;
       default: throw new Error(`tpm-session-ops: unknown argument '${a}'`);
     }
@@ -370,11 +374,19 @@ function parseArgv(argv) {
   return { verb, opts: o };
 }
 
-const USAGE = `tpm-session-ops — session ops + import (#1115) (run: node session-tooling/tpm-session-ops.js <verb> …)
+const USAGE = `tpm-session-ops — session write-ops + import (#1115) (run: npx tpm session <verb> …)
 
-Common:  --sessions-dir <dir>   store dir holding per-session folders session-<NNNN>/ (a SCRATCH or real dir; created for open)
-         --session <NNNN>       session number (aka --number)
+The verbs below are TOP-LEVEL session verbs — call them directly (\`npx tpm session open …\`, etc.).
+The old \`ops\` grouping was removed (flatten); typing it now just hints at this flattened form.
+
+Common:  --sessions-dir <dir>   store dir holding per-session folders session-<NNNN>/ (a SCRATCH or real
+                                dir; created for open). OPTIONAL (F4): omitted → resolved from the LOCAL
+                                project's .claude/claude-tpm/config.json (session.notes.sessionsDir); the
+                                flag OVERRIDES; with NEITHER it FAILS LOUD (never defaults to a live store).
+         --session <NNNN>       session number (aka --number). ALWAYS 4-digit zero-padded: --session 1 is
+                                normalized to 0001, so the folder (session-0001/) and stored meta.number agree.
          --now <iso>            reference time for punchlist age (default: now, local offset)
+         --verbose, -v          also print the written .json / .md file paths (default: the transition line only)
 
 Verbs:
   open          --session <NNNN> --session-id <id> [--tpm-version v] [--prior-session-path <json>]
@@ -386,14 +398,95 @@ Verbs:
                     carry-in: --from <prior json> --item <id|slug>
   close         --session <NNNN>       (REFUSES unless a handoff AND a punchlist are present)
 
-Import (#1115):
-  import-handoff   --session <NNNN> (--json-file <f> | --txt-file <f> --next "…"|--next-file <f>
+Import (#1115) — --txt-file and --file are ALIASES; every import verb accepts BOTH spellings (#2 smoke):
+  import-handoff   --session <NNNN> (--json-file <f> | (--txt-file|--file) <f> --next "…"|--next-file <f>
                         [--in-flight "…"]… [--must-not-redo "…"]…)      REPLACE
-  import-log       --session <NNNN> --txt-file <f> [--status NOTE | --decision --why "…"]   APPEND-ONLY
-  import-punchlist --session <NNNN> --file <f>   (JSON array of strings/{text}, or one item per line)  ADD
+  import-log       --session <NNNN> (--txt-file|--file) <f> [--status NOTE | --decision --why "…"]   APPEND-ONLY
+  import-punchlist --session <NNNN> (--file|--txt-file) <f>   (JSON array of strings/{text}, or one item per line)  ADD
 
 Import honors the LOCKED editable table (mechanical fields ignored; state never set by import). Each
 write's canonical JSON is atomic; the derived .md is regenerated after the JSON write succeeds.`;
+
+// ── F1: per-verb state-transition success lines (mirrors the self-verifying task suite) ──────────
+// Each ops verb reports WHAT HAPPENED (a state transition), not the identical `wrote <json> <md>`
+// that made the six results indistinguishable. The written file paths move behind --verbose.
+
+function lastLog(record) {
+  const log = record && Array.isArray(record.log) ? record.log : [];
+  return log.length ? log[log.length - 1] : null;
+}
+
+function openPunchlistCount(record) {
+  const pl = record && Array.isArray(record.punchlist) ? record.punchlist : [];
+  return pl.filter((it) => it && it.state === 'open').length;
+}
+
+function describePunchlist(opts, record) {
+  const pl = record && Array.isArray(record.punchlist) ? record.punchlist : [];
+  const action = opts.action;
+  if (action === 'add' || action === 'carry-in') {
+    const it = pl[pl.length - 1];
+    const verbWord = action === 'add' ? 'added' : 'carried in';
+    return it ? `${verbWord} #${it.id} [${it.slug}]` : `${verbWord} an item`;
+  }
+  const key = opts.idOrSlug;
+  const it = pl.find((i) => i.id === key || i.slug === key);
+  const verbWord = action === 'close' ? 'closed' : action === 'reopen' ? 'reopened' : 'dropped';
+  return it ? `${verbWord} #${it.id} [${it.slug}]` : `${verbWord} '${key}'`;
+}
+
+/** describeResult(verb, opts, record) -> a one-line STATE-TRANSITION summary for stderr (F1). */
+function describeResult(verb, opts, record) {
+  const num = record && record.meta ? record.meta.number : opts.number;
+  switch (verb) {
+    case 'open': {
+      const carried = record && Array.isArray(record.punchlist) ? record.punchlist.length : 0;
+      return `session ${num} opened` + (carried ? ` · ${carried} punchlist item(s) carried forward` : '');
+    }
+    case 'save':
+      return `session ${num} saved` + (record && record.handoff ? ' · handoff re-stamped' : '');
+    case 'note': {
+      const last = lastLog(record);
+      const seq = last ? last.seq : '?';
+      const kind = last && last.type === 'decision' ? 'decision' : (last && last.status ? last.status : 'NOTE');
+      return `logged ${kind} (entry #${seq})`;
+    }
+    case 'punchlist':
+      return describePunchlist(opts, record);
+    case 'close': {
+      // #5 (smoke): name WHERE carried items surface — "carried" alone had no visible destination.
+      const open = openPunchlistCount(record);
+      const dest = open > 0 ? " (surface in the next session's boot-read)" : '';
+      return `session ${num} closed · handoff ✓ · ${open} open punchlist item(s) carried${dest}`;
+    }
+    case 'import-handoff':
+      return 'handoff set (where + next)';
+    case 'import-log': {
+      const last = lastLog(record);
+      return `appended ${last && last.type === 'decision' ? 'decision' : 'log'} (entry #${last ? last.seq : '?'})`;
+    }
+    case 'import-punchlist': {
+      const n = record && Array.isArray(record.punchlist) ? record.punchlist.length : 0;
+      return `punchlist now has ${n} item(s)`;
+    }
+    default:
+      return `${verb} ok`;
+  }
+}
+
+/**
+ * prefixOnce(prefix, msg) -> string   (F3)
+ * Apply the tool-name prefix EXACTLY once — an op may throw a message that ALREADY carries it (e.g.
+ * `tpm-session-ops: sessionsDir is required` or `tpm-session-ops close: refusing …`), which produced
+ * the doubled `tpm-session-ops: tpm-session-ops …`. Strip a leading `<toolname>` (optionally
+ * `<toolname> <verb>`) + `:` before re-adding. Fixed at the FORMATTER SOURCE so it cannot recur.
+ */
+function prefixOnce(prefix, msg) {
+  const bare = prefix.replace(/:\s*$/, '');
+  const esc = bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp('^' + esc + '(?:[ \\t][\\w-]+)?:\\s*');
+  return prefix + String(msg == null ? '' : msg).replace(re, '');
+}
 
 function dispatch(verb, opts) {
   switch (verb) {
@@ -422,13 +515,29 @@ function main(argv) {
     return 2;
   }
   if (parsed.opts.help) { process.stdout.write(USAGE + '\n'); return 0; }
+  // #3 (smoke): normalize --session ONCE at the arg boundary to the canonical 4-digit form, so the
+  // on-disk folder (session-NNNN/) and the stored meta.number always AGREE (`--session 1` ⇒ 0001).
+  // Invalid input is left untouched to fail loud downstream (the model's canonicalNumber rejects it).
+  if (parsed.opts.number != null && String(parsed.opts.number).trim() !== '') {
+    const n = Number(parsed.opts.number);
+    if (Number.isInteger(n) && n >= 0) parsed.opts.number = padNumber(parsed.opts.number);
+  }
   try {
+    // F4: --sessions-dir is OPTIONAL — resolve (flag > local project config.json > FAIL LOUD). It
+    // NEVER silently defaults to a live store (resolveSessionsDir throws loud when neither is present).
+    if (!parsed.opts.sessionsDir) {
+      parsed.opts.sessionsDir = sessionConfig.resolveSessionsDir(undefined, undefined).sessionsDir;
+    }
     const record = dispatch(parsed.verb, parsed.opts);
-    const { jsonPath, mdPath } = sessionPaths(parsed.opts.sessionsDir, record.meta.number);
-    process.stderr.write(`tpm-session-ops ${parsed.verb}: wrote\n  ${jsonPath}\n  ${mdPath}\n`);
+    // F1: report the STATE TRANSITION (not the identical two paths). Paths move behind --verbose.
+    process.stderr.write(`tpm-session-ops ${parsed.verb}: ${describeResult(parsed.verb, parsed.opts, record)}\n`);
+    if (parsed.opts.verbose) {
+      const { jsonPath, mdPath } = sessionPaths(parsed.opts.sessionsDir, record.meta.number);
+      process.stderr.write(`  wrote ${jsonPath}\n  wrote ${mdPath}\n`);
+    }
     return 0;
   } catch (e) {
-    process.stderr.write('tpm-session-ops: ' + String(e.message) + '\n');
+    process.stderr.write(prefixOnce('tpm-session-ops: ', e && e.message ? e.message : e) + '\n');
     return 1;
   }
 }
@@ -440,6 +549,7 @@ module.exports = {
   opImportHandoff, opImportLog, opImportPunchlist,
   // guard + helpers (exported for tests)
   assertCloseGuard, sessionPaths, padNumber, parsePunchlistItems, persist,
+  describeResult, prefixOnce,
   main,
 };
 

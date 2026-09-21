@@ -103,6 +103,49 @@ check('legacy `${TPM_HOME}/claude-context/methodology/…` → flagged by guard 
   assert(/legacy shell-EXPANDING/.test(v[0].why), 'expected the guard rule to be the one that fired');
 });
 
+// 8. #1126 — a BARE bundle-script name in backticks (`tpm-task.js`) is flagged as an invocation; the fix
+//    routes it through the bin.
+check('bare `tpm-task.js` invocation → flagged (fix names npx tpm)', () => {
+  const v = lintFile(fixtureFileWith('Run `tpm-task.js list` for the ledger.\n'));
+  assert(v.length >= 1, 'expected a violation');
+  assert(v.some(x => /bundle-script invocation/.test(x.why)), 'expected the bare-script rule to fire');
+});
+
+// 9. #24.9 DOCTRINE FLIP — router-is-the-API: skills/methodology are written as if the `.js` files do
+//    not exist, so EVEN a full-PATH `.js` citation is now flagged (was NOT flagged under #1126).
+check('`%TPM_HOME%/tools/…/x.js` full-path citation → NOW flagged (bare .js token)', () => {
+  const v = lintFile(fixtureFileWith("See `%TPM_HOME%/tools/session/tpm-session-current.js`'s docstring.\n"));
+  assert(v.some(x => /bare `\.js` file token/.test(x.why)), `expected the no-.js rule to fire, got ${JSON.stringify(v)}`);
+});
+
+// 10. #24.9 — ANY bare `.js` token FAILS the lint, whatever its shape.
+check('#24.9 — a planted bare `.js` token → flagged (exit 1)', () => {
+  const { dir, file } = fixture('# skill\nDocument foo.js and then reword it.\n');
+  const { out, code } = runLint(file);
+  assert.strictEqual(code, 1, `expected violation exit 1, got ${code}\n${out}`);
+  assert(/bare `\.js` file token/.test(out), `expected the no-.js rule text, got:\n${out}`);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// 11. #24.9 GUARD — `.json` (and `.jsx`) are NOT false-flagged as `.js`.
+check('#24.9 — `.json` is NOT flagged as a `.js` token', () => {
+  const v = lintFile(fixtureFileWith('Read `.claude-plugin/plugin.json` and `config.json`; also a foo.jsx note.\n'));
+  assert.strictEqual(v.length, 0, `expected 0 violations for .json/.jsx, got ${JSON.stringify(v)}`);
+});
+
+// 12. #24.9 — `--js-only` runs ONLY the no-.js rule (used over the methodology tree): a bare
+//    methodology read (a relocatability violation) does NOT fire, but a `.js` token still does.
+check('#24.9 — `--js-only` ignores relocatability rules, still catches `.js`', () => {
+  const { dir, file } = fixture('# doc\nRead claude-context/methodology/overview.md, see tpm-task.js.\n');
+  const full = runLint(file);
+  assert.strictEqual(full.code, 1, 'full lint flags the bare methodology read AND the .js token');
+  const only = cp.spawnSync('node', [LINT, file, '--js-only'], { encoding: 'utf8' });
+  const onlyOut = (only.stdout || '') + (only.stderr || '');
+  assert.strictEqual(only.status, 1, `--js-only should flag the .js token (exit 1), got ${only.status}\n${onlyOut}`);
+  assert(/1 non-relocatable/.test(onlyOut), `--js-only should report exactly 1 (the .js token), got:\n${onlyOut}`);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // helper: write a one-off fixture file and return its path (used by the lintFile()-level checks).
 function fixtureFileWith(body) {
   const { file } = fixture(body);

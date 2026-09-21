@@ -234,6 +234,39 @@ function sessionsDirAbs(resolved, projectRoot) {
   return path.isAbsolute(dir) ? dir : path.join(projectRoot, dir);
 }
 
+/**
+ * resolveSessionsDir(flagValue, configPathArg, opts) -> { sessionsDir, source, configPath }   (F4)
+ *
+ * The ONE store-dir resolver every session VERB uses so `--sessions-dir` can be OMITTED. Precedence:
+ *   1. explicit `--sessions-dir` flag       (source: 'flag')    — always wins.
+ *   2. the LOCAL project's config.json        (source: 'config') — a CLAUDE.md-marked project root
+ *      whose `.claude/claude-tpm/config.json` exists; its `session.notes.sessionsDir` is used.
+ *   3. FAIL LOUD                                                 — no flag AND no local project config.
+ *
+ * SAFETY (why `--sessions-dir` used to be mandatory): we NEVER silently fall back to a global/home/
+ * live store. `findRoot` FALLS BACK to cwd when no CLAUDE.md marker is found, so a bare cwd that
+ * merely happens to hold a stray config.json is NOT a project — the marker must be present (unless an
+ * explicit `--config` was passed by hand).
+ */
+function resolveSessionsDir(flagValue, configPathArg, opts) {
+  const options = opts || {};
+  if (flagValue) return { sessionsDir: flagValue, source: 'flag', configPath: null };
+
+  const res = resolveSessionConfig(configPathArg, options);   // throws ENOENT for an explicit missing --config
+  const markerFound = configPathArg
+    ? true
+    : fs.existsSync(path.join(res.projectRoot, 'CLAUDE.md'));
+  if (res.configExists && markerFound) {
+    return { sessionsDir: sessionsDirAbs(res.resolved, res.projectRoot), source: 'config', configPath: res.configPath };
+  }
+  const err = new Error(
+    '--sessions-dir is required: pass --sessions-dir <dir>, or set "session": { "notes": ' +
+    '{ "sessionsDir": … } } in a local .claude/claude-tpm/config.json (refusing to default to a live store).',
+  );
+  err.storeResolveFail = true;
+  throw err;
+}
+
 function getDotted(obj, dottedKey) {
   const parts = dottedKey.split('.');
   let cur = obj;
@@ -299,7 +332,7 @@ function main() {
   }
 
   if (!args.json && !args.get && !args.sessionsDir && !args.modules) {
-    process.stderr.write('tpm-session-config.js: nothing to do — pass one of --json / --get / --sessions-dir / --modules.\n\n');
+    process.stderr.write('tpm session config: nothing to do — pass one of --json / --get / --sessions-dir / --modules.\n\n');
     printHelp();
     process.exit(1);
   }
@@ -355,6 +388,7 @@ if (require.main === module) {
 
 module.exports = {
   resolveSessionConfig,
+  resolveSessionsDir,
   readModuleEnablement,
   mergeSessionConfig,
   getDefaults,

@@ -20,8 +20,8 @@ Node-invokable, no `bin` (Q5): run via bare `node`. Zero third-party deps.
 ## Usage
 
 ```
-node session-tooling/tpm-session-migrate.js --in <old-session-dir> --out-dir <dir> \
-    [--number NNNN] [--dry-run] [--emit-md] [--force] [--now <iso>]
+npx tpm session migrate --in <old-session-dir> --out-dir <dir> \
+    [--number NNNN] [--dry-run] [--emit-md|--no-emit-md] [--force] [--now <iso>]
 ```
 
 | Flag | Req | Meaning |
@@ -30,7 +30,8 @@ node session-tooling/tpm-session-migrate.js --in <old-session-dir> --out-dir <di
 | `--out-dir <dir>` | ✅ | where `session-<NNNN>.json` is written. Must differ from `--in` and must not resolve inside a live `.claude/claude-tpm/sessions` tree. |
 | `--number NNNN` | | override the session number (else parsed from the banner). Validated (digits only) before canonicalization. |
 | `--dry-run` | | validate + report what *would* be written; write nothing. |
-| `--emit-md` | | also write the derived human-readable `session-<NNNN>.md` (via the converter). |
+| `--emit-md` | | also write the derived human-readable `session-<NNNN>.md` (via the converter). **Default: on** (kept for explicitness / back-compat). |
+| `--no-emit-md` | | opt OUT of the derived `.md` — write only the canonical `.json`. |
 | `--force` | | overwrite an existing output file (otherwise refuse if it exists). |
 | `--now <iso>` | | reference stamp for `handoff.updatedAt` (default: now, local offset). Injectable so goldens are byte-stable. |
 | `--help` | | show usage. |
@@ -40,10 +41,10 @@ No flag has a default path (tool-conventions "no hardcoded paths / no silent def
 ### Example
 
 ```
-node session-tooling/tpm-session-migrate.js \
+npx tpm session migrate \
   --in  .claude/claude-tpm/sessions/session-0021 \
-  --out-dir /tmp/migrated --emit-md
-# -> /tmp/migrated/session-0021.json  (+ session-0021.md)
+  --out-dir /tmp/migrated
+# -> /tmp/migrated/session-0021.json  (+ session-0021.md — the .md is emitted by default; --no-emit-md skips it)
 ```
 
 Exit codes: `0` success · `1` refusal / runtime error · `2` CLI arg error.

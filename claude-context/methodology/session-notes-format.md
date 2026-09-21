@@ -7,7 +7,7 @@ are prefixed with the four-digit session number, so no two sessions share a base
 shared folder. The tools under `tools/session/` OWN these formats — the orchestrator never hand-emits
 them. The JSON is authoritative; the `.md` is **regenerated from the JSON on every write** and carries a
 "do not hand-edit" banner. This doc is the reading reference; the shared `lib/` model
-(`tools/session/lib/session-model.js` + `session-schema.js`) derives all read/migrate/validate/render
+(the `session-model` + `session-schema` modules under `tools/session/lib/`) derives all read/migrate/validate/render
 logic, and the per-tool docs (`tpm-session-ops.md`, `tpm-session-export.md`) are the verb-level SSOT.
 
 ## Why one JSON + one derived `.md` (not three markdown files)
@@ -27,10 +27,10 @@ hold, now as sections of one record:
 
 | Part | Written by | Read by |
 |---|---|---|
-| the record (open / persist / seal) | `tpm session ops` (`open` / `save` / `close`) | `tpm session export`, `tpm session boot-read` |
-| `handoff` | `tpm session ops import-handoff` (REPLACE) + `save` | export / boot-read |
-| `log[]` | `tpm session ops note` (`--log` / `--decision`) + `import-log` (append-only) | export |
-| `punchlist[]` | `tpm session ops punchlist --action add\|close\|reopen\|drop\|carry-in` + `import-punchlist` | export / boot-read (open headlines) |
+| the record (open / persist / seal) | `tpm session open` / `save` / `close` | `tpm session export`, `tpm session boot-read` |
+| `handoff` | `tpm session import-handoff` (REPLACE) + `save` | export / boot-read |
+| `log[]` | `tpm session note` (`--log` / `--decision`) + `import-log` (append-only) | export |
+| `punchlist[]` | `tpm session punchlist --action add\|close\|reopen\|drop\|carry-in` + `import-punchlist` | export / boot-read (open headlines) |
 
 Every write rewrites the canonical `session-NNNN.json` atomically, then regenerates the derived
 `session-NNNN.md` from it. Reads never parse the `.md` back.

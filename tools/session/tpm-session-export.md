@@ -8,7 +8,7 @@ none of them.
 
 **Run (Q5 — no bin, no npm-run):**
 ```
-node session-tooling/tpm-session-export.js [flags]
+npx tpm session export [flags]
 ```
 Programmatic callers `require('./tpm-session-export')` for `exportSessions(opts)` (plus helpers
 `resolveRecords`, `enumerateSessions`, `normalizeStyles`, `padNumber`).
@@ -65,25 +65,25 @@ CLI flag.
 
 ```
 # single-session full JSON to stdout
-node session-tooling/tpm-session-export.js --sessions-dir /tmp/s --session 0050 --style json
+npx tpm session export --sessions-dir /tmp/s --session 0050 --style json
 #   -> {
 #        "schemaVersion": "1.0.0",
 #        "kind": "session",
 #        "meta": { "number": "0050", …
 
 # last 2 sessions, combined human — one # Session header per session
-node session-tooling/tpm-session-export.js --sessions-dir /tmp/s --last 2 --style human
+npx tpm session export --sessions-dir /tmp/s --last 2 --style human
 #   -> 2 "# Session NNNN" headers
 
 # last 2 sessions, combined JSON — a bare array of envelopes
-node session-tooling/tpm-session-export.js --sessions-dir /tmp/s --last 2 --style json
+npx tpm session export --sessions-dir /tmp/s --last 2 --style json
 #   -> [
 #        {
 #          "schemaVersion": "1.0.0",
 #          …
 
 # per-file, both styles, into an out dir
-node session-tooling/tpm-session-export.js --sessions-dir /tmp/s --last 2 --style both --combine per-file --out /tmp/s/out
+npx tpm session export --sessions-dir /tmp/s --last 2 --style both --combine per-file --out /tmp/s/out
 #   -> wrote 4 file(s):
 #        /tmp/s/out/session-0051.json
 #        /tmp/s/out/session-0050.json

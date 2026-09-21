@@ -247,6 +247,29 @@ test('safety: --emit-md also writes a derived, non-empty session-<NNNN>.md', () 
   assert.ok(/## Handoff/.test(md) && /## Punchlist/.test(md) && /## Log/.test(md), 'md has the sections');
 });
 
+// #4 (smoke): the derived .md is emitted BY DEFAULT; --no-emit-md opts out.
+test('#4: migrate emits the .md by DEFAULT (no flag); emitMd:false opts out', () => {
+  const outDefault = tmpOut('md-default');
+  const rDef = migrator.runMigration({ inDir: fixture('session-0021'), outDir: outDefault, now: PINNED_NOW });
+  assert.ok(rDef.mdPath && fs.existsSync(rDef.mdPath), 'the .md is written with NO emitMd flag (default on)');
+
+  const outOff = tmpOut('md-off');
+  const rOff = migrator.runMigration({ inDir: fixture('session-0021'), outDir: outOff, emitMd: false, now: PINNED_NOW });
+  assert.strictEqual(rOff.mdPath, null, 'emitMd:false opts out — no mdPath');
+  assert.ok(!fs.existsSync(path.join(outOff, 'session-0021', 'session-0021.md')), 'no .md on opt-out');
+});
+
+test('#4: CLI migrate writes the .md by default; --no-emit-md skips it', () => {
+  const outD = tmpOut('cli-md-default');
+  runCli(['--in', fixture('session-0021'), '--out-dir', outD, '--now', PINNED_NOW]);
+  assert.ok(fs.existsSync(path.join(outD, 'session-0021', 'session-0021.md')), 'CLI default emits the .md');
+
+  const outN = tmpOut('cli-md-off');
+  runCli(['--in', fixture('session-0021'), '--out-dir', outN, '--no-emit-md', '--now', PINNED_NOW]);
+  assert.ok(!fs.existsSync(path.join(outN, 'session-0021', 'session-0021.md')), '--no-emit-md skips the .md');
+  assert.ok(fs.existsSync(path.join(outN, 'session-0021', 'session-0021.json')), 'json still written');
+});
+
 // ── validate-before-write ────────────────────────────────────────────────────
 
 test('validate-before-write: an injected invalid record throws and writes nothing', () => {

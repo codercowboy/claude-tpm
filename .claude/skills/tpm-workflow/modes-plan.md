@@ -1,5 +1,8 @@
 # `plan` mode — pre-task Q&A → charter → scaffold → plan.md → compose + lint
 
+> In this file, `%TPM_HOME%` is the claude-tpm **installation home** — it is NOT always
+> `<project>/node_modules/@codercowboy/claude-tpm`. If you need its actual value, run `npx tpm resolve-home`.
+
 **Do NOT freehand a `plan.md`.** The template + tools exist for exactly this. Plan mode drives the
 real pipeline: **pre-task questions → resolve config → scaffold → fill `plan.md` → compose → lint —
 BEFORE any spawn.** Present the plan for review, then hand off to `run` mode.
@@ -75,16 +78,16 @@ Defaults run the team AS CONFIGURED. Reply "all defaults" to accept; name only w
 
 ③ Paths:
      in:   <spec>
-     out:  tools/workflow/json-summarize.js   (+ .md  + tests/)
+     out:  the json-summarize tool under tools/workflow/   (+ .md  + tests/)
 
 Advanced — all defaulted ("-v" expands):
      time 2h · scope task-folder · retries builder 5 / verify-loop 5 / everyone-else 1
 ```
 
-**Sample B — a `docs` round (document the already-delivered `tpm-workflow-cost-ledger.js`):**
+**Sample B — a `docs` round (document the already-delivered cost-ledger tool, run as `npx tpm workflow cost`):**
 
 ```
-Pre-task — docs round: document tpm-workflow-cost-ledger.js
+Pre-task — docs round: document the cost-ledger tool (`npx tpm workflow cost`)
 Defaults run the team AS CONFIGURED. Reply "all defaults" to accept; name only what you want changed.
 
 ① Roster + sequencing — serial:
@@ -99,7 +102,7 @@ Defaults run the team AS CONFIGURED. Reply "all defaults" to accept; name only w
      • a doc-accuracy check the verifier can reproduce
 
 ③ Paths:
-     in:   tools/workflow/tpm-workflow-cost-ledger.js   (read-only)
+     in:   the cost-ledger tool under tools/workflow/   (read-only)
      out:  tools/workflow/tpm-workflow-cost-ledger.md
 
 Advanced — all defaulted ("-v" expands):

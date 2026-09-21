@@ -80,9 +80,9 @@ import <id> --file ./tmp/tpm-task/edit-<id>.json` (add `--prune` to drop omitted
 
 ## `export` — serialize tasks
 
-`/tpm-task export <selector> [--out <path>]` → `tpm task export <selector> [--out <path>]`. The router
-sends `export` (and `search`) to `tpm-task-export.js` — **NOT** `tpm-task.js`, which has no `export`
-verb. Emits the selected tasks: default `--human` (rendered bodies) **to stdout** — there is no
+`/tpm-task export <selector> [--out <path>]` → `npx tpm task export <selector> [--out <path>]`. The router
+sends `export` (and `search`) to a dedicated exporter tool — the plain ledger verbs (`list`/`show`/…)
+have **no** `export` verb of their own. Emits the selected tasks: default `--human` (rendered bodies) **to stdout** — there is no
 config-derived output path, so pass `--out <dir|file>` to write a file (`--json` for records,
 `--per-file --out <dir>` for one `task-<id>.{json,md}` per task, `--thin` to drop history). Read-only
 against the store.

@@ -81,5 +81,5 @@ told.
 
 ## Operational, outside `methodology/`
 
-- **[`tools/README.md`](../../tools/README.md)** — canonical tool index.
+- **[`tools/README.md`](../../../tools/README.md)** — canonical tool index.
 - **`docs/project structure.md`** — flat repo inventory. *(Per-project doc, not shipped in the bundle; kept as a guidance pointer, not a live link.)*

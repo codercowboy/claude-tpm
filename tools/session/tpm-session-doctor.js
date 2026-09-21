@@ -31,7 +31,7 @@
  *  migrations exist, at which point hashing raw keeps the compare meaningful against a banner made
  *  from older bytes.
  *
- * ── NODE-INVOKABLE, NO BIN (Q5) ── run via bare `node session-tooling/tpm-session-doctor.js …`;
+ * ── NODE-INVOKABLE ── run via `npx tpm session doctor …` (routed), or bare `node tools/session/tpm-session-doctor.js …`;
  *  programmatic callers `require()` it for `runDoctor(...)`.
  *
  * Zero third-party deps; Node built-ins only.
@@ -207,7 +207,7 @@ function checkOldFormat(dirPath, subName) {
     number: shape.number,
     migratable: true,
     // The doctor is read-only: it names the migrator + a placeholder out-dir; the human runs it.
-    suggestion: `node tpm-session-migrate.js --in "${dirPath}" --out-dir "<choose-an-output-dir>"`,
+    suggestion: `npx tpm session migrate --in "${dirPath}" --out-dir "<choose-an-output-dir>"`,
   };
 }
 
@@ -355,18 +355,20 @@ function parseArgv(argv) {
 }
 
 const USAGE = `tpm-session-doctor — READ-ONLY session-store validator + drift detector (#1119)
-  run: node session-tooling/tpm-session-doctor.js --sessions-dir <dir> [--json] [--strict]
+  run: npx tpm session doctor [--sessions-dir <dir>] [--json] [--strict]
 
-  --sessions-dir <dir>  REQUIRED  the sessions store (READ-ONLY). Canonical session-<NNNN>.json is
-                                  found nested per-session (session-<NNNN>/session-<NNNN>.json, the
-                                  canonical layout); old-format 3-file subdirectories detected too
+  --sessions-dir <dir>  OPTIONAL (F4)  the sessions store (READ-ONLY). Omitted → resolved from the LOCAL
+                                  project's .claude/claude-tpm/config.json (session.notes.sessionsDir); the
+                                  flag OVERRIDES; with NEITHER, FAILS LOUD (never defaults to a live store).
+                                  Canonical session-<NNNN>.json is found nested per-session
+                                  (session-<NNNN>/session-<NNNN>.json); old-format 3-file dirs detected too
   --json                emit the structured report as JSON
   --strict              promote advisories (drift / unstamped / old-format / number-form) to exit 2
   --help                show this usage
 
 Exit: 0 = healthy (advisories allowed) · 1 = a validation FAIL · 2 = --strict + an advisory.
 STRICTLY READ-ONLY: no --fix, no write path. Old-format sessions are DETECTED + a migrate command
-is SUGGESTED; the doctor never converts (that is tpm-session-migrate.js, run explicitly by a human).`;
+is SUGGESTED; the doctor never converts (that is npx tpm session migrate, run explicitly by a human).`;
 
 function main(argv) {
   let opts;
@@ -377,6 +379,14 @@ function main(argv) {
     return 2;
   }
   if (opts.help) { process.stdout.write(USAGE + '\n'); return 0; }
+  // F4: --sessions-dir is OPTIONAL — resolve (flag > local project config.json > FAIL LOUD). Never a
+  // silent live-store default; resolveSessionsDir throws loud when neither a flag nor a local config.
+  try {
+    opts.sessionsDir = require('./tpm-session-config').resolveSessionsDir(opts.sessionsDir, undefined).sessionsDir;
+  } catch (e) {
+    process.stderr.write('tpm-session-doctor: ' + String(e.message) + '\n');
+    return 1;
+  }
   try {
     const report = runDoctor(opts);
     if (opts.json) process.stdout.write(JSON.stringify(report, null, 2) + '\n');

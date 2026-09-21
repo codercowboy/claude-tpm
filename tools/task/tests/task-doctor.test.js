@@ -248,7 +248,7 @@ test('OLD-FORMAT — a markdown-only store is DETECTED and migrate is SUGGESTED 
   assert.ok(r.oldFormat && r.oldFormat.detected, 'old-format detected');
   assert.strictEqual(r.oldFormat.bodyCount, 2, 'both markdown bodies counted');
   assert.strictEqual(r.oldFormat.marker, '1002', 'Next ID marker read from task-index.md');
-  assert.ok(/tpm-task-migrate\.js/.test(r.oldFormat.suggestion), 'suggests the migrator');
+  assert.ok(/npx tpm task migrate/.test(r.oldFormat.suggestion), 'suggests the migrator');
   assert.strictEqual(r.exitCode, 1, 'old-format is a problem → exit 1');
   assert.ok(/SUGGEST migrate/.test(doctor.renderHuman(r)), 'human render suggests migrate');
 });

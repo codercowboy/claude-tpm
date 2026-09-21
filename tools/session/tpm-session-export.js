@@ -29,8 +29,8 @@
  * ages render and open items never hit the converter's loud "opts.now is required" throw.
  *
  * ── NODE-INVOKABLE, NO BIN (Q5) ──
- * Runs via bare `node session-tooling/tpm-session-export.js …` — there is NO package.json `bin`
- * / npm-run entry. Programmatic callers `require()` it for `exportSessions(...)`.
+ * Runs via `npx tpm session export …` (routed through the `tpm` bin), or bare
+ * `node tools/session/tpm-session-export.js …`. Programmatic callers `require()` it for `exportSessions(...)`.
  *
  * Zero third-party deps; Node built-ins only.
  */
@@ -260,9 +260,11 @@ function parseArgv(argv) {
   return opts;
 }
 
-const USAGE = `tpm-session-export — session export tool (run: node session-tooling/tpm-session-export.js …)
+const USAGE = `tpm-session-export — session export tool (run: npx tpm session export …)
 
-  --sessions-dir <dir>     directory of session-<NNNN>.json (a SCRATCH or real dir)
+  --sessions-dir <dir>     directory of session-<NNNN>.json (a SCRATCH or real dir). OPTIONAL (F4):
+                           omitted → resolved from the LOCAL project's .claude/claude-tpm/config.json
+                           (session.notes.sessionsDir); the flag OVERRIDES; with NEITHER, FAILS LOUD.
   --last N                 export the N most-recent sessions (newest first)
   --session <NNNN>[,NNNN]  explicit selector list (repeatable; the #1092 seam) — no re-matching
   --style json|human|both  output format(s); repeatable / comma-list (default: json)
@@ -283,6 +285,11 @@ function main(argv) {
   }
   if (opts.help) { process.stdout.write(USAGE + '\n'); return 0; }
   try {
+    // F4: --sessions-dir is OPTIONAL — resolve (flag > local project config.json > FAIL LOUD). Never a
+    // silent live-store default; resolveSessionsDir throws loud when neither a flag nor a local config.
+    if (!opts.sessionsDir && !opts.records) {
+      opts.sessionsDir = require('./tpm-session-config').resolveSessionsDir(undefined, undefined).sessionsDir;
+    }
     const { outputs, written } = exportSessions(opts);
     if (!written) {
       // stdout: single output raw; multiple outputs delimited by a name banner.

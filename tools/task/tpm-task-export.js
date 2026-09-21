@@ -295,7 +295,9 @@ function orderKeyMs(candidate, by) {
  * by `--by` DESCENDING (newest-first) and slices the top N.
  */
 function selectCandidates(sel) {
-  if (!sel.tasksDir) throw new Error('tpm-task-export: --tasks-dir <dir> is required (scratch or real store)');
+  // F4: --tasks-dir OPTIONAL — resolve (flag > local project config.json > FAIL LOUD). NEVER a
+  // silent live-store default (resolveTasksDir throws loud when neither a flag nor a local config).
+  if (!sel.tasksDir) sel.tasksDir = require('./tpm-task-config').resolveTasksDir(null, null).tasksDir;
   const idx = model.readIndex(sel.tasksDir);
   const rows = Array.isArray(idx.tasks) ? idx.tasks : [];
   const candidates = rows.map((row) => {
@@ -462,7 +464,11 @@ function runSearch(argv) {
 // ── CLI ──────────────────────────────────────────────────────────────────────────
 
 const USAGE = `tpm-task-export — task export + search on ONE selector core
-  (run: node tpm-task-export.js <export|search> --tasks-dir <dir> [SELECTORS…] [SHAPE…])
+  (run: npx tpm task <export|search> [--tasks-dir <dir>] [SELECTORS…] [SHAPE…])
+
+  --tasks-dir <dir>        OPTIONAL (F4): omitted → resolved from the LOCAL project's
+                           .claude/claude-tpm/config.json (tasks.tasksDir); the flag OVERRIDES; with
+                           NEITHER the run FAILS LOUD (never defaults to a live store).
 
 Selectors (AND together):
   <id|LO-HI>…              explicit ids and/or ranges (also the comma form "1112,1119")
