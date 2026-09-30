@@ -26,20 +26,20 @@
  *
  * USAGE.
  *   # append a row to a flat round's ledger (<dir>/tmp/cost-ledger.md)
- *   npx tpm workflow cost --dir "<working folder>" \
+ *   tpm workflow cost --dir "<working folder>" \
  *     --agent round-w-8b3e --role worker --model opus \
  *     --tokens 715k --calls 198 --verdict ACCEPT --round "phase B" --note "ok"
  *
  *   # append a row to the EPIC ledger (<epic>/00-epic-plan/cost-ledger.md)
- *   npx tpm workflow cost --epic-path "<epic folder>" \
+ *   tpm workflow cost --epic-path "<epic folder>" \
  *     --agent orch --role orchestrator --tokens 40k --round "epic bookkeeping"
  *
  *   # print the running total for a ledger (flat or epic)
- *   npx tpm workflow cost --dir "<working folder>" --summary
- *   npx tpm workflow cost --epic-path "<epic folder>" --summary
+ *   tpm workflow cost --dir "<working folder>" --summary
+ *   tpm workflow cost --epic-path "<epic folder>" --summary
  *
  *   # roll the WHOLE epic up (per-phase breakdown + epic totals)
- *   npx tpm workflow cost --rollup "<epic folder>"
+ *   tpm workflow cost --rollup "<epic folder>"
  *
  * FLAGS.
  *   --dir <path>        The round's working folder (its tmp/ gets the ledger).
@@ -82,7 +82,7 @@ function arg(name, def) {
 if (arg('help') === true || arg('h') === true ||
     process.argv.includes('--help') || process.argv.includes('-h')) {
   // Print the header docstring's usage block.
-  console.log('npx tpm workflow cost (v2) — append a subagent cost row, print a total, or roll up an epic.');
+  console.log('tpm workflow cost (v2) — append a subagent cost row, print a total, or roll up an epic.');
   console.log('');
   console.log('Targets (exactly one required):');
   console.log('  --dir <path>        flat round ledger at <path>/tmp/cost-ledger.md');

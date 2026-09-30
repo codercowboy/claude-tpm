@@ -117,7 +117,7 @@ function mergeTasksConfig(rawTasks) {
  */
 function resolveTasksConfig(configPathArg, opts) {
   const options = opts || {};
-  const startDir = options.startDir || process.cwd();
+  const startDir = options.startDir; // undefined = implicit: findRoot applies $TPM_PROJECT_ROOT, then cwd walk-up
   const projectRoot = findRoot({ startDir, marker: PROJECT_MARKER });
   const usedDefaultLocation = !configPathArg;
   const configPath = configPathArg
@@ -202,7 +202,8 @@ function resolveTasksDir(flagValue, configPathArg, opts) {
   const err = new Error(
     '--tasks-dir is required: pass --tasks-dir <dir>, set TPM_TASKS_DIR, or run inside a project ' +
     '(a `.claude/claude-tpm/`-marked root, optionally with a local .claude/claude-tpm/config.json). ' +
-    'Refusing to default to a live store outside any project.',
+    'Refusing to default to a live store outside any project. ' +
+    'Human terminal: if this project uses the claude-tpm plugin, run `npx tpm install .` here to set it up.',
   );
   err.storeResolveFail = true;
   throw err;
@@ -223,7 +224,7 @@ function getDotted(obj, dottedKey) {
 function printHelp() {
   process.stdout.write(
     [
-      'Usage: npx tpm task config [--config <path>] (--json | --get <dotted.key> | --tasks-dir) [--help]',
+      'Usage: tpm task config [--config <path>] (--json | --get <dotted.key> | --tasks-dir) [--help]',
       '',
       "Resolves the 'tasks' section of a claude-tpm config.json over built-in defaults.",
       '',

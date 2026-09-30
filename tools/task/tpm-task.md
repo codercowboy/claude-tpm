@@ -1,5 +1,9 @@
 # `tpm-task.js` — task verbs (#1106/#1107/#1109/#1111)
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 The node-invokable task **verb** tool for `kind:"task"` records (P06). It operates off the canonical
 JSON: every mutating verb loads → mutates via the model → `saveTask`, which writes the canonical
 `task-<id>.json` **atomically first**, then regenerates the derived body `.md`, the machine
@@ -13,7 +17,7 @@ table) and [`../task-export-spec.md`](../task-export-spec.md) (the human render)
 
 **Run:**
 ```
-npx tpm task <verb> --tasks-dir <dir> [flags]
+tpm task <verb> --tasks-dir <dir> [flags]
 ```
 Programmatic callers `require('./tpm-task')` for `opAdd / opEdit / opImport / opAddSubtask / opCheck /
 opTransition / opReindex / opHistory / opList / opShow` (each mutating op returns the persisted record).
@@ -72,21 +76,21 @@ never breaks a store op (it falls back to ON).
 
 ## Examples
 ```
-npx tpm task add --tasks-dir /tmp/t --headline "Wire the router" --label infra --summary "port it"
-npx tpm task list --tasks-dir /tmp/t --now 2026-09-20T15:00:00-07:00
-npx tpm task start --tasks-dir /tmp/t 1000
-npx tpm task add-subtask --tasks-dir /tmp/t 1000 --text "first sub"
-npx tpm task check --tasks-dir /tmp/t 1000 A
-npx tpm task finish --tasks-dir /tmp/t 1000 --action "shipped in PR 42" --ref "PR#42"
-npx tpm task import --template > patch.json      # fill it in, then:
-npx tpm task import --tasks-dir /tmp/t 1500 --file patch.json
-npx tpm task history --tasks-dir /tmp/t 1500 --json
-npx tpm task reindex --tasks-dir /tmp/t
+tpm task add --tasks-dir /tmp/t --headline "Wire the router" --label infra --summary "port it"
+tpm task list --tasks-dir /tmp/t --now 2026-09-20T15:00:00-07:00
+tpm task start --tasks-dir /tmp/t 1000
+tpm task add-subtask --tasks-dir /tmp/t 1000 --text "first sub"
+tpm task check --tasks-dir /tmp/t 1000 A
+tpm task finish --tasks-dir /tmp/t 1000 --action "shipped in PR 42" --ref "PR#42"
+tpm task import --template > patch.json      # fill it in, then:
+tpm task import --tasks-dir /tmp/t 1500 --file patch.json
+tpm task history --tasks-dir /tmp/t 1500 --json
+tpm task reindex --tasks-dir /tmp/t
 ```
 
 Real close-guard refusal (open subtask `A` blocks `finish`):
 ```
-$ npx tpm task finish --tasks-dir /tmp/t 1000
+$ tpm task finish --tasks-dir /tmp/t 1000
 tpm-task: finishTask: refused — 1 open subtask(s) block close (#1111): A. Check or remove them first.
 # exit 1
 ```

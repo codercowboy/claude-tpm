@@ -22,6 +22,7 @@
  *   tpm task    <verb> [args…]      # task ledger                → task/tpm-task-router.js
  *   tpm workflow <verb> [args…]     # multi-agent round tooling  → workflow/tpm-workflow-router.js
  *   tpm hooks   <verb> [args…]      # PreToolUse hooks           → hooks/tpm-hooks-router.js
+ *   tpm plugin  <verb> [args…]      # plugin install/uninstall/doctor → plugin/tpm-plugin-router.js
  *   tpm install [dir] [options]     # graft claude-tpm onto an existing project
  *   tpm uninstall [dir] [options]   # reverse it (scope-aware: this project vs the whole system)
  *   tpm doctor [dir]                # read-only health check (= `install --check`)
@@ -31,9 +32,9 @@
  *   tpm doc <bundle-relative-path>  # print a bundle doc with ${TPM_HOME}/%TPM_HOME% resolved
  *   tpm --help | -h
  *
- *   e.g.  npx tpm session notes resume --where "…" --next "…"
- *         npx tpm workflow scaffold add-phase dev/<epic> --slug <slug>
- *         npx tpm install .
+ *   e.g.  tpm task list
+ *         tpm workflow scaffold add-phase dev/<epic> --slug <slug>
+ *         tpm install .
  */
 
 'use strict';
@@ -47,6 +48,7 @@ const SUITES = {
   task: 'task/tpm-task-router.js',
   workflow: 'workflow/tpm-workflow-router.js',
   hooks: 'hooks/tpm-hooks-router.js',
+  plugin: 'plugin/tpm-plugin-router.js',
 };
 
 // flat top-level verbs — NOT suites; they map straight to a script. Two groups: consumer-adoption
@@ -78,7 +80,8 @@ Suites:
   session    session-notes tooling   (ops / export / migrate / doctor)
   task       task ledger             (add / list / show / … / config / export / migrate / doctor)
   workflow   multi-agent rounds      (audit / compose / lint / scaffold / cost / signoff / doctor / config)
-  hooks      PreToolUse hooks        (gate-spawn)
+  hooks      PreToolUse hooks        (gate-spawn / session-start)
+  plugin     plugin management       (install / uninstall / doctor)
 
 Consumer adoption:
   install [dir] [options]     graft claude-tpm onto an existing project
@@ -95,8 +98,10 @@ Bundle primitives (self-locating; work in every permission mode):
   tpm --help, -h              show this message
 
 Everything after the suite is passed straight through, e.g.:
-  npx tpm session notes resume --where "…" --next "…"
-  npx tpm install .`);
+  tpm task list
+  npx tpm install .     # Human terminal: pre-install step, run from a plain project shell
+
+Human terminal: in a plain project shell (outside a Claude Code session), run these as \`npx tpm …\` (e.g. \`npx tpm doctor .\`).`);
 }
 
 function main(argv) {

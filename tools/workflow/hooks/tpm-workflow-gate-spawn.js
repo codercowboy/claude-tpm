@@ -82,7 +82,11 @@ function main() {
   } catch (_e) {
     process.exit(ALLOW); // helper unavailable → fail-open
   }
-  const root = payload.cwd || undefined; // hooks run at project root; let signoff resolve otherwise
+  // Root precedence (must agree with the sign-off WRITER): $CLAUDE_PROJECT_DIR (Claude Code always gives
+  // hooks the project dir; payload.cwd is the session's CURRENT folder and drifts on `cd`) > payload.cwd >
+  // signoff's own resolution (findRoot: $TPM_PROJECT_ROOT > cwd walk-up). A non-existent
+  // CLAUDE_PROJECT_DIR is simply not an existing token store -> no token -> normal block/allow logic.
+  const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || undefined;
   let res;
   try {
     // Bind to the session too (#1): a token stamped in a DIFFERENT Claude session won't authorize this
@@ -102,7 +106,7 @@ function main() {
     + 'This is Gate B (the spawn gate), separate from answering the pre-task questions (Gate A). '
     + 'A rambly or discussion turn is NOT a kickoff. To proceed: (1) ensure the pre-task roster was '
     + 'presented and answered, (2) ask the user an explicit "kick it off now?" and get an explicit '
-    + 'yes, (3) record it: `npx tpm workflow signoff spawn --roster "<one-line>"`, then re-spawn. '
+    + 'yes, (3) record it: `tpm workflow signoff spawn --round "<phase-dir>" --roster "<one-line>"`, then re-spawn. '
     + '(Never write that token from your own inference of the user\'s intent — only from an explicit confirmation.)\n',
   );
   process.exit(BLOCK);

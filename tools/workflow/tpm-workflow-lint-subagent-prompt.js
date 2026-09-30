@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * npx tpm workflow lint (v2) - validate a subagent spawn prompt AND catch
+ * tpm workflow lint (v2) - validate a subagent spawn prompt AND catch
  * unresolved template sentinels before a subagent is spawned or a plan/charter
  * is handed to a worker.
  *
@@ -38,15 +38,15 @@
  *
  * USAGE.
  *   # Full spawn-prompt lint (manifest chain + structural + sentinels):
- *   npx tpm workflow lint --file draft-prompt.md
- *   npx tpm workflow lint --file draft.md --manifest path/to/reading-list.md
- *   npx tpm workflow lint --file draft.md --verifier --verbose
+ *   tpm workflow lint --file draft-prompt.md
+ *   tpm workflow lint --file draft.md --manifest path/to/reading-list.md
+ *   tpm workflow lint --file draft.md --verifier --verbose
  *
  *   # Sentinel-only scan of a finalized plan / charter (no env ritual, no chain):
- *   npx tpm workflow lint --file plan.md --sentinels-only --require charter
+ *   tpm workflow lint --file plan.md --sentinels-only --require charter
  *
  *   # Standalone blocked-filename guard (no body needed):
- *   npx tpm workflow lint --sentinels-only --filename my-findings.md
+ *   tpm workflow lint --sentinels-only --filename my-findings.md
  *
  * FLAGS.
  *   --file <path>          Read the prompt/plan/charter from a file (default: stdin,
@@ -108,6 +108,7 @@ const path = require('path');
 
 // Sibling dependency (same suite/folder) - per-suite portability rule: this
 // file + tpm-workflow-check-filename.js travel together. Build on it; do not re-implement.
+const { findRoot } = require('../lib/paths');
 const { isBlockedFilename } = require('./tpm-workflow-check-filename.js');
 
 // The library include-token must byte-match the token consumer manifests write
@@ -221,7 +222,7 @@ function findManifest(opts) {
     }
     return p;
   }
-  const consumer = path.resolve(process.cwd(), MANIFEST_REL);
+  const consumer = path.resolve(findRoot({ quiet: true }), MANIFEST_REL);
   if (fs.existsSync(consumer)) return consumer;
   return libraryManifest();
 }
@@ -229,7 +230,7 @@ function findManifest(opts) {
 function consumerDocExists(basename) {
   const rel = path.join('claude-context', 'methodology', basename);
   return [
-    path.resolve(process.cwd(), rel),
+    path.resolve(findRoot({ quiet: true }), rel),
     path.resolve(__dirname, '..', '..', rel),
   ].some(c => fs.existsSync(c));
 }
@@ -394,15 +395,15 @@ function buildStructuralChecks() {
       // mechanism that self-locates the bundle. The token-resolving hooks are retired, so a bare
       // `claude-context/methodology/…` dead-ends at the consumer root AND an un-anchored `%TPM_HOME%/…`
       // read-path is no longer sufficient on its own — nothing resolves the token for the worker. Two
-      // resolving forms are accepted: `npx tpm doc <path>` (self-resolving, bypass-safe), or a
-      // `%TPM_HOME%/` / `${TPM_HOME}/` token prefix PAIRED WITH a `npx tpm resolve-home` anchor
+      // resolving forms are accepted: `tpm doc <path>` (self-resolving, bypass-safe), or a
+      // `%TPM_HOME%/` / `${TPM_HOME}/` token prefix PAIRED WITH a `tpm resolve-home` anchor
       // instruction (the worker runs it once and resolves the token paths against the printed root).
       id: 'bundle-paths-tokenized',
       name: 'Bundle methodology paths resolve (via `tpm doc`, or %TPM_HOME%/ + a resolve-home anchor)',
       docPointer: 'tpm-doc.js / tpm-home.js (resolve-home) — anchor-first bundle-relative resolution',
       applies: (_b, o) => !o.sentinelsOnly,
       test: body => {
-        // No BARE methodology path may survive — each must be prefixed by a token or `npx tpm doc `.
+        // No BARE methodology path may survive — each must be prefixed by a token or `tpm doc `.
         if (/(?<!\$\{TPM_HOME\}\/)(?<!%TPM_HOME%\/)(?<!doc )claude-context\/methodology\//.test(body)) return false;
         // A %TPM_HOME%/ (or ${TPM_HOME}/) read-path only resolves once the worker has run the anchor,
         // so whenever that token form is used, the resolve-home anchor instruction must accompany it.

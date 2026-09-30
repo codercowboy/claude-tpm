@@ -493,7 +493,7 @@ function parseArgs(argv) {
   return { globals, sub, args };
 }
 
-const USAGE = `tpm-task — JSON-backed task verbs (run: npx tpm task <verb> [--tasks-dir <dir>] …)
+const USAGE = `tpm-task — JSON-backed task verbs (run: tpm task <verb> [--tasks-dir <dir>] …)
 
 Common:  --tasks-dir <dir>   the task store (a SCRATCH or real dir). OPTIONAL (F4/#1132): when omitted it
                              resolves by precedence — (1) this flag, (2) TPM_TASKS_DIR env, (3) the LOCAL
@@ -532,7 +532,7 @@ Verbs:
 Every mutation writes the canonical task-<id>.json atomically, then regenerates the derived body .md,
 the machine tasks-index.json, and the three human index .md views. Import IGNORES mechanical fields
 (id/state/timestamps/history/endAction); state moves only via the lifecycle verbs (G3 enforced).
-export / search route to the export tool — run \`npx tpm task export\` / \`npx tpm task search\`.`;
+export / search route to the export tool — run \`tpm task export\` / \`tpm task search\`.`;
 
 function applyHistoryGate(globals) {
   // Explicit --history wins; else resolve config (tolerant — default ON if resolution fails).
@@ -671,7 +671,7 @@ function dispatch(sub, globals, args) {
       return 0;
     }
     case 'export': case 'search':
-      process.stderr.write(`tpm-task: '${sub}' is handled by the export tool — use \`npx tpm task ${sub}\` (not built in this tool).\n`);
+      process.stderr.write(`tpm-task: '${sub}' is handled by the export tool — use \`tpm task ${sub}\` (not built in this tool).\n`);
       return 2;
     default:
       throw new Error(`unknown verb '${sub}'`);

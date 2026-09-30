@@ -1,5 +1,9 @@
 # `tpm-task-export.js` — export + search (#1092)
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 `tpm task export` and `tpm task search` on ONE selector core (P07). `buildSelector` parses the identical
 selector set once; `selectCandidates` evaluates it against `tasks-index.json` (the fast path — a body
 `task-<id>.json` is opened only when a predicate needs it: `--match` prose, `--closed-since` / `--by
@@ -13,7 +17,7 @@ Format authorities (cross-referenced, not restated here):
 
 **Run:**
 ```
-npx tpm task <export|search> --tasks-dir <dir> [SELECTORS…] [SHAPE…]
+tpm task <export|search> --tasks-dir <dir> [SELECTORS…] [SHAPE…]
 ```
 `export` is the default mode when no mode token leads. Programmatic callers `require('./tpm-task-export')`
 for `buildSelector / selectCandidates / matchesRow / runExport / runSearch / pointerFor`.
@@ -21,7 +25,7 @@ for `buildSelector / selectCandidates / matchesRow / runExport / runSearch / poi
 ## Common flag
 | Flag | Meaning |
 |------|---------|
-| `--tasks-dir <dir>` | the task store to read. **Required — never defaults to the live store.** |
+| `--tasks-dir <dir>` | the task store to read. **Optional:** omitted, it is resolved from the project root's `.claude/claude-tpm/config.json` (`tasks.tasksDir`); the flag overrides. |
 | `--now <iso>` | reference time for relative windows AND human-render ages (default: now; makes runs deterministic). |
 
 ## Selectors (AND together)
@@ -65,25 +69,25 @@ line/snippet.
 
 ## Examples
 ```
-npx tpm task export --tasks-dir /tmp/t --state open --json          # open tasks, full records
-npx tpm task export --tasks-dir /tmp/t --open --human               # human dump, open + in-progress
-npx tpm task export --tasks-dir /tmp/t --closed --json --thin       # recently closed, history dropped
-npx tpm task export --tasks-dir /tmp/t 1000-1500 --json --per-file --out ./out
-npx tpm task export --tasks-dir /tmp/t --last 1 --by created --json
-npx tpm task search --tasks-dir /tmp/t --match router              # id·file·line·snippet pointers
-npx tpm task search --tasks-dir /tmp/t --match router --json
+tpm task export --tasks-dir /tmp/t --state open --json          # open tasks, full records
+tpm task export --tasks-dir /tmp/t --open --human               # human dump, open + in-progress
+tpm task export --tasks-dir /tmp/t --closed --json --thin       # recently closed, history dropped
+tpm task export --tasks-dir /tmp/t 1000-1500 --json --per-file --out ./out
+tpm task export --tasks-dir /tmp/t --last 1 --by created --json
+tpm task search --tasks-dir /tmp/t --match router              # id·file·line·snippet pointers
+tpm task search --tasks-dir /tmp/t --match router --json
 ```
 
 Real invalid-window guard (EXIT 2, not a silent empty result):
 ```
-$ npx tpm task export --tasks-dir /tmp/t --opened-since garbage
+$ tpm task export --tasks-dir /tmp/t --opened-since garbage
 tpm-task-export: invalid window 'garbage' — expected a relative window (Nd | Nh | Nw) or a date (YYYY-MM-DD)
 # exit 2
 ```
 
 Real search pointer:
 ```
-$ npx tpm task search --tasks-dir /tmp/t --match router
+$ tpm task search --tasks-dir /tmp/t --match router
 #1000  bodies/1000-1999/task-1000.json:6  "headline": "Wire the router",
 ```
 

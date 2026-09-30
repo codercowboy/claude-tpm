@@ -86,9 +86,9 @@ check('render emits the resolve-home anchor then one doc line per entry', () => 
   const out = render('orchestrator', ['claude-context/methodology/a.md', 'claude-context/methodology/b.md']);
   const lines = out.trim().split('\n');
   assert.ok(lines[0].startsWith('# Reading list — orchestrator (2 docs'));
-  assert.strictEqual(lines[2], 'npx tpm resolve-home');
-  assert.strictEqual(lines[3], 'npx tpm doc claude-context/methodology/a.md');
-  assert.strictEqual(lines[4], 'npx tpm doc claude-context/methodology/b.md');
+  assert.strictEqual(lines[2], 'tpm resolve-home');
+  assert.strictEqual(lines[3], 'tpm doc claude-context/methodology/a.md');
+  assert.strictEqual(lines[4], 'tpm doc claude-context/methodology/b.md');
 });
 
 // ── pure: chainEntries end-to-end from manifest content ───────────────────────────
@@ -135,17 +135,17 @@ check('orchestrator role → anchor-form chain, exit 0', () => {
   const r = run(['orchestrator'], bundle);
   assert.strictEqual(r.status, 0);
   const lines = r.out.trim().split('\n');
-  assert.strictEqual(lines[2], 'npx tpm resolve-home');
-  assert.strictEqual(lines[3], 'npx tpm doc claude-context/methodology/project-workspace.md');
-  assert.strictEqual(lines[4], 'npx tpm doc claude-context/methodology/orchestrator/handbook.md');
+  assert.strictEqual(lines[2], 'tpm resolve-home');
+  assert.strictEqual(lines[3], 'tpm doc claude-context/methodology/project-workspace.md');
+  assert.strictEqual(lines[4], 'tpm doc claude-context/methodology/orchestrator/handbook.md');
 });
 check('subagent role → base block only (numbered entries), exit 0', () => {
   const r = run(['subagent'], bundle);
   assert.strictEqual(r.status, 0);
-  const docs = r.out.trim().split('\n').filter((l) => l.startsWith('npx tpm doc'));
+  const docs = r.out.trim().split('\n').filter((l) => l.startsWith('tpm doc'));
   assert.deepStrictEqual(docs, [
-    'npx tpm doc claude-context/methodology/project-workspace.md',
-    'npx tpm doc claude-context/methodology/subagent/handbook.md',
+    'tpm doc claude-context/methodology/project-workspace.md',
+    'tpm doc claude-context/methodology/subagent/handbook.md',
   ]);
 });
 check('unknown role → exit 2 + lists known roles', () => {
@@ -171,8 +171,8 @@ check('REAL bundle: both roles emit only existing docs', () => {
     assert.strictEqual(r.status, 0, `${role} should exit 0`);
     const root = path.resolve(TOOLS, '..');
     const docs = r.out.trim().split('\n')
-      .filter((l) => l.startsWith('npx tpm doc '))
-      .map((l) => l.replace('npx tpm doc ', ''));
+      .filter((l) => l.startsWith('tpm doc '))
+      .map((l) => l.replace('tpm doc ', ''));
     assert.ok(docs.length > 0, `${role} should emit at least one doc`);
     for (const rel of docs) {
       assert.ok(fs.existsSync(path.join(root, rel)), `${role} doc must exist: ${rel}`);

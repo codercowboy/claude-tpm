@@ -241,9 +241,15 @@ check('preflightMessage: EACCES → "found but not executable" + host-vs-VM hint
   assert.ok(/not executable \(EACCES\)/.test(m) && /THIS host/.test(m) && /VM/.test(m));
 });
 check('claudeCliAvailable: returns a classifySpawn verdict object (callers read .ok/.errorCode)', () => {
-  const v = uninst.claudeCliAvailable();
+  // Guard (fb2): never probe the AMBIENT `claude` — put a fake first (and ONLY) on PATH for this call.
+  const fakeBin = path.join(mkTmp(), 'bin'); fs.mkdirSync(fakeBin, { recursive: true });
+  fs.writeFileSync(path.join(fakeBin, 'claude'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  const savedPath = process.env.PATH;
+  let v;
+  try { process.env.PATH = fakeBin; v = uninst.claudeCliAvailable(); } finally { process.env.PATH = savedPath; }
   assert.strictEqual(typeof v, 'object');
   assert.ok('ok' in v && 'ran' in v && 'errorCode' in v);
+  assert.strictEqual(v.ok, true, 'the fake claude on PATH answered (proves the probe used it, not a real one)');
 });
 
 // ── --debug operation-trace flag (parity: --debug / TPM_DEBUG / [tpm-debug] prefix) ──
@@ -283,7 +289,7 @@ function runToolWithClaude(args, plant, envExtra) {
   fs.mkdirSync(bin, { recursive: true });
   if (plant === 'fake') { fs.writeFileSync(path.join(bin, 'claude'), FAKE_CLAUDE_SHIM); fs.chmodSync(path.join(bin, 'claude'), 0o755); }
   else if (plant === 'noexec') { fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\necho nope\n'); fs.chmodSync(path.join(bin, 'claude'), 0o644); }
-  const env = Object.assign({}, envExtra, { PATH: plant === 'fake' ? (bin + path.delimiter + process.env.PATH) : bin });
+  const env = Object.assign({ CLAUDE_CONFIG_DIR: mkTmp() }, envExtra, { PATH: plant === 'fake' ? (bin + path.delimiter + process.env.PATH) : bin });
   // Launch via process.execPath (absolute node), NOT `node` — env.PATH is restricted for the noexec/absent
   // cases, so relying on PATH to find node would ENOENT on the tool launch itself before its preflight runs.
   const r = spawnSync(process.execPath, [TOOL, ...args], { encoding: 'utf8', env, timeout: 15000 });
@@ -318,6 +324,174 @@ check('--help lists the --debug row', () => {
   const r = spawnSync('node', [TOOL, '--help'], { encoding: 'utf8' });
   assert.strictEqual(r.status, 0);
   assert.ok(/--debug/.test(r.stdout || ''));
+});
+
+// ══ 5.3 — uninstaller mirror rule + scopes ═══════════════════════════════════════════════════════════
+// Stateful fake `claude` (tests/fake-claude-stateful.js) first on PATH; CLAUDE_CONFIG_DIR + HOME point at a
+// scratch dir so the "installed_plugins.json" read never reaches the real ~/.claude.
+const FAKE_STATEFUL = path.resolve(__dirname, '..', 'fake-claude-stateful.js');
+const BUNDLE_REAL = fs.realpathSync(uninst.findBundleRoot(__dirname));
+function runUninstStateful(dir, args, o) {
+  o = o || {};
+  const work = mkTmp();
+  const shim = path.join(work, 'claude'); fs.copyFileSync(FAKE_STATEFUL, shim); fs.chmodSync(shim, 0o755);
+  const statePath = path.join(work, 'state.json'); const logPath = path.join(work, 'calls.jsonl');
+  fs.writeFileSync(statePath, JSON.stringify({ marketplaces: o.marketplaces || [], records: o.records || [] }));
+  const cfg = path.join(work, 'claude-config');
+  if (o.fileRecords) {
+    fs.mkdirSync(path.join(cfg, 'plugins'), { recursive: true });
+    fs.writeFileSync(path.join(cfg, 'plugins', 'installed_plugins.json'), JSON.stringify(o.fileRecords));
+  }
+  const env = Object.assign({}, process.env, { PATH: work + path.delimiter + process.env.PATH,
+    FAKE_CLAUDE_STATE: statePath, FAKE_CLAUDE_LOG: logPath, CLAUDE_CONFIG_DIR: cfg, HOME: work });
+  const r = spawnSync('node', [TOOL, dir].concat(args || []), { encoding: 'utf8', env, input: o.input || '', timeout: 30000 });
+  const calls = fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : [];
+  return { status: r.status, out: (r.stdout || '') + (r.stderr || ''), calls, state: JSON.parse(fs.readFileSync(statePath, 'utf8')) };
+}
+const mutLines = (r) => r.calls.filter((c) => (c.argv[1] === 'marketplace' && c.argv[2] === 'remove') ||
+  ['install', 'enable', 'disable', 'uninstall'].indexOf(c.argv[1]) >= 0).map((c) => c.argv.join(' '));
+function consumerDir() { const d = mkTmp(); writePkg(d, { name: 'consumer', version: '1.0.0' }); return d; }
+const rowSame = () => [{ name: MK, source: 'directory', path: BUNDLE_REAL }];
+const rec = (projectPath) => ({ id: PLUGIN_ID, scope: 'project', enabled: true, installPath: BUNDLE_REAL, projectPath });
+
+check('5.3 pure: flattenInstalledPlugins reads the v2 map-of-arrays, a plain array, and ignores other ids', () => {
+  const v2 = { version: 2, plugins: { [PLUGIN_ID]: [{ scope: 'project', projectPath: '/a' }, { scope: 'user' }], 'other@m': [{ scope: 'project', projectPath: '/z' }] } };
+  assert.deepStrictEqual(uninst.flattenInstalledPlugins(v2, PLUGIN_ID).map((r) => r.projectPath), ['/a', undefined]);
+  assert.strictEqual(uninst.flattenInstalledPlugins([{ id: PLUGIN_ID, scope: 'project', projectPath: '/b' }, { id: 'x@y' }], PLUGIN_ID).length, 1);
+  assert.deepStrictEqual(uninst.flattenInstalledPlugins(null, PLUGIN_ID), []);
+});
+check('5.3 pure: otherUsersOf excludes THIS project (even via a symlink), names the others, treats unknowns conservatively', () => {
+  const me = mkTmp(); const meLink = path.join(mkTmp(), 'l'); fs.symlinkSync(me, meLink); const other = mkTmp();
+  assert.deepStrictEqual(uninst.otherUsersOf([{ id: PLUGIN_ID, projectPath: meLink, scope: 'project' }], me), []);
+  assert.deepStrictEqual(uninst.otherUsersOf([{ id: PLUGIN_ID, projectPath: me }, { id: PLUGIN_ID, projectPath: other }, { id: PLUGIN_ID, projectPath: other }], me), [other], 'deduped');
+  assert.strictEqual(uninst.otherUsersOf([{ id: PLUGIN_ID, scope: 'user' }], me).length, 1, 'a user-scope install counts as another user');
+  assert.strictEqual(uninst.otherUsersOf([{ id: PLUGIN_ID, scope: 'project' }], me).length, 1, 'no projectPath → can\'t prove it is ours → counts');
+  assert.deepStrictEqual(uninst.otherUsersOf([{ id: 'unrelated@m', projectPath: other }], me), []);
+});
+check('5.3 pure: parsePluginList(list, target) matches only THIS project\'s record', () => {
+  const me = mkTmp(); const other = mkTmp();
+  assert.deepStrictEqual(uninst.parsePluginList([{ id: PLUGIN_ID, scope: 'project', enabled: true, projectPath: other }], me), { installed: false, enabled: false });
+  assert.deepStrictEqual(uninst.parsePluginList([{ id: PLUGIN_ID, scope: 'project', enabled: false, projectPath: me }], me), { installed: true, enabled: false });
+});
+
+check('5.3 mirror rule: LAST project → plugin uninstalled at project scope (cwd=target), marketplace row removed (resolved name, no --scope), dep step skipped', () => {
+  const dir = consumerDir();
+  const r = runUninstStateful(dir, ['--quiet'], { marketplaces: rowSame(), records: [rec(dir)] });
+  assert.strictEqual(r.status, 0, r.out);
+  assert.deepStrictEqual(mutLines(r), [`plugin uninstall ${PLUGIN_ID} --scope project -y`, `plugin marketplace remove ${MK}`]);
+  const un = r.calls.find((c) => c.argv[1] === 'uninstall');
+  assert.strictEqual(fs.realpathSync(un.cwd), fs.realpathSync(dir));
+  assert.deepStrictEqual(r.state.marketplaces, [], 'row gone');
+  assert.deepStrictEqual(r.state.records, [], 'record gone');
+});
+check('5.3 mirror rule: ANOTHER project has an install record (CLI list) → row LEFT, other project NAMED, message warns removal would uninstall it for them', () => {
+  const dir = consumerDir(); const other = mkTmp();
+  const r = runUninstStateful(dir, ['--quiet'], { marketplaces: rowSame(), records: [rec(dir), rec(other)] });
+  assert.strictEqual(r.status, 0, r.out);
+  assert.deepStrictEqual(mutLines(r), [`plugin uninstall ${PLUGIN_ID} --scope project -y`], 'no marketplace remove');
+  assert.strictEqual(r.state.marketplaces.length, 1, 'row still registered');
+  assert.deepStrictEqual(r.state.records.map((x) => x.projectPath), [other], 'only the other project\'s record remains');
+  assert.ok(r.out.indexOf(other) >= 0, 'names the project still using it');
+  assert.ok(/uninstall it for them/.test(r.out) && /install record/.test(r.out), r.out);
+});
+check('5.3 mirror rule: the other project is visible ONLY in installed_plugins.json (CLI list shows just this one) → row still LEFT', () => {
+  const dir = consumerDir(); const other = mkTmp();
+  const r = runUninstStateful(dir, ['--quiet'], { marketplaces: rowSame(), records: [rec(dir)],
+    fileRecords: { version: 2, plugins: { [PLUGIN_ID]: [{ scope: 'project', projectPath: other, installPath: BUNDLE_REAL }] } } });
+  assert.strictEqual(r.status, 0, r.out);
+  assert.ok(!mutLines(r).some((l) => /marketplace remove/.test(l)), 'row not removed: ' + mutLines(r));
+  assert.ok(r.out.indexOf(other) >= 0);
+});
+check('5.3 scopes: --system removes the row EVEN WITH other projects, names them and the #11a consequence', () => {
+  const dir = consumerDir(); const other = mkTmp();
+  const r = runUninstStateful(dir, ['--quiet', '--system'], { marketplaces: rowSame(), records: [rec(dir), rec(other)] });
+  assert.strictEqual(r.status, 0, r.out);
+  assert.deepStrictEqual(mutLines(r), [`plugin uninstall ${PLUGIN_ID} --scope project -y`, `plugin marketplace remove ${MK}`]);
+  assert.deepStrictEqual(r.state.records, [], 'marketplace remove wiped the other project\'s record too (fake mirrors probe #11a)');
+  assert.ok(r.out.indexOf(other) >= 0 && /uninstalls the plugin for every project/.test(r.out) && /WHOLE-SYSTEM/.test(r.out), r.out);
+});
+check('5.3 scopes: --system interactive decline → exit 1, nothing mutated', () => {
+  const dir = consumerDir();
+  const r = runUninstStateful(dir, ['--system'], { input: 'n\n', marketplaces: rowSame(), records: [rec(dir)] });
+  assert.strictEqual(r.status, 1, r.out);
+  assert.deepStrictEqual(mutLines(r), []);
+});
+check('5.3 messages use the RESOLVED marketplace name, never the bare hardcoded claude-tpm-market', () => {
+  const dir = consumerDir(); const other = mkTmp();
+  for (const [args, records] of [[['--quiet'], [rec(dir)]], [['--quiet'], [rec(dir), rec(other)]], [['--quiet', '--system'], [rec(dir), rec(other)]]]) {
+    const r = runUninstStateful(dir, args, { marketplaces: rowSame(), records });
+    assert.ok(!/claude-tpm-market(?![-\w])/.test(r.out), 'bare name leaked: ' + r.out);
+    assert.ok(r.out.indexOf(MK) >= 0, 'resolved name present');
+  }
+});
+check('5.3 landmine: row left behind that points INSIDE this project\'s node_modules (real copy) → interactive consent; decline = exit 1, nothing mutated', () => {
+  const dir = consumerDir(); const other = mkTmp();
+  const nm = path.join(dir, 'node_modules', TPM_PKG_NAME); writePkg(nm, { name: TPM_PKG_NAME });
+  const r = runUninstStateful(dir, ['--project'], { input: 'n\n', marketplaces: [{ name: MK, source: 'directory', path: nm }], records: [rec(dir), rec(other)] });
+  assert.strictEqual(r.status, 1, r.out);
+  assert.ok(/points INSIDE this project's node_modules/.test(r.out) && r.out.indexOf(other) >= 0);
+  assert.deepStrictEqual(mutLines(r), []);
+});
+check('5.3 landmine does NOT fire when node_modules is just a symlink to the central folder the row points at', () => {
+  const dir = consumerDir(); const other = mkTmp();
+  const scope = path.join(dir, 'node_modules', '@codercowboy'); fs.mkdirSync(scope, { recursive: true });
+  fs.symlinkSync(BUNDLE_REAL, path.join(scope, 'claude-tpm'));
+  const r = runUninstStateful(dir, ['--quiet'], { marketplaces: rowSame(), records: [rec(dir), rec(other)] });
+  assert.strictEqual(r.status, 0, r.out);
+  assert.ok(!/points INSIDE/.test(r.out), r.out);
+});
+// ══ 5.6 — output UX ═════════════════════════════════════════════════════════════════════════════════
+check('5.6 uninstall output: step headers ("Step N/M · Title"), command + one sentence, no command:/edits:/does:; leaving the shared row is ONE explanatory block naming the other project', () => {
+  const dir = consumerDir(); const other = mkTmp();
+  const r = runUninstStateful(dir, ['--quiet'], { marketplaces: rowSame(), records: [rec(dir), rec(other)] });
+  assert.strictEqual(r.status, 0, r.out);
+  assert.ok(/^Step 1\/2 · Uninstall the plugin from this project$/m.test(r.out), r.out);
+  assert.ok(/^\s+\$ claude plugin uninstall /m.test(r.out) && !/^\s+(command|edits|does):/m.test(r.out), r.out);
+  assert.ok(/^✓ Marketplace row ".*" left in place — 1 other project still uses it:/m.test(r.out), r.out);
+  assert.ok(/^Step 2\/2 · Remove the claude-tpm dependency$|^✓ Step 2\/2 · Remove the claude-tpm dependency — already done, skipped\.$/m.test(r.out), r.out);
+});
+check('5.6 uninstall --system output names the registry edit once and the whole-system warning; the step header says "(whole system)"', () => {
+  const dir = consumerDir();
+  const r = runUninstStateful(dir, ['--quiet', '--system'], { marketplaces: rowSame(), records: [rec(dir)] });
+  assert.ok(/^Step 2\/3 · Remove the marketplace row \(whole system\)$/m.test(r.out), r.out);
+  assert.ok(/\(changes: this machine's Claude Code marketplace registry, user scope\)/.test(r.out), r.out);
+});
+check('5.6 uninstall --check: one line per row (✓ removed / ✗ still there + fix:), neutral labels, summary line, exit code unchanged', () => {
+  const dir = consumerDir();
+  const bad = runUninstStateful(dir, ['--check'], { marketplaces: rowSame(), records: [rec(dir)] });
+  assert.strictEqual(bad.status, 1, bad.out);
+  assert.ok(/^\s+✗ plugin install record\s+.*still installed here/m.test(bad.out) && /^\s+✗ marketplace\s+.*still registered/m.test(bad.out), bad.out);
+  const lines = bad.out.split('\n');
+  lines.forEach((l, i) => { if (/^\s+✗ /.test(l)) assert.ok(/^\s+fix: \S/.test(lines[i + 1] || ''), l); });
+  assert.ok(/Summary: \d ok · \d problems?/.test(bad.out), bad.out);
+  assert.ok(!/is NOT/.test(bad.out), 'labels do not state the passing condition: ' + bad.out);
+  const clean = runUninstStateful(dir, ['--check'], { marketplaces: [], records: [] });
+  const depLeft = /✗ claude-tpm dependency/.test(clean.out);
+  assert.strictEqual(clean.status, depLeft ? 1 : 0, clean.out);
+  assert.ok(/^\s+✓ plugin install record\s+removed/m.test(clean.out) && /^\s+✓ marketplace\s+not registered/m.test(clean.out), clean.out);
+});
+
+check('5.3 help describes the mirror rule and the resolved name', () => {
+  const r = spawnSync('node', [TOOL, '--help'], { encoding: 'utf8' });
+  assert.ok(/MIRRORS/.test(r.stdout) && /no OTHER\s+project/.test(r.stdout) && /USER scope/.test(r.stdout));
+  assert.ok(!/marketplace remove claude-tpm-market`/.test(r.stdout), 'no hardcoded bare name in command examples');
+});
+
+
+// ── 5.2 consistency: the install's "uninstall from the other project first" option prints
+//    `cd <other project> && npx tpm uninstall --system` — that flag must exist and free the row. ──────────
+check('5.2 hint consistency: `uninstall --system` (printed by the install real-copy option 2) parses, and --quiet --system from the project that owns the real copy removes the marketplace row', () => {
+  assert.strictEqual(uninst.parseArgs(['--system']).system, true);
+  const other = consumerDir();
+  const copy = path.join(other, 'node_modules', '@codercowboy', 'claude-tpm');
+  fs.mkdirSync(path.join(copy, '.claude-plugin'), { recursive: true });
+  fs.writeFileSync(path.join(copy, '.claude-plugin', 'marketplace.json'), JSON.stringify({ name: MK, plugins: [{ name: 'claude-tpm' }] }));
+  const realCopy = fs.realpathSync(copy);
+  const r = runUninstStateful(other, ['--quiet', '--system'], { marketplaces: [{ name: MK, source: 'directory', path: realCopy }],
+    records: [{ id: PLUGIN_ID, scope: 'project', enabled: true, installPath: realCopy, projectPath: other }] });
+  assert.strictEqual(r.status, 0, r.out);
+  assert.deepStrictEqual(r.state.marketplaces, [], 'the row that pointed at the real copy is gone (freed for the next install)');
+  assert.ok(mutLines(r).indexOf(`plugin marketplace remove ${MK}`) >= 0, mutLines(r).join(' | '));
 });
 
 cleanup();

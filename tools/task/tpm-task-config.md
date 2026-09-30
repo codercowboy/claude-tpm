@@ -1,5 +1,9 @@
 # `tpm-task-config.js` — the `tasks` config resolver (the #1109 history gate)
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 A minimal, suite-local resolver for the `tasks` section of a project's
 `.claude/claude-tpm/config.json` (P06 port). It reads the config file if present, merges its `tasks`
 section over built-in defaults, and hands back the fully resolved registry so every task tool AND the
@@ -12,7 +16,7 @@ Overview + file map: [`README.md`](README.md). Verb tool that consumes the gate:
 
 **Run:**
 ```
-npx tpm task config [--config <path>] (--json | --get <dotted.key> | --tasks-dir) [--help]
+tpm task config [--config <path>] (--json | --get <dotted.key> | --tasks-dir) [--help]
 ```
 Programmatic callers `require('./tpm-task-config')` for `resolveTasksConfig / mergeTasksConfig /
 getDefaults / tasksDirAbs / getDotted`.
@@ -57,16 +61,16 @@ config accepts either `history: { enabled: <bool> }` or a bare boolean `history`
 
 ## Examples
 ```
-$ npx tpm task config --get history.enabled
+$ tpm task config --get history.enabled
 true
-$ npx tpm task config --get startId
+$ tpm task config --get startId
 1000
-$ npx tpm task config --tasks-dir
+$ tpm task config --tasks-dir
 /…/claude-tpm-dev/.claude/claude-tpm/tasks
-$ npx tpm task config --config /nope/config.json --json
+$ tpm task config --config /nope/config.json --json
 config: --config path does not exist: /nope/config.json
 # exit 1
-$ npx tpm task config --get no.such.key
+$ tpm task config --get no.such.key
 config: no such key "no.such.key" in resolved config.
 # exit 1
 ```

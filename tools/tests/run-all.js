@@ -19,9 +19,21 @@
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { ensureRunSlug } = require('./lib/scratch');
+
+// Env isolation (D8): a test run must never inherit the invoking Claude session's TPM_PROJECT_ROOT /
+// TPM_HOME — a leaked TPM_PROJECT_ROOT would redirect every tool at that real project. Tests that need
+// either set it explicitly in their own child env.
+function cleanEnv() {
+  const env = { ...process.env };
+  delete env.TPM_PROJECT_ROOT;
+  delete env.TPM_HOME;
+  delete env.CLAUDE_PROJECT_DIR; // the spawn gate reads it; a live session's value must never reach a test
+  return env;
+}
 
 // <bundle>/tools/tests/run-all.js → <bundle>/tools
 const TOOLS = path.resolve(__dirname, '..');
@@ -32,18 +44,32 @@ const TARGETS = [
   'task/tests/run-all.js',
   'consumer/tests/run-all.js',
   'workflow/tests/run-all.js',
+  'hooks/tests/tpm-hooks-session-start.test.js',
   'tests/tpm-router.test.js',
+  'tests/tpm-bin-shim.test.js',
+  'tests/tpm-stamp-manifests.test.js',
   'tests/tpm-home-doc.test.js',
+  'tests/tpm-home-env-guard.test.js',
+  'tests/tpm-findroot-env.test.js',
+  'tests/tpm-scratch-location.test.js',
   'tests/tpm-reading-list.test.js',
   'tests/tpm-workflow-lint-selflocate.test.js',
+  // final-stage cross-cutting guards (fb2): regressions the per-phase tests can't see
+  'tests/tpm-runner-registration.test.js',
+  'tests/tpm-shipped-content.test.js',
+  'tests/tpm-hook-contract.test.js',
+  'tests/tpm-package-contents.test.js',
+  'tests/tpm-doc-examples.test.js',
+  'tests/tpm-npx-regression-guard.test.js',
+  'tests/tpm-env-leak-guard.test.js',
   'misc/fix-git-rename/tests/tpm-fix-git-rename-refs/test.js',
 ];
 
 function main() {
   // One scratch slug for the WHOLE run — child suites inherit TPM_TEST_RUN, so every test's output
-  // lands under one <bundle>/tmp/scratch/<slug>/ folder.
+  // lands under one <os.tmpdir()>/tpm-tests/<slug>/ folder (outside the bundle).
   const slug = ensureRunSlug();
-  process.stdout.write(`test scratch → tmp/scratch/${slug}/\n`);
+  process.stdout.write(`test scratch → ${path.join(os.tmpdir(), 'tpm-tests', slug)}/\n`);
   let failures = 0;
   for (const rel of TARGETS) {
     const p = path.join(TOOLS, rel);
@@ -53,7 +79,7 @@ function main() {
       continue;
     }
     try {
-      const out = execFileSync('node', [p], { encoding: 'utf8' });
+      const out = execFileSync('node', [p], { encoding: 'utf8', env: cleanEnv() });
       const lastLine = out.trim().split('\n').pop();
       process.stdout.write(`✓ ${rel} — ${lastLine}\n`);
     } catch (err) {

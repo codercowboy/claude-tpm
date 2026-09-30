@@ -57,10 +57,10 @@
  *   sessionsDirAbs(resolved, projectRoot) -> absolute path to the resolved sessionsDir
  *
  * EXAMPLES
- *   npx tpm session config --json
- *   npx tpm session config --get notes.sessionsDir
- *   npx tpm session config --sessions-dir
- *   npx tpm session config --modules
+ *   tpm session config --json
+ *   tpm session config --get notes.sessionsDir
+ *   tpm session config --sessions-dir
+ *   tpm session config --modules
  */
 
 'use strict';
@@ -145,7 +145,7 @@ function mergeSessionConfig(rawSession) {
  * @returns {{resolved: object, projectRoot: string, configPath: string, configExists: boolean}}
  */
 function resolveSessionConfig(configPathArg, opts = {}) {
-  const startDir = opts.startDir || process.cwd();
+  const startDir = opts.startDir; // undefined = implicit: findRoot applies $TPM_PROJECT_ROOT, then cwd walk-up
   const projectRoot = findRoot({ startDir, marker: PROJECT_MARKER });
   const usedDefaultLocation = !configPathArg;
   const configPath = configPathArg
@@ -196,7 +196,7 @@ function resolveSessionConfig(configPathArg, opts = {}) {
  * @returns {{modules: Record<string,boolean>, projectRoot: string, configPath: string, configExists: boolean}}
  */
 function readModuleEnablement(configPathArg, opts = {}) {
-  const startDir = opts.startDir || process.cwd();
+  const startDir = opts.startDir; // undefined = implicit: findRoot applies $TPM_PROJECT_ROOT, then cwd walk-up
   const projectRoot = findRoot({ startDir, marker: PROJECT_MARKER });
   const usedDefaultLocation = !configPathArg;
   const configPath = configPathArg
@@ -286,7 +286,8 @@ function resolveSessionsDir(flagValue, configPathArg, opts) {
   const err = new Error(
     '--sessions-dir is required: pass --sessions-dir <dir>, set TPM_SESSIONS_DIR, or run inside a ' +
     'project (a `.claude/claude-tpm/`-marked root, optionally with a local .claude/claude-tpm/config.json). ' +
-    'Refusing to default to a live store outside any project.',
+    'Refusing to default to a live store outside any project. ' +
+    'Human terminal: if this project uses the claude-tpm plugin, run `npx tpm install .` here to set it up.',
   );
   err.storeResolveFail = true;
   throw err;
@@ -307,7 +308,7 @@ function getDotted(obj, dottedKey) {
 function printHelp() {
   process.stdout.write(
     [
-      'Usage: npx tpm session config [--config <path>] (--json | --get <dotted.key> | --sessions-dir | --modules) [--help]',
+      'Usage: tpm session config [--config <path>] (--json | --get <dotted.key> | --sessions-dir | --modules) [--help]',
       '',
       "Resolves the 'session' section of a claude-tpm config.json over built-in defaults.",
       '',
@@ -320,10 +321,10 @@ function printHelp() {
       '  --help                Show this message.',
       '',
       'Examples:',
-      '  npx tpm session config --json',
-      '  npx tpm session config --get notes.enabled',
-      '  npx tpm session config --sessions-dir',
-      '  npx tpm session config --modules',
+      '  tpm session config --json',
+      '  tpm session config --get notes.enabled',
+      '  tpm session config --sessions-dir',
+      '  tpm session config --modules',
       '',
     ].join('\n'),
   );

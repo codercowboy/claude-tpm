@@ -45,11 +45,11 @@
  *   readEnvSessionId()                                 -> string|null ($CLAUDE_CODE_SESSION_ID, best-effort)
  *
  * CLI
- *   npx tpm session current --sessions-dir <dir> --state         # print resolved state as JSON
- *   npx tpm session current --sessions-dir <dir> --open          # ensure open, print result
- *   npx tpm session current --sessions-dir <dir> --seal          # close the current session
- *   npx tpm session current --sessions-dir <dir> --next-number   # print the next allocation (no side effect)
- *   npx tpm session current --help
+ *   tpm session current --sessions-dir <dir> --state         # print resolved state as JSON
+ *   tpm session current --sessions-dir <dir> --open          # ensure open, print result
+ *   tpm session current --sessions-dir <dir> --seal          # close the current session
+ *   tpm session current --sessions-dir <dir> --next-number   # print the next allocation (no side effect)
+ *   tpm session current --help
  */
 
 'use strict';
@@ -170,14 +170,14 @@ function sealSession({ sessionsDir }) {
 function printHelp() {
   process.stdout.write(
     [
-      'Usage: npx tpm session current [--sessions-dir <dir>] (--state | --open | --seal | --next-number) [--help]',
+      'Usage: tpm session current [--sessions-dir <dir>] (--state | --open | --seal | --next-number) [--help]',
       '',
       'Resolves / mutates the current-session pointer under <dir>/.current-session.json.',
       '',
       'Flags:',
       '  --sessions-dir <dir>  OPTIONAL (F4). Omitted → resolved from the LOCAL project config.json',
       '                        (session.notes.sessionsDir); the flag OVERRIDES; with NEITHER, FAILS LOUD',
-      '                        (never defaults to a live store). See npx tpm session config --sessions-dir.',
+      '                        (never defaults to a live store). See tpm session config --sessions-dir.',
       '  --state               Print the resolved { state, number, sessionId, ... } as JSON. No side effect.',
       '  --open                Ensure a session is open (idempotent); print the result as JSON.',
       '  --seal                Close the current open session; print { number, closedAt }. Errors if none open.',
@@ -185,8 +185,8 @@ function printHelp() {
       '  --help                Show this message.',
       '',
       'Examples:',
-      '  npx tpm session current --sessions-dir .claude/claude-tpm/sessions --state',
-      '  npx tpm session current --sessions-dir .claude/claude-tpm/sessions --open',
+      '  tpm session current --sessions-dir .claude/claude-tpm/sessions --state',
+      '  tpm session current --sessions-dir .claude/claude-tpm/sessions --open',
       '',
     ].join('\n'),
   );

@@ -20,7 +20,9 @@ const check = (c, m) => { if (c) passed += 1; else { failures.push(m); process.s
 
 // run the hook with a mock payload; return its exit code (0 allow, 2 block)
 function runHook(payload) {
-  try { execFileSync('node', [HOOK], { input: JSON.stringify(payload), stdio: ['pipe', 'pipe', 'pipe'] }); return 0; }
+  // env without CLAUDE_PROJECT_DIR / TPM_PROJECT_ROOT: payload.cwd is the root under test (a live session's would win)
+  const env = { ...process.env }; delete env.CLAUDE_PROJECT_DIR; delete env.TPM_PROJECT_ROOT;
+  try { execFileSync('node', [HOOK], { input: JSON.stringify(payload), stdio: ['pipe', 'pipe', 'pipe'], env }); return 0; }
   catch (e) { return e.status; }
 }
 const ROUND = 'dev/x/01-y';

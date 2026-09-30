@@ -1,7 +1,7 @@
 # `tpm-session open` — boot the TPM engine
 
 > In this file, `%TPM_HOME%` is the claude-tpm **installation home** — it is NOT always
-> `<project>/node_modules/@codercowboy/claude-tpm`. If you need its actual value, run `npx tpm resolve-home`.
+> `<project>/node_modules/@codercowboy/claude-tpm`. If you need its actual value, run `tpm resolve-home`.
 
 ## Purpose
 
@@ -16,33 +16,33 @@ the workflow module, not by gatekeeping who may boot.)
 
 ## Boot sequence
 
-1. **Allocate/confirm the session.** Call `npx tpm session current --sessions-dir
+1. **Allocate/confirm the session.** Call `tpm session current --sessions-dir
    <dir> --open` (idempotent — if a session is already open this session, it returns the SAME number
    rather than minting a new one). This is what fixes the old "every close mints a new folder" bug:
    the folder is established HERE, once, and `save`/`close` only ever update it.
 
-2. **Read config** — get the module-enablement map with `npx tpm session config --modules`. It
+2. **Read config** — get the module-enablement map with `tpm session config --modules`. It
    returns a JSON object of every module's ENABLED state, e.g.
    `{ "session": true, "workflow": true, "tasks": true, "hygiene": false }` (every module is ON by
    default; a section is disabled only when its `enabled` is explicitly `false`). This one call
    decides what loads below (step 4) and what the MOTD lists (step 5) — you no longer hand-read raw
    `config.json` for enablement. For the resolved *session* section specifically (notes dir, MOTD
-   flags), use `npx tpm session config --json`. The reader is lenient: a malformed config never
+   flags), use `tpm session config --json`. The reader is lenient: a malformed config never
    crashes boot (it degrades to all-enabled + a warning) — surfacing a malformed config is the
-   doctor's job (`npx tpm session doctor`, the READ-ONLY health check), not boot's.
+   doctor's job (`tpm session doctor`, the READ-ONLY health check), not boot's.
 
-3. **Walk the core reading list** — run `npx tpm reading-list orchestrator`. It reads the live
+3. **Walk the core reading list** — run `tpm reading-list orchestrator`. It reads the live
    orchestrator manifest, resolves the chain for you, and prints it in anchor form: a leading
-   `npx tpm resolve-home` line, then one ready-to-run `npx tpm doc <bundle-relpath>` line per Tier-1
+   `tpm resolve-home` line, then one ready-to-run `tpm doc <bundle-relpath>` line per Tier-1
    doc, in order. Run those emitted `doc` lines top to bottom to read the core list — no hand-walking
    of the manifest's `../`-relative links. The manifest is the single source of truth and it evolves,
    so take the chain FRESH from the verb every boot and read each doc rather than paraphrasing from
    memory. (`CLAUDE.md` is harness-auto-injected context, not a thing you "read" as a step here.)
 
 4. **Load project state — module-gated:**
-   - **Prior session pickup** (only if `session.notes.enabled`): call `npx tpm session boot-read`
-     (it self-resolves the sessions dir via `npx tpm session config --sessions-dir`; pass
-     `--sessions-dir <dir>` explicitly if you already resolved it). This runs AFTER step 1's
+   - **Prior session pickup** (only if `session.notes.enabled`): call `tpm session boot-read`
+     (it self-resolves the sessions dir from the project root; `--sessions-dir <dir>` is an
+     optional explicit override). This runs AFTER step 1's
      `current --open`, so it emits the highest **PRIOR** session (never the just-opened current one):
      its HANDOFF slice verbatim (READ IT FULLY — where we are, next action, what NOT to redo), its open
      punchlist headlines (what remains), the canonical `session-NNNN.json` + derived `session-NNNN.md`

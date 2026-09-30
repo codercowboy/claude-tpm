@@ -39,7 +39,7 @@
  *  selected from the data, never a fabricated one; if the session carries no real timestamp at all
  *  the migrator REFUSES rather than invent one. No new schema marker field is added.
  *
- * ── NODE-INVOKABLE ── run via `npx tpm session migrate …` (routed), or bare `node tools/session/tpm-session-migrate.js …`;
+ * ── NODE-INVOKABLE ── run via `tpm session migrate …` (routed), or bare `node tools/session/tpm-session-migrate.js …`;
  *  programmatic callers `require()` it for `runMigration(...)` / `parseOldSession(...)`.
  *
  * Zero third-party deps; Node built-ins only.
@@ -63,7 +63,7 @@
  *   --help           Show this usage.
  *
  * EXAMPLE
- *   npx tpm session migrate \
+ *   tpm session migrate \
  *     --in  .claude/claude-tpm/sessions/session-0021 \
  *     --out-dir /tmp/migrated
  */
@@ -584,7 +584,7 @@ function parseArgv(argv) {
 }
 
 const USAGE = `tpm-session-migrate — OPT-IN old→new session migrator (#1114.C)
-  run: npx tpm session migrate --in <dir> --out-dir <dir> [flags]
+  run: tpm session migrate --in <dir> --out-dir <dir> [flags]
 
   --in <dir>       REQUIRED  old marked 3-file session dir (READ-ONLY)
   --out-dir <dir>  REQUIRED  where session-<NNNN>.json is written (must differ from --in;

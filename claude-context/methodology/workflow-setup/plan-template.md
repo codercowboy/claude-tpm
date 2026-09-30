@@ -9,7 +9,7 @@
      To use: copy this template into the target work folder as `plan.md`, fill every `{{PLACEHOLDER}}`, and
      delete the two delete-before-ship strip blocks (this one + `## Template maintenance notes` at the bottom)
      and any config-gated deliverable block whose flag is false. Then lint the finalized plan.md:
-       npx tpm workflow lint --sentinels-only plan.md
+       tpm workflow lint --sentinels-only plan.md
      A surviving `{{PLACEHOLDER}}` or a leaked orchestrator-only block means you missed a step — the linter is
      the spell-check that makes grepping the template (instead of loading it whole) safe. The ⛔ charter guard
      is NOT a section here: the linter checks that the charter FILE the spawn-prompt names exists and is

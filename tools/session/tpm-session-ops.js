@@ -31,7 +31,7 @@
  *
  * ── NODE-INVOKABLE, NO BIN (Q5) ──
  * Each verb is a TOP-LEVEL session verb (the old `ops` grouping was flattened away): run via
- * `npx tpm session <verb> …` (routed through the `tpm` bin), or bare
+ * `tpm session <verb> …` (routed through the `tpm` bin), or bare
  * `node tools/session/tpm-session-ops.js <verb> …`. Programmatic callers `require()` it for the `op*` functions.
  *
  * Zero third-party deps; Node built-ins only.
@@ -374,9 +374,9 @@ function parseArgv(argv) {
   return { verb, opts: o };
 }
 
-const USAGE = `tpm-session-ops — session write-ops + import (#1115) (run: npx tpm session <verb> …)
+const USAGE = `tpm-session-ops — session write-ops + import (#1115) (run: tpm session <verb> …)
 
-The verbs below are TOP-LEVEL session verbs — call them directly (\`npx tpm session open …\`, etc.).
+The verbs below are TOP-LEVEL session verbs — call them directly (\`tpm session open …\`, etc.).
 The old \`ops\` grouping was removed (flatten); typing it now just hints at this flattened form.
 
 Common:  --sessions-dir <dir>   store dir holding per-session folders session-<NNNN>/ (a SCRATCH or real

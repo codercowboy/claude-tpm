@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * npx tpm workflow signoff — the two-token user-sign-off ledger for tpm-workflow kickoffs.
+ * tpm workflow signoff — the two-token user-sign-off ledger for tpm-workflow kickoffs.
  *
  * WHY
  *   Kicking off a workflow round spawns subagents = real work + tokens. Prose rules
@@ -24,20 +24,20 @@
  * silently reused to wave through a different round B).
  *
  * USAGE
- *   npx tpm workflow signoff questions --roster "<one-line>"                    # token 1 (after the user answers)
- *   npx tpm workflow signoff spawn --round "<phase-dir>" --roster "<one-line>"  # token 2 (after an explicit "kick it off")
+ *   tpm workflow signoff questions --roster "<one-line>"                    # token 1 (after the user answers)
+ *   tpm workflow signoff spawn --round "<phase-dir>" --roster "<one-line>"  # token 2 (after an explicit "kick it off")
  *       --round is the phase-folder path the kickoff authorizes; the hook matches it to the spawn's
  *       `tpm-workflow-spawn phase=…` marker so one round's "go" can't authorize a different round.
  *       Spawn tokens are keyed BY ROUND (`spawn-<hash>.json`), so a PARALLEL FAN-OUT (an epic of N
  *       phases) can hold N fresh per-phase tokens at once — one `spawn --round <phase>` per phase, or
  *       one epic-level token (`--round <epic-path>`) with every phase marker set to `phase="<epic-path>"`.
- *   npx tpm workflow signoff check --gate spawn|questions [--roster "…"] [--round "…"] [--max-age <sec>]
+ *   tpm workflow signoff check --gate spawn|questions [--roster "…"] [--round "…"] [--max-age <sec>]
  *                                                          # exit 0 if a FRESH matching token exists, else 1
- *   npx tpm workflow signoff status                                 # print both tokens' freshness (human-readable)
- *   npx tpm workflow signoff clear                                  # remove ALL tokens: questions + every per-round spawn (round done / reset)
- *   npx tpm workflow signoff --help
+ *   tpm workflow signoff status                                 # print both tokens' freshness (human-readable)
+ *   tpm workflow signoff clear                                  # remove ALL tokens: questions + every per-round spawn (round done / reset)
+ *   tpm workflow signoff --help
  *
- * CONVENTIONS: zero deps (Node built-ins only). Run via `npx tpm workflow signoff …`. Also a module
+ * CONVENTIONS: zero deps (Node built-ins only). Run via `tpm workflow signoff …`. Also a module
  * (module.exports) so the hook + tests drive the pure helpers directly.
  *
  * DEFAULT FRESHNESS: 1800s (30 min). Long enough for a round's spawns to follow one

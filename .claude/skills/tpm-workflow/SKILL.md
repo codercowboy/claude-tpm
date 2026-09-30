@@ -4,7 +4,7 @@ description: Use when running a formal multi-agent round or epic in claude-tpm �
 ---
 
 > In this file, `%TPM_HOME%` is the claude-tpm **installation home** — it is NOT always
-> `<project>/node_modules/@codercowboy/claude-tpm`. If you need its actual value, run `npx tpm resolve-home`.
+> `<project>/node_modules/@codercowboy/claude-tpm`. If you need its actual value, run `tpm resolve-home`.
 
 `/tpm-workflow` is the front door for **running a formal round** — the HIGH-ceremony path
 (scaffold `dev/<task>/` → charter + `plan.md` → spawn builder(s) → verify → reconcile).
@@ -35,10 +35,10 @@ Use `AskUserQuestion` for each gate so the answer is genuinely the user's, not y
 
 **Mechanical backstops (poka-yoke — they hold even if the prose above is rationalized):**
 - Scaffolding is blocked without a pre-task-ack receipt (`tpm-workflow-scaffold-subagent --pretask-ack`) — Gate A.
-- **Spawning is blocked by a `PreToolUse` hook** (`npx tpm hooks gate-spawn`, plugin-delivered) unless a **fresh**
+- **Spawning is blocked by a `PreToolUse` hook** (`tpm hooks gate-spawn`, plugin-delivered) unless a **fresh**
   `spawn` sign-off token exists — Gate B. On each gate, record the user's actual confirmation:
-  `npx tpm workflow signoff questions --roster "<one-line>"` (Gate A) and
-  `npx tpm workflow signoff spawn --round "<phase-dir>" --roster "<one-line>"` (Gate B — `--round`
+  `tpm workflow signoff questions --roster "<one-line>"` (Gate A) and
+  `tpm workflow signoff spawn --round "<phase-dir>" --roster "<one-line>"` (Gate B — `--round`
   is the phase-folder path, which the spawn-gate hook matches against the marker `compose` stamps into the
   prompt). **Only ever write these from an
   explicit user confirmation — never from your own reading of an ambiguous turn.**
@@ -54,7 +54,7 @@ The **mode is the first token**; the rest of the line is freeform, interpreted b
 | **`verify`** | Spawn verifier(s) + the verify↔bug-fixer loop (on FAIL only). A per-round DECISION, not a reflex | `modes-verify.md` |
 | **`reconcile`** | Judge the verdict + log the call → reconcile delivery+verifier output → update `00-epic-plan/` → epic-close (promotion + cost rollup) | `modes-reconcile.md` |
 | **`reap`** | Stray subagent/subshell cleanup | **delegates to `tpm-reap`** |
-| **`status`** | Report round/epic state — read `00-epic-plan/` (phase map · punchlist · decisions), phase `findings/HANDOFF.md`, and `npx tpm workflow audit` output; summarize. No spawn | (inline, below) |
+| **`status`** | Report round/epic state — read `00-epic-plan/` (phase map · punchlist · decisions), phase `findings/HANDOFF.md`, and `tpm workflow audit` output; summarize. No spawn | (inline, below) |
 | **`doctor`** | Fail-loud PREFLIGHT before a round: checks charters resolve, signoff is writable, compose emits a marker + the `resolve-home` anchor + `%TPM_HOME%` paths. No spawn | (inline, below) |
 
 ## Interpreting the mode token (forgiving)
@@ -82,29 +82,29 @@ The **mode is the first token**; the rest of the line is freeform, interpreted b
 ## Pre-flight gate (anti-skip)
 
 Before you spawn / plan / scaffold, silently walk the pre-task questions —
-`npx tpm doc claude-context/methodology/orchestrator/pre-task-questions.md`. If any answer is fuzzy, follow its
+`tpm doc claude-context/methodology/orchestrator/pre-task-questions.md`. If any answer is fuzzy, follow its
 pointer and re-read before proceeding. This is a *workflow* gate, not a boot gate — when you are
 just operating, there is nothing to gate.
 
 ## Where the deep reference + tools live
 
-- **Deep shared reference** (read on demand — fetch a file with `npx tpm doc claude-context/methodology/workflow-setup/<file>`): `charters/`,
+- **Deep shared reference** (read on demand — fetch a file with `tpm doc claude-context/methodology/workflow-setup/<file>`): `charters/`,
   `plan-template.md`, and `subagent-orchestration.md` (the spawn → verify → loop round machinery).
-  Read the pre-task questions with `npx tpm doc claude-context/methodology/orchestrator/pre-task-questions.md`.
-- **Tools** (mechanics — run the workflow suite via `npx tpm workflow <verb>`, self-locating; no path needed):
+  Read the pre-task questions with `tpm doc claude-context/methodology/orchestrator/pre-task-questions.md`.
+- **Tools** (mechanics — run the workflow suite via `tpm workflow <verb>`, self-locating; no path needed):
   `config` · `scaffold` · `compose` · `lint` · `audit` · `cost` · `check-filename`.
   A skill never bundles its own tool copy — tools are shared project infra.
 
 ## `status` mode (inline)
 
 No spawn. Report the current picture:
-1. `npx tpm workflow audit --out <tmp>/audit.md` — epic-vs-flat classification, numbering
+1. `tpm workflow audit --out <tmp>/audit.md` — epic-vs-flat classification, numbering
    integrity, one-plan-one-charter per phase; relay violations.
 2. Read `00-epic-plan/{epic-plan,punchlist,decisions}.md` for the phase map, open items, and the
    raise-to-user decision queue.
 3. Read each active phase's `findings/HANDOFF.md` for current state (the single rolling doc).
 4. Summarize: phases done / in-flight / pending, open punchlist items, decisions awaiting the
-   user, and cost-to-date (`npx tpm workflow cost --rollup <epic>` if a ledger exists). Surface, don't act.
+   user, and cost-to-date (`tpm workflow cost --rollup <epic>` if a ledger exists). Surface, don't act.
 
 ## `doctor` mode (inline)
 
@@ -112,7 +112,7 @@ No spawn. A **fail-loud preflight** for the install seams a real fan-out silentl
 placeholders, gate hook not wired, compose bare paths, signoff unwritable). Run it before spawning a
 round — especially the FIRST round in a fresh consumer:
 
-1. `npx tpm workflow doctor` (add `--json` for machine output; `--project-root <dir>`
+1. `tpm workflow doctor` (add `--json` for machine output; `--project-root <dir>`
    to check another install). It self-locates the bundle.
 2. Checks: charters resolve · signoff store writable · compose emits a quoted marker + `%TPM_HOME%/…`
    methodology paths. (PreToolUse hooks are plugin-delivered now — the doctor no longer checks hook wiring.)

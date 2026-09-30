@@ -1,7 +1,7 @@
 # `reconcile` mode — per-phase reconcile → `00-epic-plan/` update → epic-close
 
 > In this file, `%TPM_HOME%` is the claude-tpm **installation home** — it is NOT always
-> `<project>/node_modules/@codercowboy/claude-tpm`. If you need its actual value, run `npx tpm resolve-home`.
+> `<project>/node_modules/@codercowboy/claude-tpm`. If you need its actual value, run `tpm resolve-home`.
 
 Two scopes: the **per-phase reconcile** (after each phase's verify settles — the natural
 auto-checkpoint) and the **epic-close ritual** (the one user-gated hand-back at the end of the train).
@@ -22,7 +22,7 @@ After a phase reaches a verified PASS (or accepted partial-with-gap):
    next actions. If resuming, overwrite it in place (never `HANDOFF-v2.md`).
 2. **Write the cost row** for each subagent from the harness completion notification (a subagent
    can't introspect its own cumulative tokens — orchestrator-written):
-   `npx tpm workflow cost --epic-path dev/<epic> --agent <id> --role <role>
+   `tpm workflow cost --epic-path dev/<epic> --agent <id> --role <role>
    --model <m> --tokens <n> --calls <n> --verdict <v> --round <N>`. In an epic the ledger lives at
    `00-epic-plan/cost-ledger.md`; a flat round keeps `tmp/cost-ledger.md`.
 3. **Update `00-epic-plan/`** — log the decision in `decisions.md` (tag "raise to user" for
@@ -50,9 +50,9 @@ Runs when the deliverable ships AND every `punchlist.md` item is done OR explici
      here; one-off probes stay in `tmp/`.
    - Cross-epic: outputs another epic depends on are promoted **before** that epic starts.
 2. **Decision review** — surface the `00-epic-plan/decisions.md` "raise to user" queue.
-3. **Cost rollup** — `npx tpm workflow cost --rollup dev/<epic> --summary` for the
+3. **Cost rollup** — `tpm workflow cost --rollup dev/<epic> --summary` for the
    epic-level cost provenance reviewed at close (what the epic cost, per subagent).
-4. **Structure audit** — `npx tpm workflow audit --out <tmp>/audit.md` to confirm numbering
+4. **Structure audit** — `tpm workflow audit --out <tmp>/audit.md` to confirm numbering
    integrity, one-plan-one-charter per phase, and `00-epic-plan/` charter-cleanliness before sealing.
 5. **Update project state** — the **task queue** (mark the epic done + log deferred gaps as follow-on
    tasks/epics), **project-history**, and **`%TPM_HOME%/tools/README`** (any promoted tools). **NOT `CLAUDE.md`**

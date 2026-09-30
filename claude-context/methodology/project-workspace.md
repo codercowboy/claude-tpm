@@ -36,7 +36,7 @@ work. The carve-outs below are **never written without the user's explicit per-o
 | Another actor's live-system session dir, if the project has one | ❌ never | If the project provisions a live system per actor, each instance owns its own session dir. Writing to a sibling's corrupts their state. Own only your own session. |
 
 **Writes the orchestrator routinely owns:** `tools/` (product tools + promotions), the task ledger under
-`.claude/claude-tpm/tasks/` (read/written via `npx tpm task`), the `docs/` / project-history it keeps
+`.claude/claude-tpm/tasks/` (read/written via `tpm task`), the `docs/` / project-history it keeps
 current, the session notes under the configured sessions dir (`session.notes.sessionsDir`), `claude-context/methodology/*`,
 `CLAUDE.md` (sparingly), `tmp/` (scratch), `output/` (regenerable, git-ignored). When the orchestrator runs
 a task itself, it owns that working folder directly.

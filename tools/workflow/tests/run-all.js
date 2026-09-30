@@ -24,6 +24,15 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { ensureRunSlug } = require('../../tests/lib/scratch');
 
+// Env isolation (D8): never hand a live session's TPM_PROJECT_ROOT / TPM_HOME to child suites.
+function cleanEnv() {
+  const env = { ...process.env };
+  delete env.TPM_PROJECT_ROOT;
+  delete env.TPM_HOME;
+  delete env.CLAUDE_PROJECT_DIR; // the spawn gate reads it; a live session's value must never reach a test
+  return env;
+}
+
 const SUITES = [
   'tpm-workflow-audit-cost/tests/audit.test.js',
   'tpm-workflow-audit-cost/tests/cost-ledger.test.js',
@@ -33,6 +42,7 @@ const SUITES = [
   'tpm-workflow-scaffold-config/tests/config-resolver/test.js',
   'tpm-workflow-scaffold-config/tests/scaffold-subagent/test.js',
   'tpm-workflow-signoff-gate/test.js',
+  'tpm-workflow-root-env/test.js',
 ];
 
 function main() {
@@ -46,7 +56,7 @@ function main() {
       continue;
     }
     try {
-      const out = execFileSync('node', [p], { encoding: 'utf8' });
+      const out = execFileSync('node', [p], { encoding: 'utf8', env: cleanEnv() });
       const lastLine = out.trim().split('\n').pop();
       process.stdout.write(`✓ ${rel} — ${lastLine}\n`);
     } catch (err) {

@@ -44,7 +44,9 @@ tools/
       lib/                       # shared test helpers WITHIN this suite
 ```
 
-There is **one** ledger (`tools/README.md`) — suites do **not** each keep their own README.
+There is **one** ledger (`tools/README.md`). A suite may also keep a long-form `README.md` of its own
+(architecture, data format, per-verb walk-through) that the ledger does not duplicate: `tools/session/` and
+`tools/task/` do, and the ledger says so. A suite README is a companion to the ledger, never a second index.
 
 At the suite root: only the tool executables + their `.md`s + `README.md` + `lib/` + `tests/`. Anything
 a tool needs beyond a single file goes in `lib/`. `<tool>.md` sits beside the tool executable. A suite name may
@@ -73,9 +75,26 @@ project wires its tools to be run in one or both of two ways:
   { "scripts": { "task": "node tools/task/<tool>" } }
   ```
 - **A `bin` dispatcher** — a single git-style front-door command declared as the package `bin`, run as
-  `npx <bin> <suite> <verb>`. claude-tpm ships a `"bin"` entry mapping `tpm` to the top-level dispatcher, so its tools run as
-  `npx tpm session export`, `npx tpm task list`, etc. (claude-tpm exposes only this bin — no per-tool
+  `<bin> <suite> <verb>` (humans in a shell write `npx <bin> …`; see "Who calls what" below). claude-tpm ships a `"bin"` entry mapping `tpm` to the top-level dispatcher, so its tools run as
+  `tpm session export`, `tpm task list`, etc. (claude-tpm exposes only this bin — no per-tool
   `npm run` scripts beyond `npm test`; another project may prefer npm scripts, or both.)
+
+**Who calls what — bare `tpm` for Claude; the `npx` form is for humans and is always marked.** Claude Code puts the plugin's `bin/` on PATH for
+every Bash tool call (main session and subagents) while the plugin is enabled, so **skills and every Claude-facing
+doc call bare `tpm <suite> <verb>`** — it works in any consumer project, with or without a `node_modules` copy of
+claude-tpm. **Never instruct Claude to run `npx tpm …`**: with no local `node_modules/.bin/tpm`, npx downloads and
+runs an unrelated registry package named `tpm`. The `npx` form is for a *human* at a terminal inside a project that
+vendors the package; it lives only in human-facing places (READMEs, `docs/*`, `tools/consumer/**` and `tools/plugin/**`
+docs, `tools/tpm.md`, and the `--help` of the install / uninstall / doctor / plugin commands) — never in a skill or a
+methodology doc. `tools/consumer/tpm-consumer-lint-skill-refs.js` enforces this on skill content.
+
+**Writing a human-form note.** A tool doc, or text a tool prints, that must show the human `npx` form carries the literal
+marker `Human terminal:` on the SAME line as the `npx` command. It reads as an ordinary label in rendered markdown:
+
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
+At most one such note per per-suite tool doc. `tools/tests/tpm-npx-regression-guard.test.js` enforces the marker: any
+other Claude-facing line that tells a reader to run the `npx` form fails the guard.
 
 Either style is fine, and a tool wired **neither** way (an internal helper, a hook script the harness
 invokes, a one-off utility) simply has **no** run command. Every tool also stays runnable by a bare
@@ -84,12 +103,12 @@ a bare `node` invocation of the tool script regardless (§2). The `tools/README.
 
 ## 4. Docs — the canonical ledger + per-tool references
 
-- **`tools/README.md` — the one canonical ledger (SSOT).** Suites do NOT each keep their own README; this
-  single file is the exhaustive index. Its contract:
+- **`tools/README.md` — the one canonical ledger (SSOT).** A suite may keep a long-form README
+  (`tools/session/`, `tools/task/` do), but this single file is the exhaustive index. Its contract:
   - **Exhaustive + honest** — every tool that exists is listed; nothing that no longer exists is.
   - **Categorized by suite**, each category opening with a one-line description of what the suite is for.
   - **One bullet per tool** = the `` `path` `` + one sentence on what it does; a **Run:** command **only if
-    the tool is wired** (`npm run …` / `npx <bin> …` per §3) — otherwise no run line; and a **Doc:** pointer
+    the tool is wired** (`npm run …` / `<bin> …` per §3) — otherwise no run line; and a **Doc:** pointer
     to its `<tool>.md` or "header". Internal helpers and routers are listed but **tagged** (e.g. "internal
     helper — imported, not a CLI") so the ledger is complete without implying they're runnable.
   - **A tests ledger** below the tools ledger — how to run everything (`npm test`) and each suite's runner.
@@ -101,9 +120,9 @@ a bare `node` invocation of the tool script regardless (§2). The `tools/README.
 
 - **Standard flag vocabulary:** `--in`, `--out`, `--force`, `--help`.
 - **No silent defaults for REQUIRED inputs** — a required flag with no value fails loudly with usage
-  (e.g. `npx tpm workflow audit --out`). No guessing a path/target. (Full rationale in Part II §"No hardcoded paths.")
+  (e.g. `tpm workflow audit --out`). No guessing a path/target. (Full rationale in Part II §"No hardcoded paths.")
 - **Every tool supports `--help`** and carries a header docstring (purpose, usage, flags, what it guards).
-- **Run-wired where applicable** — via `npm run` and/or the project's `bin` (`npx …`) per §3; not every
+- **Run-wired where applicable** — via `npm run` and/or the project's `bin` per §3; not every
   tool is wired, and unwired tools carry no run command in the ledger.
 - **Genericity:** tools stay project-agnostic; project-specific data comes via flags/env, never
   hardcoded.
@@ -112,7 +131,7 @@ a bare `node` invocation of the tool script regardless (§2). The `tools/README.
 
 **Migration (largely done):** the workflow tools (`scaffold-subagent`, `audit`, `lint-*`, `cost-ledger`,
 …) were moved from the old `tools/workflow/` category layout + `tools/test/workflow/` into this per-suite
-shape, with `package.json` + the `tpm` bin dispatcher wiring them (`npx tpm <suite> <verb>`).
+shape, with `package.json` + the `tpm` bin dispatcher wiring them (`tpm <suite> <verb>`).
 
 **⚠️ Deliberate DIVERGENCE from ggaitk — no shared tool lib.** ggaitk used a shared `tools/lib/`
 (a shared `GGAITKPaths` module, `#paths` subpath imports) every tool `require()`d. **We reject that** for the §2
@@ -186,6 +205,35 @@ which artifact?" audit trail. Concretely: `--in`/`--out`/`--config` REQUIRED, no
 clear error if omitted; output paths for generated artifacts taken as a flag (`--out-dir`); data files
 that ship WITH the tool (`require('./data/table.json')`) are fine (module-local, not project-structure).
 When a data source must live somewhere, name it in the docstring + task README — don't bake the path in.
+
+## How tools find the consumer project (and their own bundle)
+
+**The project** (the consumer repo whose `.claude/claude-tpm/` a tool reads and writes) is resolved by
+`findRoot` with this precedence (design D8):
+
+1. an **explicit argument** — a flag (`--source`, `--project-root`, `--tasks-dir`, …) or a `startDir` the
+   caller deliberately passes;
+2. **`$TPM_PROJECT_ROOT`** — exported by the SessionStart hook into every Bash call of a session and its
+   subagents, so it never drifts when Claude `cd`s;
+3. a **walk up from the current folder** for the nearest ancestor containing `.claude/claude-tpm/`.
+
+Rules that follow from it:
+- **Never pass `process.cwd()` as if it were an explicit argument** — omit `startDir` so the env can win.
+- A `TPM_PROJECT_ROOT` that is not an existing directory is **not fatal**: one stderr warning naming the var
+  and value, then the walk-up runs.
+- A walk-up **miss is loud**: `findRoot` still returns the start folder (back-compat) but writes one stderr
+  warning saying no `.claude/claude-tpm/` was found and which folder is being used. A caller that must not
+  guess passes `{ strict: true }` (throws `ETPM_NO_PROJECT_ROOT`); `{ quiet: true }` silences the warning.
+- The env applies only to the default `.claude/claude-tpm` marker; a custom `marker` means "find that
+  thing", which a project-root variable cannot answer.
+- Test runners strip `TPM_PROJECT_ROOT` and `TPM_HOME` from the env they hand to child suites (so a run from
+  inside a live session can't touch the real project); a test that needs either sets it explicitly.
+
+**The bundle** (claude-tpm itself: its docs and tools) is found by **self-location** — `tpm home` /
+`tpm doc` derive it from their own file path. **`$TPM_HOME` in the environment is informational only**: the
+hook exports it as a pointer for Claude and scripts, but no tool reads it to resolve anything (an env
+override would let one version's code read another version's docs). Guarded by
+`tools/tests/tpm-home-env-guard.test.js`.
 
 ## Resolving project-internal paths — never hardcode absolutes (suite-local helper)
 

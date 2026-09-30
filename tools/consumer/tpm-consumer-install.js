@@ -11,27 +11,55 @@
  *        project identity is the user's call, not this tool's; if missing, print the `npm init -y`
  *        instruction and exit 1), and the `claude` CLI is on PATH.
  *     2. claude-tpm dependency — INTERACTIVE, consent-gated: ask whether to record the dep at all, then
- *        regular (`--save`) vs optional (`--save-optional`, the default), then confirm the exact npm
- *        command before running. Declining the first question skips the dep entirely (marketplace +
- *        plugin steps still run). Skipped as "already done" when the dep is already declared AND present
- *        in node_modules (unless --force). --quiet/-y never prompts: records it as optional (unchanged).
- *     3. marketplace — `claude plugin marketplace add ./node_modules/@codercowboy/claude-tpm
- *        --scope project` if not already registered.
- *     4. plugin install — `claude plugin install claude-tpm@claude-tpm-market --scope project`
- *        (installing usually also enables — see step 5).
- *     5. project enablement — `claude plugin enable claude-tpm@claude-tpm-market --scope project`,
+ *        regular (`--save`) vs dev (`--save-dev`, the default — claude-tpm is dev-time tooling), then
+ *        confirm the exact npm command before running. Declining the first question skips the dep entirely
+ *        (marketplace + plugin steps still run). Skipped as "already done" when the dep is already declared
+ *        AND present in node_modules (unless --force). --quiet/-y never prompts: records it as a dev dep.
+ *     3. marketplace — registered at USER scope (the CLI default; no `--scope project`) from THIS
+ *        installer's own bundle folder, REALPATH'd (never a project's `./node_modules/...` link). The
+ *        registry stores the path exactly as given and a local-folder plugin runs IN PLACE from it, so
+ *        the row is live code for every project on that marketplace name. What the step does depends on
+ *        the existing row for this (version-scoped) marketplace name, comparing RESOLVED paths:
+ *          not registered                       → register it (`marketplace add <real folder>`).
+ *          registered, same real folder         → leave the row alone (only per-project steps run);
+ *                                                 a symlink-stored path is reported healthy-but-symlinked,
+ *                                                 never re-stored automatically.
+ *          registered, folder gone              → re-point (remove + add); the message says the folder
+ *                                                 moved / was deleted.
+ *          registered, alive, resolves elsewhere → NEVER re-pointed silently. Interactive: asks, naming
+ *                                                 both folders and the blast radius. `--quiet`: exits 1
+ *                                                 unless `--repoint` is given.
+ *        REAL COPY IN ANOTHER PROJECT (5.2): when that live row resolves INSIDE a node_modules dir (a project
+ *        that installed claude-tpm from GitHub/npm), the install names it ("claude-tpm is already installed on
+ *        this machine from <folder>"; "if you keep it, this project will run that copy, not its own"), hashes
+ *        both folders (skips .DS_Store, tmp/, node_modules/, .git/) and reports "same version, identical files"
+ *        or "same version, files differ (N files)", then offers: 1) one shared folder for several projects
+ *        (README / docs/INSTALL.md), 2) uninstall from that project first (`npx tpm uninstall --system` there),
+ *        3) proceed sharing that copy (explicit yes; type "share different copy" when the files differ).
+ *        Choices 1/2 stop with the exact next commands. `--quiet` stops with exit 1 unless `--force`; with
+ *        `--force` it proceeds sharing that copy (the row is NOT re-pointed). `--check` shows a WARN row.
+ *        NOTE: `claude plugin marketplace remove` deletes EVERY project's install record + plugin data for
+ *        that marketplace (re-adding the same name restores loading — `enabledPlugins` + a registered
+ *        marketplace is enough), so any re-point says so.
+ *     4. plugin install — `claude plugin install <plugin>@<marketplace> --scope project`, run with cwd =
+ *        the target project (so the project's settings end up with only `enabledPlugins`; installing
+ *        usually also enables — see step 5).
+ *     5. project enablement — `claude plugin enable <plugin>@<marketplace> --scope project`,
  *        ONLY if the plugin is installed but currently disabled for this project (step 4 usually
  *        already leaves it enabled).
- *   Deliberately NOT handled here: writing env.TPM_HOME or hooks into any settings.json. The plugin
- *   delivers its hooks itself, via the bundle-root hooks/hooks.json (auto-discovered on plugin enable
- *   — confirmed firing end-to-end, session 013), and env.TPM_HOME is retired (zero consumers: skills
- *   call `npx tpm …` and %TPM_HOME% is resolved anchor-first via `npx tpm resolve-home`, not a hook).
- *   `claude plugin … --scope project` performs its own in-repo settings declaration; this tool never
- *   touches settings.json directly.
+ *   Deliberately NOT handled here: writing env vars or hooks into any settings.json. The plugin delivers
+ *   its own hooks via the bundle-root hooks/hooks.json (read when the plugin is enabled): a SessionStart
+ *   hook that exports TPM_PROJECT_ROOT (the project) and TPM_HOME (this bundle's folder, informational
+ *   only; tools always find their own folder), and the spawn gate. Claude Code puts the plugin's bin/ on
+ *   PATH in Claude Bash calls, so skills and tool output run bare `tpm …`.
+ *   Human terminal: humans run `npx tpm …` in a plain project shell, once the dependency from step 2 exists.
+ *   The installer relies on `claude plugin install/enable` to write the project's `enabledPlugins` line; this
+ *   tool never edits settings.json directly.
  *
  * USAGE
  *   npx tpm install [dir] [options]
- *   (via the bin: `tpm install <dir> [options]` / `npx tpm install <dir>`)
+ *   (via the bin: `tpm install <dir> [options]` / `npx tpm install <dir>`; same script via the plugin suite:
+ *    `npx tpm plugin install …`, and `npx tpm plugin doctor` / `npx tpm doctor` = `--check`)
  *
  *   Options:
  *     [dir]            target project dir — POSITIONAL (first non-flag arg), e.g. `install ../proj`.
@@ -46,31 +74,46 @@
  *     --quiet          non-interactive: assume yes to every step, pass -y to `claude plugin
  *                      install/uninstall` (required when stdin/stdout isn't a TTY). Still exits 1 on
  *                      real errors.
+ *     --repoint        permit step 3 to re-point a LIVE marketplace row that resolves to a different folder
+ *                      (without it, `--quiet` stops with an error there and interactive runs ask first).
  *     --force          skip the "already done" checks and (re-)run every step; treat an
  *                      already-added/already-installed response as success, not error. Still asks per
- *                      step unless combined with --quiet.
+ *                      step unless combined with --quiet. With --quiet it also lets a row that points at a real
+ *                      copy in another project's node_modules proceed, sharing that copy (never re-pointed).
  *     --debug          operation trace to STDOUT, prefixed `[tpm-debug]` (a `set -x`-style log): narrate
  *                      every child spawn (bin/argv/cwd → status/signal/elapsed-ms), every `claude … --json`
  *                      probe, and each step decision (already/marketplaceReady/needsEnable + its inputs).
  *                      Also enabled by the TPM_DEBUG=1 env var. Diagnostic ONLY — changes no install
  *                      behavior; the abnormal-exit signal name is surfaced even without it.
- *     --check          read-only: run every state check, print a PASS/FAIL checklist, change nothing.
+ *     --check          read-only: run every state check, print a one-line-per-row checklist, change nothing.
  *                      Exits non-zero if anything is missing. (The consumer "doctor".) Checks:
- *                      package.json valid · tpm dep declared · marketplace registered · marketplace
- *                      SOURCE resolves (catches a registration whose source path is gone — "points at
- *                      the wrong place") · plugin installed · plugin enabled for the project · plugin
- *                      CACHE present (catches an installed record whose cache dir is gone — "registered
- *                      but not there" / cache-miss) · the bundle delivers its hook (gate-spawn
- *                      PreToolUse) · any consumer config.json parses as JSON. (There
- *                      is NO env.TPM_HOME / settings.json hook wiring to check — the plugin delivers the
- *                      hook itself; env.TPM_HOME is retired.) A normal install runs this same doctor as
- *                      a final step, and SELF-HEALS a dead-source marketplace (removes + re-adds it).
+ *                      Rows (each is ONE line: ✓ ok / ⚠ warning / ✗ problem / · skipped, a label naming what is
+ *                      checked, and a message; every ⚠/✗ adds an indented `fix:` line; a summary line ends the run):
+ *                        package.json valid · tpm dep declared · marketplace registered ·
+ *                        marketplace SOURCE is this bundle's folder and exists (RESOLVED paths: PASS when it
+ *                          resolves to this bundle; WARN when it does so only via a symlink path — healthy but
+ *                          fragile, or when it is alive but resolves to a different folder (this project runs
+ *                          that folder's code); FAIL only when the folder is gone — "moved or deleted",
+ *                          which Claude Code misreports as "cache-miss") ·
+ *                        plugin installed (a MISSING install record is only a WARN when the plugin is enabled in
+ *                          the project's settings and the marketplace is registered — it still loads) ·
+ *                        plugin enabled for this project · only one claude-tpm@* enabled (the first silently wins) ·
+ *                        project set up (an enabled plugin with no .claude/claude-tpm/ is a FAIL: run
+ *                          `npx tpm install .`) · install-record path (INFO only — the cache isn't what runs) ·
+ *                        hooks delivered (SessionStart session-start AND PreToolUse gate-spawn) ·
+ *                        plugin bundle version vs this project's node_modules copy (mismatch = WARN) ·
+ *                        consumer config.json parses · real copy in another node_modules (WARN) ·
+ *                        IN-SESSION ONLY (TPM_PROJECT_ROOT / TPM_HOME set, i.e. a Claude Bash call): `tpm` on
+ *                          PATH resolves into the plugin's bin/ (WARN names a shadowing file) ·
+ *                        TPM_HOME (when set) is this same bundle (WARN otherwise; it is informational — tools
+ *                          self-locate). A normal install runs this same doctor as a final step.
  *     -h, --help
  *
  *   Examples:
  *     npx tpm install ../some-project           # positional target dir
  *     npx tpm install ../some-project --check
  *     npx tpm install --quiet --from file:../claude-tpm ../some-project
+ *     npx tpm install --quiet --repoint ../some-project   # explicitly re-point a live row elsewhere
  *
  * CONVENTIONS: zero runtime deps (Node built-ins only), portable (`node …/tpm-consumer-install.js`),
  *   also a module (module.exports) so tests can drive the pure helpers directly. See
@@ -84,11 +127,61 @@ const readline = require('readline');
 const { spawnSync } = require('child_process');
 
 const TPM_PKG_NAME = '@codercowboy/claude-tpm';
-const MARKETPLACE_NAME = 'claude-tpm-market';
-const PLUGIN_NAME = 'claude-tpm';
+
+// The marketplace + plugin identity are READ from THIS bundle's own .claude-plugin/marketplace.json
+// (the installer and that manifest ship together in the same version folder, so they can never
+// disagree) rather than hardcoded. The marketplace NAME is version-scoped there
+// (e.g. "claude-tpm-market-0.2.0") — this is the load-bearing fix for the cross-version bug: Claude
+// Code keys marketplaces by NAME in ONE machine-global ~/.claude/plugins/known_marketplaces.json
+// record, so a bare "claude-tpm-market" shared by every version is a last-add-wins singleton. Two
+// projects on different versions then fight over one source path and resolve each other's skills
+// ("my 0.1.0 project is seeing 0.2.0 skills"). A version-scoped name makes each installed version an
+// independent registry citizen; the install-record + cache layers (installed_plugins.json,
+// cache/<market>/<plugin>/<version>) were already version-aware. Falls back to the historical bare
+// name if the manifest is unreadable, so a corrupt bundle degrades rather than crashes.
+function readBundleIdentity() {
+  const fallback = { marketplace: 'claude-tpm-market', plugin: 'claude-tpm' };
+  const bundleRoot = findBundleRoot(__dirname);
+  if (!bundleRoot) return fallback;
+  try {
+    const mp = JSON.parse(fs.readFileSync(path.join(bundleRoot, '.claude-plugin', 'marketplace.json'), 'utf8'));
+    const marketplace = (mp && typeof mp.name === 'string' && mp.name) ? mp.name : fallback.marketplace;
+    const plugin = (mp && Array.isArray(mp.plugins) && mp.plugins[0] && typeof mp.plugins[0].name === 'string' && mp.plugins[0].name)
+      ? mp.plugins[0].name : fallback.plugin;
+    return { marketplace, plugin };
+  } catch (_e) { return fallback; }
+}
+const _ident = readBundleIdentity();
+const MARKETPLACE_NAME = _ident.marketplace;
+const PLUGIN_NAME = _ident.plugin;
 const PLUGIN_ID = `${PLUGIN_NAME}@${MARKETPLACE_NAME}`;
-// Fixed regardless of --from — this is where `npm install` lands the dep in the TARGET's own tree.
-const MARKETPLACE_SOURCE = `./node_modules/${TPM_PKG_NAME}`;
+// The marketplace source = THIS installer's own bundle folder, REALPATH'd (null if it can't self-locate).
+// Node realpaths the main module, so this is the canonical folder even when the installer is invoked
+// THROUGH a project's node_modules symlink; every project on this version registers the same (name, path).
+// Never a project's `./node_modules/...` path: the registry stores the path as given, and a local-folder
+// plugin runs in place from it (probe-findings #1-#3).
+function realOrResolved(p) {
+  try { return fs.realpathSync(p); } catch (_e) { return path.resolve(p); }
+}
+const BUNDLE_ROOT = findBundleRoot(__dirname);
+const MARKETPLACE_SOURCE = BUNDLE_ROOT ? realOrResolved(BUNDLE_ROOT) : null;
+
+// Fail-loud version-stamp guard. The marketplace NAME must equal `claude-tpm-market-<package.json
+// version>` — that pin is what keeps two installed versions from colliding on one machine-global,
+// last-add-wins marketplace record. `npm version` re-stamps it automatically (tools/build/
+// stamp-manifests.js via the `version` lifecycle), but a HAND-EDITED version bump skips that hook and
+// would silently register a stale, wrong-version name. We REFUSE the install rather than self-heal:
+// this tool never mutates the vendored bundle inside node_modules. Returns { ok, version, expected,
+// actual }. Unreadable/absent version → ok:true (identity already fell back; don't add a 2nd failure
+// mode over a bundle we can't even read a version from).
+function manifestVersionStamp(bundleRoot) {
+  try {
+    const version = JSON.parse(fs.readFileSync(path.join(bundleRoot, 'package.json'), 'utf8')).version;
+    if (!version) return { ok: true };
+    const expected = `claude-tpm-market-${version}`;
+    return { ok: MARKETPLACE_NAME === expected, version, expected, actual: MARKETPLACE_NAME };
+  } catch (_e) { return { ok: true }; }
+}
 
 // ── operation-trace (--debug / TPM_DEBUG) + child-exit formatter ────────────────────────────────────
 // A `set -x`-style trace to STDOUT so an "exit null" run narrates what it did and what every child
@@ -252,7 +345,20 @@ function marketplaceRegistered(cwd) {
 // `list` is the ALREADY-PARSED JSON value returned by runClaudeJson (or null when the CLI was
 // unavailable / emitted non-JSON). Behavior is identical to the logic that previously lived inline in
 // pluginState — this extraction is purely so tests can drive the mapping directly.
-function parsePluginList(list) {
+// Scopes we manage: the PLUGIN is installed at project scope (the marketplace is user scope, which has no
+// install record of its own). `targetDir` (optional) narrows to THIS project's record: `plugin list --json`
+// reports the machine-wide records (one per project), so when an entry carries a `projectPath` it must
+// resolve to the target. An entry with no projectPath still matches (older shapes / hand-built fixtures).
+function recordMatches(e, targetDir) {
+  if (!e || typeof e !== 'object' || e.id !== PLUGIN_ID) return false;
+  if (!(e.scope === undefined || e.scope === 'project')) return false;
+  if (targetDir && typeof e.projectPath === 'string' && e.projectPath) {
+    return realOrResolved(e.projectPath) === realOrResolved(targetDir);
+  }
+  return true;
+}
+
+function parsePluginList(list, targetDir) {
   if (list === null) return { installed: false, enabled: false }; // CLI unavailable / non-JSON output
   if (!Array.isArray(list)) {
     process.stderr.write('warning: `claude plugin list --json` did not return a JSON array (schema drift?) — assuming plugin not installed.\n');
@@ -262,8 +368,7 @@ function parsePluginList(list) {
     process.stderr.write('warning: `claude plugin list --json` entries lack the expected `id` field (schema drift?) — assuming plugin not installed.\n');
     return { installed: false, enabled: false };
   }
-  const entry = list.find((e) => e && typeof e === 'object' && e.id === PLUGIN_ID &&
-    (e.scope === undefined || e.scope === 'project'));
+  const entry = list.find((e) => recordMatches(e, targetDir));
   if (!entry) return { installed: false, enabled: false };
   if (typeof entry.enabled !== 'boolean') {
     process.stderr.write(`warning: plugin entry ${PLUGIN_ID} has no boolean "enabled" field (schema drift?) — assuming enabled.\n`);
@@ -273,7 +378,7 @@ function parsePluginList(list) {
 }
 
 function pluginState(cwd) {
-  return parsePluginList(runClaudeJson(['plugin', 'list', '--json'], cwd));
+  return parsePluginList(runClaudeJson(['plugin', 'list', '--json'], cwd), cwd);
 }
 
 // ── hooks-delivery health (the plugin ships its hook itself, via the bundle-root hooks/hooks.json;
@@ -288,7 +393,7 @@ function pluginState(cwd) {
 // Matched by the command string CONTAINING `hooks <name>`, so it survives a `node …`→`npx tpm`
 // rewording and doesn't pin to one invocation form.
 function parseHooksManifest(manifest) {
-  const result = { gateSpawn: false };
+  const result = { gateSpawn: false, sessionStart: false };
   if (!manifest || typeof manifest !== 'object' || !manifest.hooks) return result;
   const scan = (groups, pred) => {
     if (!Array.isArray(groups)) return;
@@ -298,6 +403,7 @@ function parseHooksManifest(manifest) {
     }
   };
   scan(manifest.hooks.PreToolUse, (cmd) => { if (/hooks\s+gate-spawn/.test(cmd)) result.gateSpawn = true; });
+  scan(manifest.hooks.SessionStart, (cmd) => { if (/hooks\s+session-start/.test(cmd)) result.sessionStart = true; });
   return result;
 }
 
@@ -305,11 +411,17 @@ function parseHooksManifest(manifest) {
 // present:false ⇒ the manifest file isn't there (dep not installed yet, or a pre-hooks bundle) — the
 // check row degrades to a skip rather than a hard fail when node_modules has no bundle.
 function bundleHooksHealth(targetDir) {
-  const p = path.join(targetDir, 'node_modules', TPM_PKG_NAME, 'hooks', 'hooks.json');
-  if (!fs.existsSync(p)) return { present: false, error: null, gateSpawn: false };
+  return bundleHooksHealthAt(path.join(targetDir, 'node_modules', TPM_PKG_NAME));
+}
+
+// Same, for any bundle folder. EVERY return carries the full shape { present, error, gateSpawn, sessionStart }
+// (the early-return paths used to omit sessionStart).
+function bundleHooksHealthAt(bundleDir) {
+  const p = path.join(bundleDir, 'hooks', 'hooks.json');
+  if (!fs.existsSync(p)) return { present: false, error: null, gateSpawn: false, sessionStart: false };
   let manifest;
   try { manifest = JSON.parse(fs.readFileSync(p, 'utf8')); }
-  catch (e) { return { present: true, error: e.message, gateSpawn: false }; }
+  catch (e) { return { present: true, error: e.message, gateSpawn: false, sessionStart: false }; }
   return Object.assign({ present: true, error: null }, parseHooksManifest(manifest));
 }
 
@@ -387,6 +499,117 @@ function marketplaceSourceHealth(cwd) {
   return { registered: true, source: parsed.source, sourcePath: parsed.path, resolves };
 }
 
+// Pure: classify OUR marketplace's registry row against the canonical (resolved) bundle folder — the D2a
+// row table. `parsed` = parseMarketplaceList(...) output; `canonical` = the realpath'd bundle folder;
+// `exists` (injectable for tests) = fs.existsSync-alike. Returns { state, sourcePath, realPath, symlinked }:
+//   absent    → not registered
+//   same      → registered, its stored path resolves to the canonical folder (symlinked:true when the stored
+//               string differs from the resolved one — healthy but fragile; we never re-store it ourselves)
+//   dead      → registered directory source whose folder no longer exists (moved / deleted)
+//   elsewhere → registered, alive, resolves to a DIFFERENT folder (or is not a local-directory source at all)
+function classifyMarketplaceRow(parsed, canonical, exists) {
+  const ex = exists || ((p) => fs.existsSync(p));
+  if (!parsed || !parsed.registered) return { state: 'absent', sourcePath: null, realPath: null, symlinked: false, source: null };
+  const isDir = parsed.source === 'directory' || (parsed.source == null && parsed.path != null);
+  if (!isDir) return { state: 'elsewhere', sourcePath: parsed.path, realPath: null, symlinked: false, source: parsed.source };
+  if (parsed.path == null || !ex(parsed.path)) {
+    return { state: 'dead', sourcePath: parsed.path, realPath: null, symlinked: false, source: parsed.source };
+  }
+  const realPath = realOrResolved(parsed.path);
+  const same = !!canonical && realPath === realOrResolved(canonical);
+  return { state: same ? 'same' : 'elsewhere', sourcePath: parsed.path, realPath,
+    symlinked: realPath !== path.resolve(parsed.path), source: parsed.source };
+}
+
+function marketplaceRow(cwd) {
+  return classifyMarketplaceRow(
+    parseMarketplaceList(runClaudeJson(['plugin', 'marketplace', 'list', '--json'], cwd)), MARKETPLACE_SOURCE);
+}
+
+// ── 5.2 — the "real copy in ANOTHER project's node_modules" case (D2a) ──────────────────────────────────
+// Pure: when `realPath` (the RESOLVED folder an existing live row points at) lies inside a node_modules
+// directory, return { projectDir, folder } (projectDir = the project that owns that node_modules); else null.
+// Only meaningful for a row that is NOT this installer's canonical folder (callers pass 'elsewhere' rows).
+function realCopyInfo(realPath) {
+  if (!realPath || typeof realPath !== 'string') return null;
+  const parts = path.resolve(realPath).split(path.sep);
+  const i = parts.lastIndexOf('node_modules');
+  if (i < 0) return null;
+  const projectDir = parts.slice(0, i).join(path.sep) || path.sep;
+  return { projectDir, folder: path.resolve(realPath) };
+}
+
+// Names skipped when hashing a claude-tpm copy (at any depth): OS junk, scratch, deps, VCS.
+const HASH_SKIP = new Set(['.DS_Store', 'tmp', 'node_modules', '.git']);
+
+// Deterministic content map of a folder: { 'rel/posix/path': sha256 } — sorted walk, skips HASH_SKIP names,
+// symlinks hashed by their link text (never followed). THROWS on an unreadable folder (callers degrade).
+function hashTree(root) {
+  const crypto = require('crypto');
+  const out = {};
+  (function walk(dir, rel) {
+    const names = fs.readdirSync(dir).filter((n) => !HASH_SKIP.has(n)).sort();
+    for (const n of names) {
+      const full = path.join(dir, n); const r = rel ? rel + '/' + n : n;
+      const st = fs.lstatSync(full);
+      if (st.isSymbolicLink()) out[r] = 'link:' + fs.readlinkSync(full);
+      else if (st.isDirectory()) walk(full, r);
+      else if (st.isFile()) out[r] = crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex');
+    }
+  })(root, '');
+  return out;
+}
+
+// Compare two claude-tpm copies by content. Returns { verdict: 'identical' | 'differs' | 'unknown', count, text }.
+// 'unknown' (couldn't read one side) never throws. count = number of files that differ / exist on one side only.
+function compareCopies(a, b) {
+  try {
+    const ha = hashTree(a); const hb = hashTree(b);
+    const keys = new Set(Object.keys(ha).concat(Object.keys(hb)));
+    let count = 0;
+    for (const k of keys) if (ha[k] !== hb[k]) count += 1;
+    if (count === 0) return { verdict: 'identical', count: 0, text: 'same version, identical files' };
+    return { verdict: 'differs', count, text: `same version, files differ (${count} file${count === 1 ? '' : 's'})` };
+  } catch (e) {
+    return { verdict: 'unknown', count: 0, text: `couldn't compare the two copies (${e && e.message ? e.message : e})` };
+  }
+}
+
+// The plain-language heading for the real-copy case (shared by install, quiet error, and the doctor row).
+function realCopyMessage(info, cmp, targetDir) {
+  const own = path.resolve(info.projectDir) === realOrResolved(targetDir) ? ' (that is this project\'s OWN node_modules copy)' : '';
+  return `claude-tpm is already installed on this machine from ${info.folder}${own}.\n` +
+    `  If you keep it, this project will run that copy, not its own: the registry row for "${MARKETPLACE_NAME}" points there.\n` +
+    `  Compared with this installer's copy (${MARKETPLACE_SOURCE}): ${cmp.text}.\n` +
+    (cmp.verdict === 'identical'
+      ? '  Sharing is harmless today but fragile: that project owns the files, and deleting its node_modules breaks claude-tpm here too.\n'
+      : '  The copies may not match, so this project would silently run the other project\'s variant.\n');
+}
+
+// What each remediation option does, with the exact commands. (opt 1/2 stop the install; nothing is changed.)
+function realCopyOptionText() {
+  return '  Options:\n' +
+    '    1) Recommended: use ONE shared claude-tpm folder for several projects (README, docs/INSTALL.md).\n' +
+    '    2) Uninstall claude-tpm from that other project first, with `npx tpm uninstall --system` there (it loses claude-tpm until reinstalled).\n' +
+    '    3) Proceed anyway, sharing that copy (needs a yes, or a typed phrase if the copies differ).\n';
+}
+function realCopyNextSteps(choice, info, targetDir) {
+  const central = MARKETPLACE_SOURCE && !/(^|[\\/])node_modules([\\/]|$)/.test(MARKETPLACE_SOURCE);
+  if (choice === 1) {
+    return '  Nothing was changed. Next steps (one shared folder):\n' +
+      (central
+        ? `    - this installer's folder (${MARKETPLACE_SOURCE}) is already standalone. To point the shared row at it for every project:\n` +
+          `        node "${path.join(MARKETPLACE_SOURCE, 'tools', 'tpm.js')}" install "${targetDir}" --repoint\n` +
+          '      (re-pointing deletes every project\'s install record; re-adding restores loading)\n'
+        : '    - put claude-tpm in a standalone folder (outside any node_modules), then run its installer for each project:\n' +
+          `        node "<shared folder>/tools/tpm.js" install "${targetDir}" --repoint\n`) +
+      '    - the README "several projects" section (docs/INSTALL.md) has the full recipe.\n';
+  }
+  return '  Nothing was changed. Next steps (uninstall from the other project first):\n' +
+    `    1. cd "${info.projectDir}" && npx tpm uninstall --system      (removes claude-tpm there and the marketplace row; that project loses claude-tpm until reinstalled)\n` +
+    `    2. npx tpm install "${targetDir}"                              (re-run this install; it will then register this copy)\n`;
+}
+
 // ── plugin CACHE health (the "version registered but it's not there" shape) ─────────────────────────────
 // `claude plugin list --json` can report an installed-plugin RECORD whose cached copy under
 // ~/.claude/plugins/cache/ is gone ("failed to load: cache-miss" in the human list). pluginState().installed
@@ -395,10 +618,9 @@ function marketplaceSourceHealth(cwd) {
 //
 // Pure: given parsed `plugin list --json`, return OUR project-scope entry's installPath (the cache dir),
 // or null when there's no such entry / it reports no installPath.
-function parsePluginInstallPath(list) {
+function parsePluginInstallPath(list, targetDir) {
   if (!Array.isArray(list)) return null;
-  const entry = list.find((e) => e && typeof e === 'object' && e.id === PLUGIN_ID &&
-    (e.scope === undefined || e.scope === 'project'));
+  const entry = list.find((e) => recordMatches(e, targetDir));
   return entry && typeof entry.installPath === 'string' ? entry.installPath : null;
 }
 
@@ -407,7 +629,7 @@ function parsePluginInstallPath(list) {
 //   present:false → installPath reported but the cache dir is GONE (the cache-miss shape)
 //   present:null  → no installPath reported (nothing to check — e.g. no record, or schema drift)
 function pluginCacheHealth(cwd) {
-  const installPath = parsePluginInstallPath(runClaudeJson(['plugin', 'list', '--json'], cwd));
+  const installPath = parsePluginInstallPath(runClaudeJson(['plugin', 'list', '--json'], cwd), cwd);
   if (installPath == null) return { installPath: null, present: null };
   return { installPath, present: fs.existsSync(installPath) };
 }
@@ -488,19 +710,40 @@ function ask(question) {
 }
 function closePrompter() { if (_prompter) _prompter.close(); }
 
-// Run one REPL step: check state, print command+edit+what, ask consent (unless --quiet), run, report.
-// `already` = the state check already satisfies this step (skipped unless --force).
+// ── presentation helpers (5.6) — presentation only; they never change what runs ─────────────────────────
+// A step prints ONE header line ("Step 3/5 · Register the marketplace"), then the exact command (the honest
+// record of what will run) and ONE plain sentence of why. `edit` (optional) is printed only where the effect
+// isn't obvious (e.g. the machine-wide registry). A skipped / already-done step is a single ✓ line.
+// A DISPLAYED command line must be copy-pasteable: an argument with a space / quote / shell metacharacter is
+// shown single-quoted. Display only — the real spawn uses the argv ARRAY (no shell), which is never altered.
+function shellQuote(arg) {
+  const s = String(arg);
+  if (/^[A-Za-z0-9_@%+=:,.\/~-]+$/.test(s)) return s;
+  return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+function displayCommand(bin, argv) { return [bin].concat(argv).map(shellQuote).join(' '); }
+
+function stepHeader(n, total, title) { return `Step ${n}/${total} · ${title}`; }
+function skippedLine(header) { return `✓ ${header} — already done, skipped.\n`; }
+function writeStepBody(step) {
+  process.stdout.write(`  $ ${step.command}\n`);
+  process.stdout.write(`  ${step.what}\n`);
+  if (step.edit) process.stdout.write(`  (changes: ${step.edit})\n`);
+}
+
+// Run one step: check state, print header + command + why, ask consent (unless --quiet / `preApproved`), run, report.
+// `already` = the state check already satisfies this step (skipped unless --force). `preApproved` = a decision the
+// user already made (e.g. the single re-point confirmation) covers this step, so it is not asked again — it is NOT
+// --quiet: it never changes the argv (no `-y`).
 async function doStep(opts, step) {
-  const { already, describe, command, edit, what, bin, argv, cwd, verify } = step;
+  const { already, describe, bin, argv, cwd, verify } = step;
   if (already && !opts.force) {
-    process.stdout.write(`✓ ${describe} — already done, skipping.\n`);
+    process.stdout.write(skippedLine(describe));
     return { ok: true, skipped: true };
   }
   process.stdout.write(`\n${describe}\n`);
-  process.stdout.write(`  command: ${command}\n`);
-  process.stdout.write(`  edits:   ${edit}\n`);
-  process.stdout.write(`  does:    ${what}\n`);
-  if (!opts.quiet) {
+  writeStepBody(step);
+  if (!opts.quiet && !step.preApproved) {
     const answer = (await ask('  Run this? [y/N] ')).trim().toLowerCase();
     if (answer !== 'y' && answer !== 'yes') {
       process.stdout.write('  declined — stopping.\n');
@@ -534,39 +777,39 @@ async function doStep(opts, step) {
 // show-command-before-running pattern as doStep:
 //   1) add the dep at all? — a bare `n` SKIPS the dependency step entirely (marketplace + plugin steps
 //      still run; `npx tpm …` just won't resolve locally from this project — a legitimate choice).
-//   2) regular vs optional? — 1 → --save (dependencies); 2 or bare-enter → --save-optional
-//      (optionalDependencies). Default 2 preserves today's behavior + the "won't break the host's own
-//      `npm install` if the bundle is absent" safety.
+//   2) regular vs dev? — 1 → --save (dependencies); 2 or bare-enter → --save-dev (devDependencies).
+//      Default 2 (dev): claude-tpm is dev-time tooling, so it belongs in devDependencies — a production
+//      `npm install --omit=dev` / `npm ci --omit=dev` then skips it (it's never shipped to prod) while a
+//      normal dev `npm install` still materializes it. (0.1.0 recorded it as OPTIONAL; 0.2.0 moves to DEV.)
 //   3) confirm the exact command before running.
-// --quiet / -y (non-interactive) NEVER prompts: it records the dep as OPTIONAL, exactly as the old
-// unconditional `--save-optional` did (keeps all headless/automated installs + test harnesses working).
+// --quiet / -y (non-interactive) NEVER prompts: it records the dep as DEV (--save-dev), the new default —
+// keeps headless/automated installs + test harnesses working, just in the dev bucket instead of optional.
 async function doDependencyStep(opts, step) {
   const { already, describe, targetDir, fromSpec } = step;
   if (already && !opts.force) {
-    process.stdout.write(`✓ ${describe} — already done, skipping.\n`);
+    process.stdout.write(skippedLine(describe));
     return { ok: true, skipped: true };
   }
   process.stdout.write(`\n${describe}\n`);
 
-  let saveFlag = '--save-optional';
-  let bucket = 'optionalDependencies';
+  let saveFlag = '--save-dev';
+  let bucket = 'devDependencies';
   if (!opts.quiet) {
     const add = (await ask(`  Install ${TPM_PKG_NAME} into this project's package.json via npm? (y/n) `)).trim().toLowerCase();
     if (add !== 'y' && add !== 'yes') {
       process.stdout.write(`  skipped — NOT recording ${TPM_PKG_NAME} in package.json.\n`);
-      process.stdout.write('           (the marketplace + plugin steps still run; `npx tpm …` just won\'t\n');
-      process.stdout.write('           resolve locally from this project — a legitimate choice.)\n');
+      process.stdout.write('  The marketplace and plugin steps still run; `npx tpm …` just won\'t resolve locally here.\n');
       return { ok: true, skippedDep: true };
     }
-    const kind = (await ask('  Record it as a (1) regular dependency or (2) optional dependency? [default 2] ')).trim();
+    const kind = (await ask('  Record it as a (1) regular dependency or (2) dev dependency? [default 2] ')).trim();
     if (kind === '1') { saveFlag = '--save'; bucket = 'dependencies'; }
   }
 
-  const command = `npm install ${fromSpec} ${saveFlag}`;
-  process.stdout.write(`  command: ${command}\n`);
-  process.stdout.write(`  edits:   ${path.join(targetDir, 'package.json')} (${bucket}) + its lockfile + node_modules/${TPM_PKG_NAME}\n`);
-  process.stdout.write(`  does:    Adds "${TPM_PKG_NAME}": "${fromSpec}" to ${bucket}, updates the lockfile, and\n`);
-  process.stdout.write(`           creates the node_modules/${TPM_PKG_NAME} symlink/copy that step 3 points the marketplace at.\n`);
+  const command = displayCommand('npm', ['install', fromSpec, saveFlag]);
+  writeStepBody({
+    command,
+    what: `Records ${TPM_PKG_NAME} in ${bucket} of ${path.join(targetDir, 'package.json')} and installs it into node_modules.`,
+  });
 
   if (!opts.quiet) {
     const proceed = (await ask(`  About to run: ${command}. Proceed? (y/n) `)).trim().toLowerCase();
@@ -597,72 +840,264 @@ async function doDependencyStep(opts, step) {
 
 // ── --check mode (read-only doctor) ──────────────────────────────────────────────────────────────────
 
-function runCheck(targetDir) {
-  const rows = [];
+// Pure-ish readers/helpers for the doctor rows (exported so tests can drive them directly).
+
+function readJsonFile(p) {
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (_e) { return null; }
+}
+
+// The plugin ids this project's settings files turn ON (`enabledPlugins: { "<id>": true }`), from the
+// project's .claude/settings.json and .claude/settings.local.json. Never reads user-level settings.
+function settingsEnabledPlugins(targetDir) {
+  const ids = [];
+  for (const name of ['settings.json', 'settings.local.json']) {
+    const j = readJsonFile(path.join(targetDir, '.claude', name));
+    const ep = j && typeof j === 'object' ? j.enabledPlugins : null;
+    if (ep && typeof ep === 'object') {
+      for (const k of Object.keys(ep)) if (ep[k] === true && ids.indexOf(k) < 0) ids.push(k);
+    }
+  }
+  return ids;
+}
+
+// Every `claude-tpm@*` plugin enabled for this project: the settings entries UNION this project's enabled
+// project-scope records from `claude plugin list --json` (`list` = that parsed JSON, or null).
+function claudeTpmEnabledIds(targetDir, list) {
+  const ids = settingsEnabledPlugins(targetDir).filter((id) => id.indexOf(PLUGIN_NAME + '@') === 0);
+  if (Array.isArray(list)) {
+    for (const e of list) {
+      if (!e || typeof e !== 'object' || typeof e.id !== 'string' || e.id.indexOf(PLUGIN_NAME + '@') !== 0) continue;
+      if (e.enabled !== true || !(e.scope === undefined || e.scope === 'project')) continue;
+      if (typeof e.projectPath === 'string' && e.projectPath && realOrResolved(e.projectPath) !== realOrResolved(targetDir)) continue;
+      if (ids.indexOf(e.id) < 0) ids.push(e.id);
+    }
+  }
+  return ids;
+}
+
+// package.json `version` of a folder, or null.
+function bundleVersion(dir) {
+  const j = readJsonFile(path.join(dir, 'package.json'));
+  return j && typeof j.version === 'string' ? j.version : null;
+}
+
+// First executable `name` found by scanning a PATH string (what a shell's `command -v` resolves), or null.
+function findOnPath(name, pathStr) {
+  for (const dir of String(pathStr || '').split(path.delimiter)) {
+    if (!dir) continue;
+    const p = path.join(dir, name);
+    try {
+      if (!fs.statSync(p).isFile()) continue;
+      fs.accessSync(p, fs.constants.X_OK);
+      return p;
+    } catch (_e) { /* not here */ }
+  }
+  return null;
+}
+
+// In a Claude Bash call the SessionStart hook has exported TPM_PROJECT_ROOT / TPM_HOME; outside one neither is set.
+function inClaudeSession(env) { return !!(env && (env.TPM_PROJECT_ROOT || env.TPM_HOME)); }
+
+// `tpm` on PATH (in-session only): the first `tpm` on PATH must resolve into an expected bundle's bin/
+// (this bundle's, or the registered plugin folder's — Claude Code puts the plugin's bin/ on PATH).
+// Returns { applicable, ok, found } — applicable:false outside a Claude session.
+function checkTpmOnPath(env, binDirs) {
+  if (!inClaudeSession(env)) return { applicable: false, ok: true, found: null };
+  const found = findOnPath('tpm', env.PATH);
+  if (!found) return { applicable: true, ok: false, found: null };
+  const real = realOrResolved(found);
+  const ok = (binDirs || []).filter(Boolean).some((d) => path.dirname(real) === realOrResolved(d));
+  return { applicable: true, ok, found };
+}
+
+// `TPM_HOME` vs the doctor's own bundle: TPM_HOME is informational (tools self-locate), but a set value that
+// differs from the bundle running this doctor means this project's tpm copy and the enabled plugin differ.
+function checkTpmHomeVsSelf(env, bundleRoot) {
+  const home = env && env.TPM_HOME;
+  if (!home || !bundleRoot) return { applicable: false, differs: false, home: home || null };
+  return { applicable: true, differs: realOrResolved(home) !== realOrResolved(bundleRoot), home };
+}
+
+// Doctor rendering (5.6): one line per row — a status mark (✓ ok · ⚠ warning · ✗ problem · · skipped/info), a short
+// label that names WHAT is checked (never the passing condition — the mark + message carry the verdict), and the
+// message. Only ⚠/✗ rows get an indented `fix:` line (plain words + the exact command). One summary line at the end.
+const MARKS = { pass: '✓', warn: '⚠', fail: '✗', info: '·', skip: '·' };
+function plural(n, one, many) { return `${n} ${n === 1 ? one : (many || one + 's')}`; }
+function renderRows(rows) {
+  const w = rows.reduce((m, r) => Math.max(m, r.label.length), 0);
+  const counts = { pass: 0, warn: 0, fail: 0, skip: 0 };
+  for (const row of rows) {
+    const msg = row.note ? `  ${row.note}` : '';
+    process.stdout.write(`  ${MARKS[row.status]} ${(row.note ? row.label.padEnd(w) : row.label)}${msg}\n`);
+    if ((row.status === 'fail' || row.status === 'warn') && row.fix) process.stdout.write(`      fix: ${row.fix}\n`);
+    counts[row.status === 'info' ? 'pass' : row.status] += 1;
+  }
+  process.stdout.write(`  Summary: ${counts.pass} ok · ${plural(counts.warn, 'warning')} · ${plural(counts.fail, 'problem')}` +
+    (counts.skip ? ` · ${counts.skip} skipped` : '') + '\n');
+  return counts.fail === 0 ? 0 : 1;
+}
+
+function runCheck(targetDir, env) {
+  env = env || process.env;
+  const rows = []; // { label, status: 'pass'|'warn'|'fail'|'info'|'skip', note?, fix? }
+  const add = (label, status, note, fix) => rows.push({ label, status, note: note || '', fix: fix || '' });
+  const INSTALL_FIX = 'run `npx tpm install .` in this project';
+  const NO_CLAUDE = 'the `claude` CLI is not on PATH';
+
   const pkgRead = readPackageJson(targetDir);
-  rows.push({ label: 'package.json exists', pass: pkgRead.exists && !pkgRead.error,
-    note: pkgRead.error ? `(invalid JSON: ${pkgRead.error})` : '' });
+  add('package.json', pkgRead.exists && !pkgRead.error ? 'pass' : 'fail',
+    pkgRead.error ? `invalid JSON: ${pkgRead.error}` : pkgRead.exists ? '' : 'not found',
+    pkgRead.error ? 'fix the JSON syntax in package.json' : 'run `npm init -y` in the project dir, then `npx tpm install .`');
 
   const depOk = pkgRead.exists && !pkgRead.error && hasTpmDependency(pkgRead.value);
-  rows.push({ label: `"${TPM_PKG_NAME}" declared as a dependency`, pass: !!depOk,
-    note: (pkgRead.exists && !pkgRead.error) ? '' : '(skipped — no valid package.json)' });
+  if (!(pkgRead.exists && !pkgRead.error)) add('claude-tpm dependency', 'fail', 'skipped — no valid package.json', INSTALL_FIX + ' (step 2 records the dependency)');
+  else add('claude-tpm dependency', depOk ? 'pass' : 'fail', depOk ? TPM_PKG_NAME : `${TPM_PKG_NAME} is not in package.json`, INSTALL_FIX + ' (step 2 records the dependency)');
 
   const claudeOk = claudeCliAvailable().ok;
-  const marketOk = claudeOk && marketplaceRegistered(targetDir);
-  rows.push({ label: `marketplace "${MARKETPLACE_NAME}" registered`, pass: marketOk,
-    note: claudeOk ? '' : '(`claude` CLI not found on PATH)' });
+  const mParsed = claudeOk ? parseMarketplaceList(runClaudeJson(['plugin', 'marketplace', 'list', '--json'], targetDir))
+    : { registered: false, source: null, path: null };
+  const marketOk = claudeOk && mParsed.registered;
+  add('marketplace', marketOk ? 'pass' : 'fail', marketOk ? `"${MARKETPLACE_NAME}" is registered` : claudeOk ? `"${MARKETPLACE_NAME}" is not registered` : NO_CLAUDE,
+    claudeOk ? INSTALL_FIX + ' (step 3 registers the marketplace)' : 'install Claude Code (the `claude` CLI must be on PATH), then `npx tpm install .`');
 
-  // Marketplace SOURCE resolves — a registration can exist by name while its source path is gone (the
-  // "points at the wrong place" / dead-source shape). Only meaningful once it's registered.
-  const mHealth = marketOk ? marketplaceSourceHealth(targetDir) : { resolves: true, sourcePath: null };
-  rows.push({ label: `marketplace "${MARKETPLACE_NAME}" source resolves`, pass: !marketOk ? true : mHealth.resolves,
-    note: !claudeOk ? '(skipped — `claude` CLI not found on PATH)'
-      : !marketOk ? '(skipped — not registered)'
-      : mHealth.resolves ? ''
-      : `(source path missing: ${mHealth.sourcePath || 'unknown'} — re-run \`npx tpm install\` here; install self-repairs the stale marketplace)` });
+  // Marketplace SOURCE: a local-folder plugin runs IN PLACE from the registered folder, so the row must
+  // resolve (realpath) to THIS bundle's folder and that folder must exist. Missing folder = the plugin's
+  // source was moved/deleted (Claude Code misreports that as "cache-miss").
+  const mRow = classifyMarketplaceRow(mParsed, MARKETPLACE_SOURCE);
+  const SRC = 'marketplace source';
+  const realCopy = mRow.state === 'elsewhere' ? realCopyInfo(mRow.realPath) : null;
+  if (!claudeOk) add(SRC, 'skip', `skipped — ${NO_CLAUDE}`);
+  else if (!marketOk) add(SRC, 'skip', 'skipped — not registered');
+  else if (mRow.state === 'dead') {
+    add(SRC, 'fail',
+      `the folder was moved or deleted (Claude Code reports this as 'cache-miss'): ${mRow.sourcePath || 'unknown'}`,
+      'run `npx tpm install .` from the folder claude-tpm now lives in — it re-points the marketplace at the live folder');
+  } else if (mRow.state === 'elsewhere') {
+    const where = mRow.realPath || mRow.sourcePath;
+    // Real-copy case: the next row carries the folder + comparison, so this row only points at it (no repeat).
+    add(SRC, 'warn',
+      realCopy ? "points at another project's copy of claude-tpm — details in the real-copy row below"
+        : `points at ${where}, not this bundle (${MARKETPLACE_SOURCE}) — this project runs that folder's code`,
+      realCopy ? 'see the real-copy row below for the options'
+        : 'run `npx tpm install .` here — it explains the options (add --repoint to point the row at this bundle)');
+  } else if (mRow.symlinked) {
+    add(SRC, 'warn',
+      `healthy but fragile: stored as the symlink ${mRow.sourcePath} -> ${mRow.realPath}; it breaks if the link is removed`,
+      'to store the real folder instead: `npx tpm uninstall --system`, then `npx tpm install .` from the real folder');
+  } else add(SRC, 'pass', "this bundle's folder");
 
-  // Probe project-scope state FROM the target dir — enablement is cwd-relative (see runClaudeJson).
-  const pstate = claudeOk ? pluginState(targetDir) : { installed: false, enabled: false };
-  rows.push({ label: `plugin ${PLUGIN_ID} installed`, pass: pstate.installed,
-    note: claudeOk ? '' : '(`claude` CLI not found on PATH)' });
-  rows.push({ label: `plugin ${PLUGIN_ID} enabled for this project`, pass: pstate.installed && pstate.enabled,
-    note: (claudeOk && !pstate.installed) ? '(skipped — not installed)' : '' });
-
-  // Plugin CACHE present — an installed record can point at a cache dir that's gone (the "version
-  // registered but it's not there" / cache-miss shape). FAIL only on a definitively-missing cache.
-  const cacheH = (claudeOk && pstate.installed) ? pluginCacheHealth(targetDir) : { installPath: null, present: null };
-  rows.push({ label: `plugin ${PLUGIN_ID} cache present (loads)`, pass: cacheH.present !== false,
-    note: !claudeOk ? '(skipped — `claude` CLI not found on PATH)'
-      : !pstate.installed ? '(skipped — not installed)'
-      : cacheH.present === null ? '(skipped — no installPath reported)'
-      : cacheH.present ? ''
-      : `(cache missing: ${cacheH.installPath} — re-run \`npx tpm install\` here to reinstall the plugin)` });
-
-  // Hooks-delivery health: the bundle in node_modules carries a hooks/hooks.json declaring both hooks.
-  // Only meaningful once the dep is materialized in node_modules; otherwise skip (step 2 handles that).
-  const nmHasTpm = nodeModulesHasTpm(targetDir);
-  const hh = bundleHooksHealth(targetDir);
-  const hooksNote = !nmHasTpm ? '(skipped — dependency not installed in node_modules)'
-    : hh.error ? `(bundle hooks.json invalid JSON: ${hh.error})`
-    : !hh.present ? '(bundle carries no hooks/hooks.json)'
-    : !hh.gateSpawn ? '(missing: gate-spawn)'
-      : '';
-  rows.push({ label: 'plugin delivers its hook (gate-spawn PreToolUse)',
-    pass: !nmHasTpm ? true : (hh.present && !hh.error && hh.gateSpawn), note: hooksNote });
-
-  // Consumer override config (optional): if present, it must be valid JSON — a malformed one silently
-  // degrades every resolver to defaults. Absent is fine (defaults); present-and-malformed FAILS.
-  const cfgv = configJsonValidity(targetDir);
-  rows.push({ label: 'consumer config.json is valid JSON (if present)', pass: cfgv.valid,
-    note: !cfgv.present ? '(none — using defaults)' : cfgv.valid ? '' : `(invalid JSON: ${cfgv.error})` });
-
-  let allPass = true;
-  for (const row of rows) {
-    process.stdout.write(`  [${row.pass ? 'PASS' : 'FAIL'}] ${row.label}${row.note ? ' ' + row.note : ''}\n`);
-    if (!row.pass) allPass = false;
+  // Project-scope state — enablement is cwd-relative (see runClaudeJson).
+  const pluginListJson = claudeOk ? runClaudeJson(['plugin', 'list', '--json'], targetDir) : null;
+  const pstate = claudeOk ? parsePluginList(pluginListJson, targetDir) : { installed: false, enabled: false };
+  const settingsOn = settingsEnabledPlugins(targetDir).indexOf(PLUGIN_ID) >= 0;
+  // A marketplace re-add wipes install records yet the plugin still LOADS from enabledPlugins + the registered
+  // marketplace (probe #11a) — so a missing record is a WARN, never a FAIL, when both of those hold.
+  const loadsWithoutRecord = !pstate.installed && settingsOn && marketOk;
+  if (pstate.installed) add('plugin install record', 'pass', PLUGIN_ID);
+  else if (loadsWithoutRecord) {
+    add('plugin install record', 'warn',
+      'none for this project, but the plugin is enabled in .claude/settings.json and the marketplace is registered, so it still loads',
+      're-run `npx tpm install .` to restore the record');
+  } else {
+    add('plugin install record', 'fail', claudeOk ? `${PLUGIN_ID} is not installed here` : NO_CLAUDE,
+      claudeOk ? INSTALL_FIX + ' (step 4 installs the plugin)' : 'install Claude Code, then `npx tpm install .`');
   }
-  if (!pkgRead.exists) process.stdout.write('\n  Fix: run `npm init -y` in the target dir, then re-run install (without --check).\n');
-  return allPass ? 0 : 1;
+  const enabledOk = (pstate.installed && pstate.enabled) || loadsWithoutRecord;
+  const notInstalled = claudeOk && !pstate.installed && !loadsWithoutRecord;
+  add('plugin enablement', enabledOk ? 'pass' : 'fail',
+    notInstalled ? 'not enabled — the plugin is not installed' : enabledOk ? 'enabled for this project' : 'not enabled for this project',
+    INSTALL_FIX + ' (it enables the plugin for this project)');
+
+  // More than one claude-tpm@* enabled: the first silently wins, the rest are shadowed.
+  const enabledIds = claudeTpmEnabledIds(targetDir, pluginListJson);
+  add('enabled claude-tpm plugins', enabledIds.length > 1 ? 'warn' : 'pass',
+    enabledIds.length > 1 ? `${enabledIds.join(', ')} are all enabled — the first silently wins`
+      : enabledIds.length === 1 ? enabledIds[0] : 'none',
+    'disable the extras, e.g. `claude plugin disable <id> --scope project` for all but the one you want');
+
+  // Plugin enabled but the project was never installed (no .claude/claude-tpm/ marker): task/session tools
+  // refuse ("--tasks-dir is required … run inside a project").
+  const markerPresent = fs.existsSync(path.join(targetDir, '.claude', 'claude-tpm'));
+  const PROJ = 'project folder';
+  if (enabledIds.length > 0 && !markerPresent) {
+    add(PROJ, 'fail', 'plugin enabled but no .claude/claude-tpm/ here, so the task and session tools refuse to run',
+      'run `npx tpm install .` in this project');
+  } else if (enabledIds.length === 0) add(PROJ, 'skip', 'skipped — plugin not enabled for this project');
+  else add(PROJ, 'pass', '.claude/claude-tpm/ present');
+
+  // Install-record path: INFORMATIONAL only. A local-folder plugin runs in place from the registered folder;
+  // the "cache"/install path in the record is not what runs, and the record isn't needed to load.
+  const cacheH = (claudeOk && pstate.installed) ? pluginCacheHealth(targetDir) : { installPath: null, present: null };
+  add('install-record path', !claudeOk || !pstate.installed || cacheH.present === null ? 'skip' : 'info',
+    !claudeOk ? `skipped — ${NO_CLAUDE}`
+      : !pstate.installed ? 'skipped — not installed'
+      : cacheH.present === null ? 'skipped — no installPath reported'
+      : cacheH.present ? 'present (informational — the cache is not what runs)'
+      : `${cacheH.installPath} is missing — harmless${mRow.state === 'dead' ? ' — it is only a record (see the marketplace source row for the real problem)' : ', the plugin runs from the registered marketplace folder'}`);
+
+  // Hooks delivery: the plugin ships BOTH the SessionStart `session-start` hook and the PreToolUse `gate-spawn`
+  // hook via the bundle-root hooks/hooks.json. Checked in the project's node_modules copy when there is one,
+  // else in this bundle.
+  const nmHasTpm = nodeModulesHasTpm(targetDir);
+  const hh = nmHasTpm ? bundleHooksHealth(targetDir) : bundleHooksHealthAt(BUNDLE_ROOT || '');
+  const missingHooks = [];
+  if (!hh.sessionStart) missingHooks.push('session-start (SessionStart)');
+  if (!hh.gateSpawn) missingHooks.push('gate-spawn (PreToolUse)');
+  const hooksOk = hh.present && !hh.error && missingHooks.length === 0;
+  add('plugin hooks', hooksOk ? 'pass' : 'fail',
+    hooksOk ? 'session-start + gate-spawn' : hh.error ? `bundle hooks.json is invalid JSON: ${hh.error}`
+      : !hh.present ? 'the bundle carries no hooks/hooks.json'
+      : `missing: ${missingHooks.join(', ')}`,
+    'reinstall or update the claude-tpm bundle so hooks/hooks.json declares both hooks, then `npx tpm install .`');
+
+  // Version agreement: the enabled plugin's bundle (the registered folder) vs this project's node_modules copy.
+  const VER = 'bundle version';
+  const pluginFolder = (marketOk && mRow.realPath) ? mRow.realPath : null;
+  const nmVersion = bundleVersion(path.join(targetDir, 'node_modules', TPM_PKG_NAME));
+  const plVersion = pluginFolder ? bundleVersion(pluginFolder) : null;
+  if (!pluginFolder) add(VER, 'skip', 'skipped — no registered plugin folder to compare');
+  else if (!nmVersion) add(VER, 'skip', `skipped — no node_modules copy here; the plugin runs from ${pluginFolder}`);
+  else if (!plVersion) add(VER, 'skip', `skipped — couldn't read the plugin bundle's version in ${pluginFolder}`);
+  else if (plVersion !== nmVersion) {
+    add(VER, 'warn', `the enabled plugin is ${plVersion} (${pluginFolder}) but this project's node_modules copy is ${nmVersion}`,
+      'make them agree: update the project dependency or the registered plugin, then re-run `npx tpm install .`');
+  } else add(VER, 'pass', `${plVersion}, plugin and node_modules copy agree`);
+
+  // Consumer override config (optional): if present, it must be valid JSON.
+  const cfgv = configJsonValidity(targetDir);
+  add('config.json', cfgv.valid ? 'pass' : 'fail',
+    !cfgv.present ? 'none — using defaults' : cfgv.valid ? 'valid JSON' : `invalid JSON: ${cfgv.error}`,
+    'fix the JSON in .claude/claude-tpm/config.json (or delete it to use defaults)');
+
+  // 5.2 — WARN row: the live row resolves to a real copy inside another node_modules.
+  if (claudeOk && marketOk && realCopy) {
+    const cmp = compareCopies(realCopy.folder, MARKETPLACE_SOURCE || realCopy.folder);
+    add('real copy in another project', 'warn',
+      `${realCopy.folder} — this project runs that copy; ${cmp.text}`,
+      'run `npx tpm install .` here for the options (one shared folder, or uninstall from the other project first)');
+  }
+
+  // In-session only: `tpm` on PATH must resolve into the plugin's bin/ (catches a shadowing `tpm`, e.g. the
+  // tmux plugin manager). Needs a Claude Bash call's PATH, so it is skipped outside a session.
+  const TPMP = 'tpm on PATH';
+  const tpmP = checkTpmOnPath(env, [BUNDLE_ROOT && path.join(BUNDLE_ROOT, 'bin'), pluginFolder && path.join(pluginFolder, 'bin')]);
+  if (!tpmP.applicable) add(TPMP, 'skip', 'skipped — only checked inside a Claude Code Bash call (TPM_PROJECT_ROOT / TPM_HOME not set here)');
+  else if (tpmP.ok) add(TPMP, 'pass', `resolves into the plugin bin/ (${tpmP.found})`);
+  else if (!tpmP.found) add(TPMP, 'warn', 'no `tpm` found on PATH', 'enable the plugin for this project (its bin/ goes on PATH in Claude Bash calls), or use `npx tpm …`');
+  else {
+    add(TPMP, 'warn', `a different \`tpm\` shadows the plugin's: ${tpmP.found}`,
+      `remove or rename ${tpmP.found} (or put the plugin's bin/ earlier on PATH), or use \`npx tpm …\``);
+  }
+
+  // TPM_HOME is informational (tools self-locate): warn only when it is set AND names a different folder.
+  const th = checkTpmHomeVsSelf(env, BUNDLE_ROOT);
+  if (th.applicable) {
+    add('TPM_HOME', th.differs ? 'warn' : 'pass',
+      th.differs ? `TPM_HOME=${th.home} but this doctor runs from ${BUNDLE_ROOT} — the project's tpm copy and the enabled plugin are different folders` : 'same folder as this tpm copy',
+      'start a fresh Claude Code session so the SessionStart hook re-exports it; TPM_HOME is informational, tools find their own folder');
+  }
+
+  return renderRows(rows);
 }
 
 // ── the install run (default / --quiet / --force) ───────────────────────────────────────────────────
@@ -670,7 +1105,7 @@ function runCheck(targetDir) {
 async function runInstall(opts) {
   _dbg = makeDbg(debugEnabled(opts)); // idempotent — main() also sets it; covers a direct module call
   const targetDir = path.resolve(opts.dir);
-  _dbg('resolved run: opts=' + JSON.stringify({ dir: opts.dir, from: opts.from, quiet: !!opts.quiet, force: !!opts.force, debug: !!opts.debug }));
+  _dbg('resolved run: opts=' + JSON.stringify({ dir: opts.dir, from: opts.from, quiet: !!opts.quiet, force: !!opts.force, repoint: !!opts.repoint, debug: !!opts.debug }));
   _dbg('resolved run: targetDir=' + targetDir + ' bundleRoot=' + findBundleRoot(__dirname));
   _dbg('tty: stdin.isTTY=' + !!process.stdin.isTTY + ' stdout.isTTY=' + !!process.stdout.isTTY);
 
@@ -680,34 +1115,42 @@ async function runInstall(opts) {
   // is the user's call, not ours; it's also load-bearing (step 2 needs it to exist).
   const npmProbe = commandAvailable('npm');
   if (!npmProbe.ok) {
-    process.stderr.write('Step 1/5 — ✗ preflight failed\n');
+    process.stderr.write(stepHeader(1, 5, 'Preflight') + ' — ✗ failed\n');
     process.stderr.write('  error: ' + preflightMessage('npm', npmProbe, 'install Node.js/npm first.') + '\n');
     return 1;
   }
   const pkgRead = readPackageJson(targetDir);
   if (!pkgRead.exists) {
-    process.stderr.write('Step 1/5 — ✗ preflight failed\n');
+    process.stderr.write(stepHeader(1, 5, 'Preflight') + ' — ✗ failed\n');
     process.stdout.write(`No package.json found in ${targetDir}.\n\n`);
     process.stdout.write('  Run this yourself first:\n');
     process.stdout.write('    npm init -y\n');
-    process.stdout.write('  (writes a default package.json — name/version guessed from the folder, ISC\n');
-    process.stdout.write('  license, no dependencies — that step 2 below needs to exist before it can add\n');
-    process.stdout.write('  an optional dependency to it.)\n');
+    process.stdout.write('  It writes a default package.json (name guessed from the folder). Step 2 needs one to record the dependency in.\n');
     return 1;
   }
   if (pkgRead.error) {
-    process.stderr.write('Step 1/5 — ✗ preflight failed\n');
+    process.stderr.write(stepHeader(1, 5, 'Preflight') + ' — ✗ failed\n');
     process.stderr.write(`  error: ${path.join(targetDir, 'package.json')} is not valid JSON: ${pkgRead.error}\n`);
     return 1;
   }
   const claudeProbe = claudeCliAvailable();
   if (!claudeProbe.ok) {
-    process.stderr.write('Step 1/5 — ✗ preflight failed\n');
+    process.stderr.write(stepHeader(1, 5, 'Preflight') + ' — ✗ failed\n');
     process.stderr.write('  error: ' + preflightMessage('claude', claudeProbe, 'install Claude Code first.') + '\n');
     return 1;
   }
+  const bundleRoot = findBundleRoot(__dirname);
+  const stampGuard = bundleRoot ? manifestVersionStamp(bundleRoot) : { ok: true };
+  if (!stampGuard.ok) {
+    process.stderr.write(stepHeader(1, 5, 'Preflight') + ' — ✗ failed\n');
+    process.stderr.write(`  error: stale marketplace name — this bundle's package.json is ${stampGuard.version}, `);
+    process.stderr.write(`but the plugin manifest registers "${stampGuard.actual}" (expected "${stampGuard.expected}").\n`);
+    process.stderr.write('  The version was bumped without re-stamping the manifests. Run `npm run stamp` in the claude-tpm source,\n');
+    process.stderr.write('  re-vendor, and retry — installing as-is would register a wrong-version marketplace that collides with others.\n');
+    return 1;
+  }
   const pkg = pkgRead.value;
-  process.stdout.write('Step 1/5 — ✓ preflight passed (npm, package.json, claude).\n');
+  process.stdout.write(stepHeader(1, 5, 'Preflight') + ' — ✓ npm, package.json and claude are all available.\n');
 
   // Config seed (#1132.C) — lay down a default .claude/claude-tpm/config.json (tasks.tasksDir +
   // session.notes.sessionsDir) so the task/session verbs resolve their store without a hand-authored
@@ -716,8 +1159,8 @@ async function runInstall(opts) {
   const cfgSeed = ensureConsumerConfig(targetDir);
   const cfgRel = path.relative(targetDir, cfgSeed.path) || cfgSeed.path;
   process.stdout.write(cfgSeed.wrote
-    ? `Config — wrote ${cfgRel} (tasks.tasksDir + session.notes.sessionsDir defaults).\n`
-    : `Config — ${cfgRel} already present, left as-is.\n`);
+    ? `✓ Config · wrote ${cfgRel} (default task and session folders).\n`
+    : `✓ Config · ${cfgRel} already there, left as-is.\n`);
 
   // Step 2 — claude-tpm dependency. Idempotent: skip `npm install` (unless --force) when the dep is both
   // declared in package.json AND already present in node_modules.
@@ -732,42 +1175,117 @@ async function runInstall(opts) {
   _dbg('step 2: hasDep=' + hasTpmDependency(pkg) + ' inNodeModules=' + nodeModulesHasTpm(targetDir) + ' → already=' + step2Already);
   const r2 = await doDependencyStep(opts, {
     already: step2Already,
-    describe: 'Step 2/5 — add the claude-tpm dependency',
+    describe: stepHeader(2, 5, 'Add the claude-tpm dependency'),
     targetDir, fromSpec,
   });
   if (!r2.ok) return 1;
 
-  // Step 3 — marketplace registration. (marketplace add/remove take no -y flag; unaffected by --quiet.)
-  // SELF-HEAL first: a marketplace registered by NAME whose source path no longer resolves (e.g. the
-  // global singleton points at a deleted sibling consumer) would make step 3 "already done" → skip, and
-  // step 4 then fails opaquely ("plugin not found in marketplace" / cache-miss). Detect that dead-source
-  // shape and repair it (remove the stale registration so the add below re-registers against THIS project).
-  const mHealth = marketplaceSourceHealth(targetDir);
-  let marketplaceReady = mHealth.registered && mHealth.resolves;
-  _dbg('step 3: registered=' + mHealth.registered + ' resolves=' + mHealth.resolves + ' source=' + mHealth.source + ' path=' + mHealth.sourcePath + ' → marketplaceReady=' + marketplaceReady);
-  if (mHealth.registered && !mHealth.resolves) {
-    _dbg('step 3: dead-source marketplace detected → repairing (remove stale registration first)');
+  // Step 3 — marketplace registration, from the CANONICAL (realpath'd) bundle folder at USER scope (no
+  // --scope flag; the CLI default). marketplace add/remove take no -y flag; unaffected by --quiet.
+  // The row table (D2a) is keyed on this version's marketplace NAME and compares RESOLVED paths:
+  //   absent → add · same folder → leave alone · folder gone → re-point · alive-but-elsewhere → guarded.
+  if (!MARKETPLACE_SOURCE) {
+    process.stderr.write('error: could not self-locate the claude-tpm bundle folder to register as the marketplace source.\n');
+    return 1;
+  }
+  const row = marketplaceRow(targetDir);
+  let marketplaceReady = row.state === 'same';
+  let repointConfirmed = false; // the guarded re-point was explicitly confirmed (or --repoint): remove + add + install share that one answer
+  let sharedRealCopy = false; // 5.2: proceeding on another project's real copy — the row is never touched
+  _dbg('step 3: state=' + row.state + ' stored=' + row.sourcePath + ' real=' + row.realPath + ' symlinked=' + row.symlinked + ' canonical=' + MARKETPLACE_SOURCE + ' → marketplaceReady=' + marketplaceReady);
+  if (row.state === 'same' && row.symlinked) {
+    process.stdout.write(`  ⚠ The marketplace is registered as the symlink ${row.sourcePath} -> ${row.realPath}: healthy but fragile (it breaks if the link is removed). Left as-is; \`npx tpm doctor\` shows the fix.\n`);
+  }
+  const REMOVE_WARNING = `Removing the row deletes EVERY project's install record + plugin data; re-adding "${MARKETPLACE_NAME}" restores loading (their enabledPlugins stay).\n`;
+  if (row.state === 'dead') {
+    _dbg('step 3: dead-folder marketplace detected → re-pointing (remove stale registration first)');
+    process.stdout.write(`\n⚠ Marketplace "${MARKETPLACE_NAME}" is registered, but its folder no longer exists (moved or deleted):\n` +
+      `    ${row.sourcePath || '(none recorded)'}\n` +
+      '  No project can load the plugin until the row is re-pointed.\n  ' + REMOVE_WARNING);
+  } else if (row.state === 'elsewhere' && !opts.repoint && realCopyInfo(row.realPath)) {
+    // 5.2 — a real copy inside another project's node_modules (D2a). Never re-pointed here: the options
+    // are share it, uninstall there first, or stop. NO marketplace add/remove happens on this path.
+    const info = realCopyInfo(row.realPath);
+    const cmp = compareCopies(info.folder, MARKETPLACE_SOURCE);
+    const head = realCopyMessage(info, cmp, targetDir);
+    if (opts.quiet) {
+      if (!opts.force) {
+        process.stderr.write('error: ' + head + realCopyOptionText() +
+          '  Stopping (non-interactive). Re-run with --force to share that copy (the row is NOT re-pointed), or choose option 1 or 2.\n');
+        return 1;
+      }
+      process.stdout.write('\n⚠ ' + head + '  --quiet --force given — proceeding, sharing that copy (marketplace row left as-is).\n');
+    } else {
+      process.stdout.write('\n⚠ ' + head + realCopyOptionText());
+      const choice = (await ask('  Choose 1, 2 or 3 [default: stop]: ')).trim();
+      if (choice === '1' || choice === '2') {
+        process.stdout.write(realCopyNextSteps(Number(choice), info, targetDir));
+        return 1;
+      }
+      if (choice !== '3') {
+        process.stdout.write('  no option chosen — stopping; nothing was changed.\n');
+        return 1;
+      }
+      if (cmp.verdict === 'identical') {
+        const a = (await ask('  Proceed, sharing that copy? [y/N] ')).trim().toLowerCase();
+        if (a !== 'y' && a !== 'yes') { process.stdout.write('  declined — nothing was changed.\n'); return 1; }
+      } else {
+        const a = (await ask('  The copies differ. To run the other project\'s variant anyway, type exactly "share different copy": ')).trim();
+        if (a !== 'share different copy') { process.stdout.write('  not confirmed — stopping; nothing was changed.\n'); return 1; }
+      }
+    }
+    marketplaceReady = true; sharedRealCopy = true;
+  } else if (row.state === 'elsewhere') {
+    const where = row.realPath
+      ? `${row.sourcePath}${row.symlinked ? ` (resolves to ${row.realPath})` : ''}`
+      : `${row.sourcePath || '(no local path)'} (a ${row.source || 'non-directory'} source)`;
+    const msg = `Marketplace "${MARKETPLACE_NAME}" is already registered at a DIFFERENT folder (it still exists):\n` +
+      `    registered:     ${where}\n` +
+      `    this installer: ${MARKETPLACE_SOURCE}\n` +
+      '  Re-pointing makes EVERY project on this machine that uses this marketplace run the code in this installer\'s folder.\n' +
+      '  It also deletes every project\'s install record + plugin data for it; re-adding restores loading, but they need re-installing.\n';
+    if (!opts.repoint) {
+      if (opts.quiet) {
+        process.stderr.write('error: ' + msg + '  Not re-pointing without your say-so. Re-run with --repoint to do it, or without --quiet to be asked.\n');
+        return 1;
+      }
+      process.stdout.write('\n⚠ ' + msg);
+      // ONE confirmation covers the whole re-point: the remove + add below AND the plugin install that follows.
+      const a = (await ask('  Re-point the marketplace to this installer\'s folder (remove + add + reinstall the plugin here)? [y/N] ')).trim().toLowerCase();
+      if (a !== 'y' && a !== 'yes') {
+        process.stdout.write('  declined — leaving the marketplace registry alone; nothing was changed.\n');
+        return 1;
+      }
+    } else {
+      process.stdout.write('\n⚠ ' + msg + '  --repoint given — proceeding.\n');
+    }
+    repointConfirmed = true;
+  }
+  const healed = row.state === 'dead' || (row.state === 'elsewhere' && !sharedRealCopy); // a guarded re-point runs first as step 3a
+  if (healed) {
+    // The elsewhere path was just explicitly confirmed (or --repoint) — don't re-ask per command.
     const rHeal = await doStep(opts, {
       already: false,
-      describe: 'Step 3/5 — repair: remove the STALE claude-tpm marketplace (its source no longer resolves)',
-      command: `claude plugin marketplace remove ${MARKETPLACE_NAME}`,
+      preApproved: repointConfirmed,
+      describe: stepHeader('3a', 5, row.state === 'dead' ? 'Re-point the marketplace (remove the row whose folder is gone)' : 'Re-point the marketplace (remove the row at the other folder)'),
+      command: displayCommand('claude', ['plugin', 'marketplace', 'remove', MARKETPLACE_NAME]),
       edit: "this machine's Claude Code marketplace registry",
-      what: `Marketplace "${MARKETPLACE_NAME}" is registered but its source (${mHealth.sourcePath || 'unknown'})\n` +
-        '           is gone — removing the dead registration so it can be re-added against this project below.',
+      what: `Removes the "${MARKETPLACE_NAME}" row so it can be re-added from this installer's folder.`,
       bin: 'claude', argv: ['plugin', 'marketplace', 'remove', MARKETPLACE_NAME], cwd: targetDir,
       verify: () => !marketplaceRegistered(targetDir),
     });
     if (!rHeal.ok) return 1;
     marketplaceReady = false; // removed → the add below must run
   }
-  const r3 = await doStep(opts, {
+  const r3 = sharedRealCopy ? { ok: true, skipped: true } : await doStep(opts, {
     already: marketplaceReady,
-    describe: 'Step 3/5 — register the claude-tpm marketplace',
-    command: `claude plugin marketplace add ${MARKETPLACE_SOURCE} --scope project`,
-    edit: "this project's Claude Code settings (project scope)",
-    what: `Trusts/registers ${MARKETPLACE_SOURCE} as marketplace "${MARKETPLACE_NAME}" so its plugin becomes installable.`,
-    bin: 'claude', argv: ['plugin', 'marketplace', 'add', MARKETPLACE_SOURCE, '--scope', 'project'], cwd: targetDir,
-    verify: () => marketplaceRegistered(targetDir) && marketplaceSourceHealth(targetDir).resolves,
+    preApproved: repointConfirmed,
+    describe: stepHeader(healed ? '3b' : 3, 5, 'Register the marketplace'),
+    command: displayCommand('claude', ['plugin', 'marketplace', 'add', MARKETPLACE_SOURCE]),
+    edit: "this machine's Claude Code marketplace registry, user scope",
+    what: `Makes this bundle folder installable as marketplace "${MARKETPLACE_NAME}".`,
+    bin: 'claude', argv: ['plugin', 'marketplace', 'add', MARKETPLACE_SOURCE], cwd: targetDir,
+    verify: () => marketplaceRow(targetDir).state === 'same',
   });
   if (!r3.ok) return 1;
 
@@ -780,10 +1298,10 @@ async function runInstall(opts) {
   _dbg('step 4: installed=' + p4.installed + ' enabled=' + p4.enabled + ' cachePresent=' + cache4.present + ' → already=' + alreadyInstalled);
   const r4 = await doStep(opts, {
     already: alreadyInstalled,
-    describe: 'Step 4/5 — install the claude-tpm plugin',
-    command: `claude plugin install ${PLUGIN_ID} --scope project${opts.quiet ? ' -y' : ''}`,
-    edit: "~/.claude/plugins/ (global cache) + this project's plugin registry (project scope)",
-    what: `Installs ${PLUGIN_ID} and, in the common case, enables it for this project in the same step.`,
+    preApproved: repointConfirmed,
+    describe: stepHeader(4, 5, 'Install the plugin'),
+    command: displayCommand('claude', ['plugin', 'install', PLUGIN_ID, '--scope', 'project'].concat(opts.quiet ? ['-y'] : [])),
+    what: `Installs ${PLUGIN_ID} for this project; this usually enables it too.`,
     bin: 'claude', argv: ['plugin', 'install', PLUGIN_ID, '--scope', 'project'].concat(opts.quiet ? ['-y'] : []), cwd: targetDir,
     verify: () => pluginState(targetDir).installed && pluginCacheHealth(targetDir).present !== false,
   });
@@ -797,11 +1315,10 @@ async function runInstall(opts) {
   _dbg('step 5: installed=' + afterInstall.installed + ' enabled=' + afterInstall.enabled + ' → needsEnable=' + needsEnable);
   const r5 = await doStep(opts, {
     already: !needsEnable,
-    describe: 'Step 5/5 — enable the plugin for this project',
-    command: `claude plugin enable ${PLUGIN_ID} --scope project`,
-    edit: "this project's Claude Code plugin registry (project scope)",
-    what: `Flips ${PLUGIN_ID} on for this project. Step 4 usually already leaves it enabled — this only\n` +
-      '           runs a standalone enable when the plugin is installed but currently disabled here.',
+    preApproved: repointConfirmed,
+    describe: stepHeader(5, 5, 'Enable the plugin for this project'),
+    command: displayCommand('claude', ['plugin', 'enable', PLUGIN_ID, '--scope', 'project']),
+    what: 'Turns the plugin on here; only needed when step 4 left it installed but disabled.',
     bin: 'claude', argv: ['plugin', 'enable', PLUGIN_ID, '--scope', 'project'], cwd: targetDir,
     verify: () => pluginState(targetDir).enabled,
   });
@@ -810,10 +1327,10 @@ async function runInstall(opts) {
   // Final verification — run the read-only doctor over the END STATE so a broken result (a dead-source
   // marketplace, a cache-miss, a malformed config) is surfaced deterministically rather than assumed. The
   // steps above act; this confirms the acted-on state is actually healthy.
-  process.stdout.write('\nFinal check — doctor (verifying the end state):\n');
-  const checkCode = runCheck(targetDir);
+  process.stdout.write('\nFinal check · doctor\n');
+  const checkCode = runCheck(targetDir, process.env);
   if (checkCode !== 0) {
-    process.stderr.write('\n✗ the install steps ran, but the final doctor found problems (see the FAIL rows above).\n');
+    process.stderr.write('\n✗ the install steps ran, but the final doctor found problems (see the ✗ rows above).\n');
     return 1;
   }
   process.stdout.write(`\n✓ claude-tpm is installed and enabled (${PLUGIN_ID}) for ${targetDir} — doctor clean.\n`);
@@ -829,7 +1346,7 @@ function printHelp() {
 }
 
 function parseArgs(argv) {
-  const a = { dir: null, from: null, quiet: false, force: false, check: false, debug: false, help: false };
+  const a = { dir: null, from: null, quiet: false, force: false, check: false, debug: false, repoint: false, help: false };
   for (let i = 0; i < argv.length; i += 1) {
     const x = argv[i];
     if (x === '-h' || x === '--help') a.help = true;
@@ -837,6 +1354,7 @@ function parseArgs(argv) {
     else if (x === '--force') a.force = true;
     else if (x === '--check') a.check = true;
     else if (x === '--debug') a.debug = true;
+    else if (x === '--repoint') a.repoint = true;
     else if (x === '--from') {
       const v = argv[i + 1];
       if (v === undefined || v.startsWith('-')) {
@@ -877,11 +1395,13 @@ if (require.main === module) {
 
 module.exports = {
   main, runInstall, runCheck, parseArgs, doDependencyStep, closePrompter, findBundleRoot, defaultFromSpec,
-  makeDbg, debugEnabled, formatChildExit, classifySpawn, spawnErrorReason, preflightMessage,
+  shellQuote, displayCommand, makeDbg, debugEnabled, formatChildExit, classifySpawn, spawnErrorReason, preflightMessage,
+  readBundleIdentity, manifestVersionStamp,
   readPackageJson, hasTpmDependency, nodeModulesHasTpm, claudeCliAvailable, commandAvailable,
   marketplaceRegistered, pluginState, parsePluginList,
-  parseMarketplaceList, marketplaceSourceHealth, parsePluginInstallPath, pluginCacheHealth,
-  parseHooksManifest, bundleHooksHealth, configJsonValidity,
+  realCopyInfo, hashTree, compareCopies, realCopyMessage, parseMarketplaceList, marketplaceSourceHealth, classifyMarketplaceRow, marketplaceRow, realOrResolved, recordMatches, parsePluginInstallPath, pluginCacheHealth,
+  parseHooksManifest, bundleHooksHealth, bundleHooksHealthAt, configJsonValidity,
+  settingsEnabledPlugins, claudeTpmEnabledIds, bundleVersion, findOnPath, checkTpmOnPath, checkTpmHomeVsSelf,
   ensureConsumerConfig, seedConfigDefaults,
   TPM_PKG_NAME, MARKETPLACE_NAME, PLUGIN_NAME, PLUGIN_ID, MARKETPLACE_SOURCE,
 };

@@ -8,11 +8,11 @@
  *
  * (The PreToolUse hook — gate-spawn — is delivered by the plugin's hooks/hooks.json, auto-discovered on
  * enable, so this doctor no longer checks for hook wiring in settings.json. The %TPM_HOME% resolution
- * hooks were retired in #1126 — resolution is anchor-first via `npx tpm resolve-home`.)
+ * hooks were retired in #1126 — resolution is anchor-first via `tpm resolve-home`.)
  *
  * Runs in claude-tpm OR in a consumer install (it self-locates the bundle from this file's position).
  *
- * USAGE:  npx tpm workflow doctor [--project-root <dir>] [--json]
+ * USAGE:  tpm workflow doctor [--project-root <dir>] [--json]
  * EXIT:   0 = all checks pass, 1 = at least one FAIL (prints the fix for each).
  */
 'use strict';
@@ -76,7 +76,7 @@ function checkCompose() {
     const hasAnchor = /\btpm\s+resolve-home\b/.test(out);
     const hasToken = out.includes('%TPM_HOME%/claude-context/methodology');
     if (!hasMarker) return { ok: false, detail: 'compose output has NO well-formed quoted spawn-gate marker', fix: 'compose must emit `<!-- tpm-workflow-spawn phase="…" role="…" -->` (the gate keys off it).' };
-    if (!hasAnchor) return { ok: false, detail: 'compose does NOT emit the resolve-home anchor instruction', fix: 'compose must tell the worker to run `npx tpm resolve-home` first — its output IS %TPM_HOME% (anchor-first doctrine).' };
+    if (!hasAnchor) return { ok: false, detail: 'compose does NOT emit the resolve-home anchor instruction', fix: 'compose must tell the worker to run `tpm resolve-home` first — its output IS %TPM_HOME% (anchor-first doctrine).' };
     if (!hasToken) return { ok: false, detail: 'compose emits BARE methodology paths (not %TPM_HOME%/…)', fix: 'emit the base-chain paths as %TPM_HOME%/… so the worker resolves them against the resolve-home anchor.' };
     return { ok: true, detail: 'compose emits the quoted gate marker + resolve-home anchor + %TPM_HOME%/ methodology paths' };
   } catch (e) {
@@ -100,7 +100,7 @@ function main(argv) {
     if (argv[i] === '--project-root') projectRoot = argv[++i];
     else if (argv[i] === '--json') json = true;
     else if (argv[i] === '-h' || argv[i] === '--help') {
-      process.stdout.write('usage: npx tpm workflow doctor [--project-root <dir>] [--json]\n'); process.exit(0);
+      process.stdout.write('usage: tpm workflow doctor [--project-root <dir>] [--json]\n'); process.exit(0);
     }
   }
   projectRoot = findProjectRoot(projectRoot);

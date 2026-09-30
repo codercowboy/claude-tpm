@@ -6,7 +6,8 @@ absent section, means "use the defaults." The file is versioned (`"version": 1`)
 
 Each module's config is read by a **per-suite resolver tool** - you never hand-edit anything the
 orchestrator can't re-derive, and a config that points at a missing file fails loudly (friendly error +
-exit 1) rather than silently at spawn time.
+exit 1) rather than silently at spawn time. How a tool finds the project, and how to override it, is in
+[Which project a tool works on](#which-project-a-tool-works-on) at the end.
 
 ```jsonc
 {
@@ -31,7 +32,6 @@ behavior is on, where notes live and what the boot/close messages say.
   "notes": {
     "enabled": true,                                // gates ONLY the notes-writing behavior
     "sessionsDir": ".claude/claude-tpm/sessions"      // where session-NNN/ notes + the current-session pointer live.
-                                                       // (This library overrides to "claude-context/sessions".)
   },
   "showTPMOpenMessage":  true,      // show TPM's built-in open MOTD = the menu of ENABLED tpm-* commands
   "showTPMCloseMessage": true,      // show TPM's built-in close sign-off (what happened + notes-saved pointer)
@@ -235,3 +235,59 @@ top-level `<module>.enabled` booleans (each defaulting `true`), so it stays a cr
 a resolver of any one module's full config. It is **lenient**: an absent or malformed
 config resolves to "all enabled" (a warning, never a crash) so a bad config can't wedge boot.
 Validating a malformed config is the doctor's job (`npx tpm install --check`), not boot's.
+
+---
+
+## Which project a tool works on
+
+Every tool needs to know which project it is serving, because the config, session notes and task ledger all
+live under that project's `.claude/claude-tpm/`. A tool picks the project root in this order, first match
+wins:
+
+1. **An explicit flag or argument.** For example `--tasks-dir <dir>`, `--sessions-dir <dir>`, `--config <path>`,
+   or the `[dir]` argument of `tpm install` and `tpm doctor`. An explicit value always wins.
+2. **`TPM_PROJECT_ROOT`**, if it is set to a folder that exists.
+3. **Walk up from the current folder** to the nearest folder that contains `.claude/claude-tpm/`.
+
+A bad `TPM_PROJECT_ROOT` (not an existing folder) prints one warning and the tool falls through to the walk
+up. If the walk up finds nothing, the tool warns and uses the current folder.
+
+```
+$ TPM_PROJECT_ROOT=/no/such/folder tpm task config --tasks-dir
+tpm: warning: TPM_PROJECT_ROOT=/no/such/folder is not an existing directory; ignoring it and walking up from the current folder instead.
+/path/to/this-project/.claude/claude-tpm/tasks
+```
+
+You normally set nothing. In a Claude session, a SessionStart hook that the plugin ships exports
+`TPM_PROJECT_ROOT` (the project folder, from `$CLAUDE_PROJECT_DIR`) and `TPM_HOME` (the claude-tpm folder) for every
+Bash call, subagents included. The hook leaves a variable alone if it is already set.
+
+### Overriding the project root
+
+To point a project's tools at a different folder, set `TPM_PROJECT_ROOT` in the project's
+`.claude/settings.local.json`. That file is machine-local and is not checked in:
+
+```json
+{
+  "env": {
+    "TPM_PROJECT_ROOT": "/absolute/path/to/the/project"
+  }
+}
+```
+
+The hook sees the variable already set and does not overwrite it. Don't put this in the checked-in
+`.claude/settings.json`: it is an absolute path, so it would be wrong on every other machine.
+
+### `TPM_HOME` is informational
+
+`TPM_HOME` tells you which claude-tpm folder the plugin is running from. Nothing reads it to find code. Tools
+always locate their own folder, so setting `TPM_HOME` to another path does not redirect them:
+
+```
+$ TPM_HOME=/tmp tpm home
+/path/to/claude-tpm-0.2.0
+```
+
+The doctor shows a warning row if `TPM_HOME` is set and names a different folder than the one it runs from.
+To run a different copy of claude-tpm in a project, enable that copy's marketplace in the project (see
+[INSTALL.md](INSTALL.md)) instead.

@@ -18,8 +18,8 @@ verify↔bug-fixer loop (on FAIL only), and routes each stop with judgment.
   FAIL is an INPUT the orchestrator judges, and any kickback goes to a **bug-fixer**, never to the
   verifier and never to a fresh builder.
 - Scaffold/compose/lint the verifier the same way `plan` mode does a builder:
-  `npx tpm workflow scaffold add-round <phase> --role verifier` → `npx tpm workflow compose --role verifier
-  --round <N> --variant <M>` → `npx tpm workflow lint --file … --verifier`. The `--verifier` flag enables the
+  `tpm workflow scaffold add-round <phase> --role verifier` → `tpm workflow compose --role verifier
+  --round <N> --variant <M>` → `tpm workflow lint --file … --verifier`. The `--verifier` flag enables the
   manifest's `verifier` block plus the HARD-RULE reminder; no `--manifest` needed (it self-locates the
   ONE canonical manifest — see `modes-plan.md` §6; `--manifest` stays an optional override). Spawn via `tpm-spawn`
   (single) or `tpm-spawn-team` (roster).
@@ -61,7 +61,7 @@ orchestrator turns its concerns into the fixer kickback.
 
 **Both retries re-run in the SAME phase folder, coordinated by `HANDOFF.md`** (the single rolling
 doc; the numbered `spawn-prompt-<role>-r<N>.md` + `verifier-r<N>-v<M>-verdict.md` are the history).
-`npx tpm workflow scaffold add-round` auto-numbers `r<N>` — never hand-track it. A retry is NOT a new
+`tpm workflow scaffold add-round` auto-numbers `r<N>` — never hand-track it. A retry is NOT a new
 phase; only a deliberate later stage (a dedicated verification sweep, a distinct post-build bug-hunt)
 is an appended numbered phase.
 

@@ -1,5 +1,9 @@
 # `tpm-session-current.js` — current-session state resolver
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 Answers "is a session currently open, or not?" and owns allocating the next `session-NNNN` folder
 number (four-digit, zero-padded). Backs the `tpm-session` skill's bare-invocation state check (open →
 `save`, not-opened → `open`); the skill resolves the session number here, then passes it to the write
@@ -20,16 +24,17 @@ for the full rationale.
 ## Requirements / invocation shape
 
 ```
-npx tpm session current --sessions-dir <dir> (--state | --open | --seal | --next-number) [--help]
+tpm session current [--sessions-dir <dir>] (--state | --open | --seal | --next-number) [--help]
 ```
 
-- `--sessions-dir <dir>` — **required.** No default — resolve it via `npx tpm session config
-  --sessions-dir` (see `config.md`).
+- `--sessions-dir <dir>` — **optional.** Omitted, it is resolved from the project root's
+  `.claude/claude-tpm/config.json` (`session.notes.sessionsDir`, see `config.md`); the flag overrides
+  that.
 - Exactly one of `--state` / `--open` / `--seal` / `--next-number` must be passed. **Verified:**
   passing none of them (with `--sessions-dir` present) prints `nothing to do — pass one of --state
   / --open / --seal / --next-number.` and exits 1; `--help` prints usage and exits 0.
-- Missing `--sessions-dir` errors `--sessions-dir is required.` and exits 1, even before the
-  no-mode check.
+- Run with no flag in a project, it uses the configured sessions dir (`tpm session current --next-number`
+  printed the next number with no `--sessions-dir`).
 
 ## Flags
 
@@ -50,25 +55,25 @@ npx tpm session current --sessions-dir <dir> (--state | --open | --seal | --next
 ## Worked example (run against the sandbox)
 
 ```
-$ npx tpm session current --sessions-dir "$SDIR" --state
+$ tpm session current --sessions-dir "$SDIR" --state
 { "state": "not-opened", "number": null, "sessionId": "...", "pointerPath": "...", "pointer": null }
 
-$ npx tpm session current --sessions-dir "$SDIR" --open
+$ tpm session current --sessions-dir "$SDIR" --open
 { "number": "0001", "sessionId": "...", "isNew": true, "pointerPath": "..." }
 
-$ npx tpm session current --sessions-dir "$SDIR" --open   # idempotent
+$ tpm session current --sessions-dir "$SDIR" --open   # idempotent
 { "number": "0001", "sessionId": "...", "isNew": false, "pointerPath": "..." }
 
-$ npx tpm session current --sessions-dir "$SDIR" --next-number
+$ tpm session current --sessions-dir "$SDIR" --next-number
 0001
 
-$ npx tpm session current --sessions-dir "$SDIR" --seal
+$ tpm session current --sessions-dir "$SDIR" --seal
 { "number": "0001", "closedAt": "2026-08-30T09:16:42.622Z" }
 
-$ npx tpm session current --sessions-dir "$SDIR" --seal   # nothing open now
+$ tpm session current --sessions-dir "$SDIR" --seal   # nothing open now
 current-session: current-session: nothing is currently open to seal.
 
-$ npx tpm session current --sessions-dir "$SDIR" --state
+$ tpm session current --sessions-dir "$SDIR" --state
 { "state": "not-opened", "number": null, "sessionId": "...", "pointerPath": "...",
   "pointer": { "sessionId": "...", "number": "0001", "openedAt": "...", "closedAt": "..." } }
 ```

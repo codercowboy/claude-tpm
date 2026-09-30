@@ -1,5 +1,9 @@
 # `tpm-session-doctor.js` — read-only session-store validator + drift detector (#1119)
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 The session **doctor**: a strictly READ-ONLY health check over a sessions directory. It validates
 every canonical `session-<NNNN>.json`, detects human-file **drift** (the derived `.md` no longer
 matches the JSON it was generated from), and detects **old-format** 3-file sessions and SUGGESTS the
@@ -9,12 +13,12 @@ migrator — it never writes, mutates, migrates, converts, or re-renders anythin
 ## Usage
 
 ```
-npx tpm session doctor --sessions-dir <dir> [--json] [--strict]
+tpm session doctor --sessions-dir <dir> [--json] [--strict]
 ```
 
 | Flag | |
 |---|---|
-| `--sessions-dir <dir>` | **REQUIRED**, no default. The sessions store. Canonical `session-<NNNN>.json` is discovered both flat at the top AND in the canonical **nested** per-session-dir layout `session-<NNNN>/session-<NNNN>.json` (the live store's shape); old-format 3-file subdirectories are detected too. Read-only. |
+| `--sessions-dir <dir>` | **Optional:** omitted, it is resolved from the project root's `.claude/claude-tpm/config.json` (`session.notes.sessionsDir`); the flag overrides. The sessions store. Canonical `session-<NNNN>.json` is discovered both flat at the top AND in the canonical **nested** per-session-dir layout `session-<NNNN>/session-<NNNN>.json` (the live store's shape); old-format 3-file subdirectories are detected too. Read-only. |
 | `--json` | Emit the structured report as JSON instead of human text. |
 | `--strict` | Promote advisories (drift / unstamped / old-format / number-form) to a non-zero exit. |
 | `--help` | Show usage. |
@@ -68,7 +72,7 @@ collision C-A):
 
 - clean marked 3-file session **with no** `session-<NNNN>.json` → prints a ready-to-run suggestion:
   ```
-  npx tpm session migrate --in "<dir>" --out-dir "<choose-an-output-dir>"
+  tpm session migrate --in "<dir>" --out-dir "<choose-an-output-dir>"
   ```
   plus a total count.
 - clean marked 3-file session that **already has** a JSON → nothing to report.

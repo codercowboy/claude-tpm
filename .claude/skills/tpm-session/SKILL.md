@@ -4,7 +4,7 @@ description: Use at the start of a session to boot (open), to checkpoint / write
 ---
 
 > In this file, `%TPM_HOME%` is the claude-tpm **installation home** — it is NOT always
-> `<project>/node_modules/@codercowboy/claude-tpm`. If you need its actual value, run `npx tpm resolve-home`.
+> `<project>/node_modules/@codercowboy/claude-tpm`. If you need its actual value, run `tpm resolve-home`.
 
 `tpm-session` is the unified session-lifecycle skill — `open` (boot), `close` (wrap-up), `save`
 (checkpoint the notes), `info` (status, writes nothing). It supersedes the two legacy skills
@@ -22,15 +22,15 @@ progressive-disclosure shape as `tpm-workflow`'s `modes-*.md` split):
 
 ## Tools this skill calls (promoted paths)
 
-- `npx tpm session config --sessions-dir` — resolves the configured sessions directory
+- `tpm session config --sessions-dir` — resolves the configured sessions directory
   (`.claude/claude-tpm/config.json` → `session.notes.sessionsDir`; default
-  `.claude/claude-tpm/sessions`, which this library overrides to `claude-context/sessions`). Also
+  `.claude/claude-tpm/sessions`). Also
   `--json` (whole `session` section), `--get <dotted.key>`, and `--modules` (the cross-module ENABLED
   map for the boot MOTD).
-- `npx tpm session current --sessions-dir <dir> [--state|--open|--seal|--next-number]`
+- `tpm session current --sessions-dir <dir> [--state|--open|--seal|--next-number]`
   — the current-session pointer (open-vs-not-opened; allocates the next `session-NNNN`; `--open` is
   idempotent, `--seal` marks the pointer closed).
-- `npx tpm session <verb> --sessions-dir <dir> --session <NNNN> [args]` — the notes WRITE surface.
+- `tpm session <verb> --sessions-dir <dir> --session <NNNN> [args]` — the notes WRITE surface.
   These write verbs are TOP-LEVEL session verbs (the old `ops` grouping was flattened away — call each
   directly). One canonical `session-NNNN.json` + a derived `session-NNNN.md`; every write is atomic and
   the `.md` is regenerated from the JSON. Verbs:
@@ -47,11 +47,16 @@ progressive-disclosure shape as `tpm-workflow`'s `modes-*.md` split):
   - `close` — the seal: **REFUSES (exit `1`, naming what's missing) unless a handoff AND at least one
     punchlist item are present**; otherwise stamps `meta.closedAt`.
   - `import-log` / `import-punchlist` — file-based append/add (`#1115`).
-- `npx tpm session boot-read [--sessions-dir <dir>]` — the boot-time pickup emit (prior session's
+- `tpm session boot-read [--sessions-dir <dir>]` — the boot-time pickup emit (prior session's
   handoff verbatim + open punchlist headlines + the JSON/`.md` file locations). Pure-read; ALWAYS
   exits 0 (never crashes boot); a missing/corrupt/unknown-schema prior session degrades to one clean line.
-- `npx tpm session export --sessions-dir <dir> (--last N | --session NNNN[,NNNN]) --style json|human|both`
+- `tpm session export --sessions-dir <dir> (--last N | --session NNNN[,NNNN]) --style json|human|both`
   — the notes READ API (default `--style json` to stdout; pass `--out <dir|file>` to write a file).
+
+**`--sessions-dir` is optional.** Every session verb resolves the sessions dir itself from the project root
+(`$TPM_PROJECT_ROOT`, exported by the SessionStart hook, else a walk-up for `.claude/claude-tpm/`) and the
+configured `session.notes.sessionsDir`, from any cwd. The `--sessions-dir <dir>` shown above is only an explicit
+override — omit it normally, and pass it only to target a different store.
 
 All are self-contained (`%TPM_HOME%/tools/session/`, zero shared imports with `%TPM_HOME%/tools/workflow/` or
 `%TPM_HOME%/tools/child-session/`, per `tool-conventions.md` Part I §2). Run every invocation from the project
@@ -60,7 +65,7 @@ root — every flag above is a real CLI flag, not a placeholder.
 ## Config gate
 
 Read `session.enabled` (the whole skill) and `session.notes.enabled` (just the notes-writing
-behavior) via `npx tpm session config --json`. `session.enabled: false` ⇒ this skill short-circuits with a
+behavior) via `tpm session config --json`. `session.enabled: false` ⇒ this skill short-circuits with a
 one-line "session lifecycle disabled by config" message and does nothing else. `notes.enabled:
 false` ⇒ `open`/`close`/`save` still run their non-notes steps (reading chain, reap, MOTD, sign-off)
 but skip every notes write — no `session open`/`save`/`note`/`punchlist`/`close`/`import-*` write happens at all.
@@ -80,7 +85,7 @@ but skip every notes write — no `session open`/`save`/`note`/`punchlist`/`clos
 ## Bare invocation — state-aware default
 
 **Bare `tpm-session` (no argument) is NOT an error and does NOT show the mode table.** Resolve it by
-calling `npx tpm session current --state` (after config confirms `session.enabled`):
+calling `tpm session current --state` (after config confirms `session.enabled`):
 
 - `state: "not-opened"` → run **`open`**.
 - `state: "open"` → run **`save`**.
@@ -100,8 +105,8 @@ there directly.
 
 ## `save` (inline)
 
-Resolve `sessionsDir` (`npx tpm session config --sessions-dir`) and confirm a session is open
-(`npx tpm session current --state`). **If not open, say so and run `open` instead** — `save` never
+Resolve `sessionsDir` (`tpm session config --sessions-dir`) and confirm a session is open
+(`tpm session current --state`). **If not open, say so and run `open` instead** — `save` never
 silently opens a session on its own; that's bare invocation's job, not an explicit `save`'s. If
 `session.notes.enabled` is false, skip the ritual and jump to the `info` block with a one-line "notes
 disabled by config" note.
@@ -111,15 +116,15 @@ punchlist/log steps are judgment (the tool cannot know an item got done unless t
 the mechanical gate.
 
 1. **Reconcile the punchlist.** For each work item finished since the last save, run
-   `npx tpm session punchlist --sessions-dir <dir> --session <NNNN> --action close --item <id|slug>`;
+   `tpm session punchlist --sessions-dir <dir> --session <NNNN> --action close --item <id|slug>`;
    for each newly-surfaced item, `session punchlist --action add --text "<text>"`. There is no `list` verb —
    read what's still open from the derived `session-NNNN.md` `## Punchlist` section (or `export`). This
    is the single source of truth for open work — the handoff's "In flight" carries it forward, so tick
    things off HERE, not in prose.
-2. **Append any ledger lines.** For a decision worth landmarking, `npx tpm session note --sessions-dir
+2. **Append any ledger lines.** For a decision worth landmarking, `tpm session note --sessions-dir
    <dir> --session <NNNN> --decision --what "<what>" --why "<why>"`; for a plain record line,
    `session note --log --status <TAG> --text "<text>"`. Append-only — skip this step if nothing new is worth logging.
-3. **Write the handoff, then persist.** Replace the handoff with `npx tpm session import-handoff
+3. **Write the handoff, then persist.** Replace the handoff with `tpm session import-handoff
    --sessions-dir <dir> --session <NNNN>` — either `--json-file <f>` (a handoff object, or a full record
    whose `.handoff` is extracted) or `--txt-file <f> --next "<next>" [--in-flight "…"]… [--must-not-redo
    "…"]…` (the text file becomes `where`; `next` is required and cannot be invented). Write `where`/`next`
@@ -140,14 +145,14 @@ a new number.
 ## `info` (inline, writes nothing)
 
 Resolve and print, in order:
-1. Current session number + folder path (via `npx tpm session current --state`; "no session open yet" if
+1. Current session number + folder path (via `tpm session current --state`; "no session open yet" if
    `state: not-opened`).
 2. Whether the `session-NNNN.json` (+ derived `session-NNNN.md`) exists for it yet, and roughly when it
    was last modified.
 3. Total session count (`ls <sessions-dir>/session-*/ | wc -l`-shaped, over the resolved sessions dir — or read
    `tpm session export`'s listing).
 4. The real Claude Code sessionId if `$CLAUDE_CODE_SESSION_ID` is readable (best-effort — see
-   the current-session pointer tool's docstring — `npx tpm session current` — on why this is diagnostic-only, not load-bearing).
+   the current-session pointer tool's docstring — `tpm session current` — on why this is diagnostic-only, not load-bearing).
 
 This IS the universal footer every other mode ends with — `open`/`close`/`save` all call this same
 rendering as their last step, they just have more state to report first.

@@ -1,7 +1,11 @@
 # `tpm reading-list` — emit a role's methodology reading chain
 
-Print the ordered reading chain for an actor **in anchor form**: a leading `npx tpm resolve-home` line
-(its printed path IS the bundle root) followed by one `npx tpm doc <bundle-relpath>` line per entry.
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
+Print the ordered reading chain for an actor **in anchor form**: a leading `tpm resolve-home` line
+(its printed path IS the bundle root) followed by one `tpm doc <bundle-relpath>` line per entry.
 The reader runs the block top to bottom and every doc resolves — no manual `../`-link walking.
 
 The chain is derived from the live reading-list manifests, so it never drifts from the source of truth:
@@ -12,8 +16,8 @@ The chain is derived from the live reading-list manifests, so it never drifts fr
 ## Usage
 
 ```
-npx tpm reading-list <role>      # role: orchestrator | subagent
-npx tpm reading-list --help
+tpm reading-list <role>      # role: orchestrator | subagent
+tpm reading-list --help
 ```
 
 Exit codes: `0` printed · `1` manifest unreadable under the bundle · `2` usage / unknown role
@@ -35,13 +39,13 @@ Marker spellings accepted (both, so the emitted chain and the enforced chain can
 ## Example
 
 ```
-$ npx tpm reading-list orchestrator
+$ tpm reading-list orchestrator
 # Reading list — orchestrator (3 docs, in order).
 # Run the anchor first (its printed path IS the bundle root); then read each doc under it:
-npx tpm resolve-home
-npx tpm doc claude-context/methodology/project-workspace.md
-npx tpm doc claude-context/methodology/orchestrator/handbook.md
-npx tpm doc claude-context/methodology/shared-conventions.md
+tpm resolve-home
+tpm doc claude-context/methodology/project-workspace.md
+tpm doc claude-context/methodology/orchestrator/handbook.md
+tpm doc claude-context/methodology/shared-conventions.md
 ```
 
 ## Tests

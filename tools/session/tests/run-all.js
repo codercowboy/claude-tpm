@@ -10,6 +10,17 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
+// Env isolation (D8): a test run must never inherit the invoking Claude session's TPM_PROJECT_ROOT /
+// TPM_HOME — a leaked TPM_PROJECT_ROOT would redirect every tool at that real project. Tests that need
+// either set it explicitly in their own child env.
+function cleanEnv() {
+  const env = { ...process.env };
+  delete env.TPM_PROJECT_ROOT;
+  delete env.TPM_HOME;
+  delete env.CLAUDE_PROJECT_DIR; // the spawn gate reads it; a live session's value must never reach a test
+  return env;
+}
+
 const here = __dirname;
 const suites = fs.readdirSync(here)
   .filter((f) => f.endsWith('.test.js'))
@@ -18,7 +29,7 @@ const suites = fs.readdirSync(here)
 let failed = 0;
 for (const suite of suites) {
   console.log(`\n=== ${suite} ===`);
-  const res = spawnSync(process.execPath, [path.join(here, suite)], { stdio: 'inherit' });
+  const res = spawnSync(process.execPath, [path.join(here, suite)], { stdio: 'inherit', env: cleanEnv() });
   if (res.status !== 0) failed++;
 }
 

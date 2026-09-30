@@ -31,7 +31,8 @@
  *   model.stripHistory) · --out <path> (write to file/dir instead of stdout).
  *
  * ── SCRATCH-STORE DISCIPLINE ── every run reads ONLY where --tasks-dir points; it NEVER defaults to the
- * live `.claude/claude-tpm/tasks/`. --tasks-dir is REQUIRED.
+ * live `.claude/claude-tpm/tasks/`. --tasks-dir is optional (resolved from the project root via
+ * TPM_PROJECT_ROOT or the walk-up) and works as an explicit override.
  *
  * Zero third-party deps; Node built-ins only.
  */
@@ -481,7 +482,7 @@ function runSearch(argv) {
 // ── CLI ──────────────────────────────────────────────────────────────────────────
 
 const USAGE = `tpm-task-export — task export + search on ONE selector core
-  (run: npx tpm task <export|search> [--tasks-dir <dir>] [SELECTORS…] [SHAPE…])
+  (run: tpm task <export|search> [--tasks-dir <dir>] [SELECTORS…] [SHAPE…])
 
   --tasks-dir <dir>        OPTIONAL (F4): omitted → resolved from the LOCAL project's
                            .claude/claude-tpm/config.json (tasks.tasksDir); the flag OVERRIDES; with

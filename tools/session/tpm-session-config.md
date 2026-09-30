@@ -1,5 +1,9 @@
 # `tpm-session-config.js` — the `session` config-section resolver
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 Resolves the `session` section of a project's `.claude/claude-tpm/config.json` — merged over
 built-in defaults — so every `tools/session/*` script and the `tpm-session` skill read the SAME
 ~6 keys the SAME way. This is a SUITE-LOCAL resolver (per `tool-conventions.md` Part I §2,
@@ -31,7 +35,7 @@ know whether a project has customized its config; it just reads the resolved sha
 ## Requirements / invocation shape
 
 ```
-npx tpm session config [--config <path>] (--json | --get <dotted.key> | --sessions-dir) [--help]
+tpm session config [--config <path>] (--json | --get <dotted.key> | --sessions-dir) [--help]
 ```
 
 - Exactly one of `--json` / `--get <key>` / `--sessions-dir` must be passed (with `--help`, none
@@ -54,7 +58,7 @@ npx tpm session config [--config <path>] (--json | --get <dotted.key> | --sessio
 |---|---|
 | `--json` | Prints the fully resolved `session` config as JSON. |
 | `--get <dotted.key>` | Prints one resolved value as JSON (e.g. `--get notes.sessionsDir` → `".claude/claude-tpm/sessions"`, `--get notes.enabled` → `false`). Verified: a key that doesn't exist in the resolved shape (e.g. `--get nope.nope`) errors `no such key "nope.nope" in resolved config.` and exits 1. |
-| `--sessions-dir` | Shortcut for `--get notes.sessionsDir`, but prints a **bare absolute path** (no JSON quoting) — resolved relative to `projectRoot` if the configured value isn't already absolute. Convenient for other scripts/shells to consume directly (e.g. `--sessions-dir "$(npx tpm session config --sessions-dir)"`). |
+| `--sessions-dir` | Shortcut for `--get notes.sessionsDir`, but prints a **bare absolute path** (no JSON quoting) — resolved relative to `projectRoot` if the configured value isn't already absolute. Convenient for other scripts/shells to consume directly (e.g. `--sessions-dir "$(tpm session config --sessions-dir)"`). |
 | `--config <path>` | Explicit config file path (see above for default-vs-explicit-missing behavior). |
 | `--help` | Usage. Exits 0. |
 
@@ -98,10 +102,10 @@ resolved under that root — inherently scoped, never a global/home/live store. 
 ## Worked example (run against the sandbox)
 
 ```
-$ npx tpm session config --config nonexistent.json --json
+$ tpm session config --config nonexistent.json --json
 config: --config path does not exist: /abs/path/nonexistent.json
 
-$ npx tpm session config --json      # no config file at the default location
+$ tpm session config --json      # no config file at the default location
 {
   "enabled": true,
   "notes": { "enabled": true, "sessionsDir": ".claude/claude-tpm/sessions" },
@@ -109,20 +113,20 @@ $ npx tpm session config --json      # no config file at the default location
   "additionalOpenMessage": "", "additionalCloseMessage": ""
 }
 
-$ npx tpm session config --sessions-dir
+$ tpm session config --sessions-dir
 /abs/project/root/.claude/claude-tpm/sessions
 
-$ npx tpm session config --get notes.enabled
+$ tpm session config --get notes.enabled
 false                                                    # (with the nested-override config above)
 
-$ npx tpm session config --get nope.nope
+$ tpm session config --get nope.nope
 config: no such key "nope.nope" in resolved config.
 ```
 
 ## See also
 
 - `tools/session/tpm-session-current.md` — consumes `--sessions-dir` from this resolver.
-- `tools/session/tpm-session-ops.md` — the write surface; `--sessions-dir` is required on every
-  invocation, resolved via this tool.
+- `tools/session/tpm-session-ops.md` — the write surface; `--sessions-dir` is optional on every
+  invocation (resolved via this tool when omitted; the flag overrides).
 - `out/promote/config-guide-section1.md` — the staged live config-guide §1 patch this resolver's
   `notes.enabled` nesting is built to match.

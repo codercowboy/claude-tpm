@@ -1,5 +1,9 @@
 # `tpm-task-migrate.js` — opt-in old→new task-store migrator (`#1114.B`)
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 Convert-on-demand tool that turns a WHOLE old markdown task store (the pre-JSON
 `task-index.md` / `finished-tasks-index.md` / `removed-tasks-index.md` + thousand-bucketed
 `bodies/<lo>-<hi>/task-<id>.md` landmark bodies) into the new canonical JSON store
@@ -26,7 +30,7 @@ Format authorities (cross-referenced, not restated): [`../task-json-format-spec.
 ## Usage
 
 ```
-npx tpm task migrate --in <oldTasksDir> --out-dir <newTasksDir> \
+tpm task migrate --in <oldTasksDir> --out-dir <newTasksDir> \
     [--offset ±HH:MM] [--dry-run] [--emit-derived] [--force] [--now <iso>]
 ```
 
@@ -48,7 +52,7 @@ Exit codes: `0` success (or `--help` / a clean `--dry-run`) · `1` refusal / run
 ### Example (verified against a scratch store)
 
 ```
-$ npx tpm task migrate --in /tmp/old --out-dir /tmp/new --offset -07:00 --emit-derived
+$ tpm task migrate --in /tmp/old --out-dir /tmp/new --offset -07:00 --emit-derived
 store /tmp/old → WROTE
   out:        /tmp/new
   bodies:     2 task(s) converted
@@ -89,7 +93,7 @@ A body that fails `validateEnvelope` (validate-before-write) is a refusal too �
 Verified — a no-`Created` body refuses the whole store:
 
 ```
-$ npx tpm task migrate --in <old-with-no-Created-body> --out-dir <scratch>
+$ tpm task migrate --in <old-with-no-Created-body> --out-dir <scratch>
 tpm-task-migrate (refused): refusing to migrate '…': 1 of 1 body(ies) cannot be converted (STRICT
 all-or-nothing whole-store; NO partial write). Fix by hand, then re-run:
   - task-1200 (…/task-1200.md): task-1200: missing '- **Created:**' — T-Q1 refuses a body with no
@@ -145,10 +149,10 @@ labels, so `labels: []` (and the index `labels` reverse-map is `{}`).
 All verified:
 
 ```
-$ npx tpm task migrate --in <old> --out-dir <old>/sub
+$ tpm task migrate --in <old> --out-dir <old>/sub
 tpm-task-migrate (refused): --out-dir '…/old/sub' is (or is inside) --in '…/old'; write output somewhere else.   # exit 1
 
-$ npx tpm task migrate --in <old> --out-dir <new>          # target already has bodies, no --force
+$ tpm task migrate --in <old> --out-dir <new>          # target already has bodies, no --force
 tpm-task-migrate (refused): output already holds 2 target body file(s) (e.g. …/task-1000.json) — pass --force to overwrite.   # exit 1
 ```
 

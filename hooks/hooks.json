@@ -1,10 +1,17 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/tools/tpm.js\" hooks session-start" }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Agent|Task",
         "hooks": [
-          { "type": "command", "command": "npx tpm hooks gate-spawn" }
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/tools/tpm.js\" hooks gate-spawn" }
         ]
       }
     ]

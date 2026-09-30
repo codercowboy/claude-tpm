@@ -10,8 +10,8 @@
  *   fetch the manifest and hand-walk its `../`-relative markdown links. This verb does that walk for
  *   the reader: it parses the manifest's machine markers, translates each entry's `../`-relative link
  *   to a bundle-root-relative path, and prints the ordered chain in ANCHOR form — a leading
- *   `npx tpm resolve-home` line (its printed path IS the bundle root) followed by one
- *   `npx tpm doc <bundle-relpath>` line per entry. The reader runs the block; every doc resolves.
+ *   `tpm resolve-home` line (its printed path IS the bundle root) followed by one
+ *   `tpm doc <bundle-relpath>` line per entry. The reader runs the block; every doc resolves.
  *
  *   Self-locating + zero-dep, mirroring tpm-home.js / tpm-doc.js: it finds the bundle from the shared
  *   `bundleRoot()` primitive and reads the manifests out of the bundle, so it works in every
@@ -108,16 +108,16 @@ function render(role, entries) {
   const lines = [
     `# Reading list — ${role} (${n} doc${n === 1 ? '' : 's'}, in order).`,
     '# Run the anchor first (its printed path IS the bundle root); then read each doc under it:',
-    'npx tpm resolve-home',
+    'tpm resolve-home',
   ];
-  for (const rel of entries) lines.push(`npx tpm doc ${rel}`);
+  for (const rel of entries) lines.push(`tpm doc ${rel}`);
   return lines.join('\n') + '\n';
 }
 
 function usage() {
   const roles = Object.keys(ROLES).join(', ');
   return `tpm reading-list <role> — emit a role's methodology reading chain in anchor form
-  (a \`npx tpm resolve-home\` line + one \`npx tpm doc <bundle-relpath>\` per entry).
+  (a \`tpm resolve-home\` line + one \`tpm doc <bundle-relpath>\` per entry).
 
 Known roles: ${roles}`;
 }

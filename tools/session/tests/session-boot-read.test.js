@@ -65,6 +65,8 @@ test('emits the prior handoff + OPEN punchlist headline, excludes the closed ite
   assert.ok(/OPEN PUNCHLIST \(1\)/.test(r.stdout), 'exactly one OPEN item counted');
   assert.ok(/close the gaps/.test(r.stdout) && /gapAAA/.test(r.stdout), 'open headline present');
   assert.ok(!/already done/.test(r.stdout), 'the CLOSED item is NOT emitted');
+  assert.ok(/or run: tpm session export --sessions-dir /.test(r.stdout), 'pickup hint uses bare `tpm`');
+  assert.ok(!/npx tpm/.test(r.stdout), 'no `npx tpm` in boot-read output');
 });
 
 // ── selection: highest prior, exclude current ───────────────────────────────────

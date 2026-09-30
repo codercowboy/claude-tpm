@@ -1,5 +1,9 @@
 # session-tooling — JSON-first session storage (`#1113`)
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 The greenfield session store for `kind:"session"` records: one canonical JSON file per session
 (source of truth), a derived human `.md` regenerated on every write, and node-invokable tools —
 the write-ops + `#1115` import (the `open`/`save`/`note`/`punchlist`/`close`/`import-*` verbs), export,
@@ -157,7 +161,7 @@ reference: [`tpm-session-ops.md`](tpm-session-ops.md). These are TOP-LEVEL sessi
 `ops` grouping was flattened away, so call each verb directly.
 
 ```
-npx tpm session <verb> --sessions-dir <dir> --session <NNNN> [flags]
+tpm session <verb> --sessions-dir <dir> --session <NNNN> [flags]
 ```
 
 **Ops**
@@ -197,7 +201,7 @@ human render, one or many sessions, combined or per-file. Full reference:
 [`tpm-session-export.md`](tpm-session-export.md).
 
 ```
-npx tpm session export --sessions-dir <dir> \
+tpm session export --sessions-dir <dir> \
   [--last N | --session <NNNN>[,NNNN] …] --style json|human|both [--combine one-file|per-file] [--out <dir|file>]
 ```
 
@@ -232,7 +236,7 @@ pre-JSON `session-<NNNN>-{handoff,log,punchlist}.md` shape) into a canonical `se
 envelope. Full reference: [`tpm-session-migrate.md`](tpm-session-migrate.md).
 
 ```
-npx tpm session migrate --in <old-session-dir> --out-dir <dir> \
+tpm session migrate --in <old-session-dir> --out-dir <dir> \
     [--number NNNN] [--dry-run] [--emit-md] [--force] [--now <iso>]
 ```
 
@@ -278,7 +282,7 @@ A strictly **READ-ONLY** health check over a sessions dir — no `--fix`, no wri
 [`tpm-session-doctor.md`](tpm-session-doctor.md).
 
 ```
-npx tpm session doctor --sessions-dir <dir> [--json] [--strict]
+tpm session doctor --sessions-dir <dir> [--json] [--strict]
 ```
 
 - **Validate** every canonical `session-<NNNN>.json` (read → migrate → validate), stage-labeling any
@@ -305,7 +309,7 @@ $ tpm-session-doctor --sessions-dir <scratch>/store
   session-0021/session-0021.json  OK · DRIFT (banner cf6696eb45d1 · current 8ed4d6acd732)
 
 Old-format sessions (1; 1 auto-migratable):
-  session-0007  → npx tpm session migrate --in "…/session-0007" --out-dir "<choose-an-output-dir>"
+  session-0007  → tpm session migrate --in "…/session-0007" --out-dir "<choose-an-output-dir>"
 # exit 0 ; with --strict, exit 2
 ```
 

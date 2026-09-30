@@ -28,51 +28,49 @@ Alternatively, if you're the rtfm type, consult the [`docs/user-guide.md`](docs/
 
 ## Install
 
-**Note:** `claude-tpm` is cross-platform, but installation instructions below have been tested and proven on `MacOS`. 
+**Note:** `claude-tpm` is cross-platform, but the instructions below have been tested and proven on `MacOS`.
 
-If the quick instructions below seem foreign to you, a detailed installation walkthrough - flags, verification, uninstall, and troubleshooting are detailed in [`docs/INSTALL.md`](docs/INSTALL.md).
+The full guide, with flags, verification, uninstall and troubleshooting, is [`docs/INSTALL.md`](docs/INSTALL.md).
+The short version follows.
 
-Before you install, you'll need the following tools installed:
+You'll need [Node.js](https://nodejs.org), [npm](https://www.npmjs.com/), the [Claude Code](https://claude.com/claude-code)
+CLI (`claude`), and an existing project with a `package.json` (run `npm init -y` in the project first if you
+don't have one).
 
-- [Node.js](https://nodejs.org)
-- [npm](https://www.npmjs.com/)
-- the [Claude Code](https://claude.com/claude-code) CLI (`claude`), and an existing project with a `package.json` (run `npm init -y` first if you don't have one).
+There are two ways to install, depending on how many projects use `claude-tpm`.
 
-After the tools above are installed, open the `terminal` MacOs app and install `claude-tpm` in your project with the following:
-
-```
-# ensure your terminal is running bash rather than another shell
-
-> bash
-
-# change the working folder to your project
-
-> cd my-project
-
-# if your project is not yet initialized to be a Node.js project, run this:
-# note: this simply makes a file called 'package.json' that allows your project
-# to automatically download and install claude-tpm, it does not REQUIRE your 
-# project to be a Node.js product at all
-
-> npm init -y
-
-# add claude-tpm code as a dependency into your Node.js package.json file, 
-# and install it in node_modules with this:
-
-> npm install --save-optional github:codercowboy/claude-tpm
-
-# execute this to install claude-tpm's claude plugin and skills in your project 
-
-> npx tpm install .
-```
-
-The installer is interactive: it prints the exact command it's about to run and asks before it changes anything. Once claude-tpm is wired into a project, the `npx tpm …` can be used to manage your project's claude-tpm installtion:
+**One project.** Add `claude-tpm` as a dependency of the project, then run the installer:
 
 ```
-npx tpm doctor .            # doctor — read-only, changes nothing
+cd my-project
+npm install --save-dev github:codercowboy/claude-tpm
+npx tpm install .
+```
+
+Run the `npm install` first. Without it, `npx tpm` can fetch an unrelated package of the same name from the
+npm registry.
+
+**Several projects.** Keep one copy of `claude-tpm` in a central folder and install into each project from it:
+
+```
+cd ~/claude-tpm/claude-tpm-0.2.0
+npx tpm install ../projA
+npx tpm install ../projB
+```
+
+Either way the installer is interactive: it prints the exact command it's about to run and asks before it
+changes anything. Claude Code runs the plugin from the folder it was registered from, so keep that folder
+where it is. [`docs/INSTALL.md`](docs/INSTALL.md) explains why, and what to do if you move it.
+
+Once `claude-tpm` is in a project, manage it from a shell in that project with `npx tpm …`:
+
+```
+npx tpm doctor .            # doctor: read-only, changes nothing
 npx tpm install .           # re-run / repair
 npx tpm uninstall .         # remove it
 ```
+
+Inside a Claude session the same commands are bare `tpm …`; the plugin puts `tpm` on PATH for you.
 
 After installation, claude will be ready to use `claude-tpm` any time you want, but you don't have to use it every single session if you don't want to. Simply skip invoking the `/tpm-session open` skill.
 
@@ -187,7 +185,7 @@ Slash commands work as both the short `/tpm-*` form and the namespaced `/claude-
 
 ## More detail
 
-Under the skills sits the `tpm` CLI: `tpm <suite> <verb> [args…]`, where `tools/tpm.js` is a simple top-level dispatcher that forwards to a per-suite router. The four suites are `session` · `task` · `workflow` · `hooks`, plus the flat consumer aliases `install` · `uninstall` · `doctor`. A taste of the real verbs:
+Under the skills sits the `tpm` CLI: `tpm <suite> <verb> [args…]`, where `tools/tpm.js` is a simple top-level dispatcher that forwards to a per-suite router. The five suites are `session` · `task` · `workflow` · `hooks` · `plugin`, plus the flat consumer aliases `install` · `uninstall` · `doctor`. A taste of the real verbs, typed in a project shell (inside a Claude session, drop the `npx`):
 
 ```bash
 npx tpm session config --modules   # dump which modules are ON/OFF (JSON)
@@ -212,7 +210,7 @@ Any team with a verifier runs a bounded verify↔bug-fixer loop on a FAIL (cappe
 
 - **`claude-tpm` rides entirely on the Claude Code CLI.** claude-tpm *is* a Claude Code plugin. No `claude` on your PATH, nothing to plug into.
 - **It grafts onto an existing project - it won't create one.** You need a repo with a `package.json` first.
-- **v0.1.0, Mac-first, works-on-my-machine.** No pinned minimum Node version and no cross-platform test pass has been performed yet, lmk if it works for you on windows!
+- **Pre-1.0, Mac-first, works-on-my-machine.** No pinned minimum Node version and no cross-platform test pass has been performed yet, lmk if it works for you on windows!
 
 ## Why it works
 

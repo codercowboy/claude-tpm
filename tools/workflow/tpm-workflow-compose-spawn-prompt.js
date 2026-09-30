@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * npx tpm workflow compose - mechanically emit the standard subagent
+ * tpm workflow compose - mechanically emit the standard subagent
  * spawn-prompt boilerplate so the orchestrator supplies only the ONE
  * task-specific bit (a `{{TASK_CONTEXT}}` fill sentinel it fills in before
  * spawning). A token-saver + a consistency guard: every prompt gets the same
@@ -25,22 +25,22 @@
  *     that defers entirely to the charter (never the builder default).
  *
  * The emitted `{{TASK_CONTEXT}}` is a real FILL sentinel: run the output back
- * through `npx tpm workflow lint --sentinels-only` and it will FLAG the
+ * through `tpm workflow lint --sentinels-only` and it will FLAG the
  * unfilled placeholder until the orchestrator fills it. That is the poka-yoke
  * loop working as intended.
  *
  * USAGE.
- *   npx tpm workflow compose --role builder \
+ *   tpm workflow compose --role builder \
  *     --phase-dir 'dev/epic/02b-lint-compose' \
  *     --plan plan.md --charter charter-builder.md
  *
  *   # bug-fixer: --verdict is REQUIRED and becomes read-order item 1:
- *   npx tpm workflow compose --role bug-fixer --phase-dir <p> \
+ *   tpm workflow compose --role bug-fixer --phase-dir <p> \
  *     --plan plan.md --charter charter-bug-fixer.md \
  *     --verdict findings/verifier-r1-v1-verdict.md
  *
  *   # with optional round/model/env-ritual + write to a file:
- *   npx tpm workflow compose --role verifier --phase-dir <p> \
+ *   tpm workflow compose --role verifier --phase-dir <p> \
  *     --plan plan.md --charter charter-verifier.md --round 1 --variant 1 \
  *     --model opus --project-root '/abs/repo/root' --out spawn-prompt-verifier-r1-v1.md
  *
@@ -136,6 +136,8 @@ const ROLE_PROFILES = {
     returnShape: () =>
       "your deliverable = the targeted fixes on the real artifact + re-run evidence that each verdict finding is closed, on disk, plus `findings/HANDOFF.md`. " +
       "Touch nothing beyond the verdict's findings. " +
+      "`findings/HANDOFF.md` already holds the prior agents' content: ADD your own section headed `## Bug-fixer r<N>` at the END of it " +
+      "and leave everything above untouched - never overwrite or rewrite the existing HANDOFF (if none exists yet, create it). " +
       'Return a one-paragraph summary: each finding and how you closed it, the exact commands you ran + their results, ' +
       'the `findings/HANDOFF.md` path, and any caveat.',
   },
@@ -245,11 +247,11 @@ function compose(opts) {
   L.push(`${n++}. Your plan: \`${opts.plan}\` — the task, the Definition of Done, the specs, the constraints.`);
   L.push(`${n++}. The curated context files the plan's "Context" section names.`);
   // ANCHOR-FIRST resolution (#1126): the token-resolving hooks are retired, so the worker resolves
-  // %TPM_HOME% itself — run `npx tpm resolve-home` once (self-locating, bypass-safe), treat the printed
+  // %TPM_HOME% itself — run `tpm resolve-home` once (self-locating, bypass-safe), treat the printed
   // absolute path AS %TPM_HOME%, then resolve each %TPM_HOME%/… methodology path against it. Bare paths
   // dead-end at the consumer root; the anchor keeps the chain resolvable in a consumer install too.
   // Shell-inert spelling `%TPM_HOME%` (not `${TPM_HOME}`, which bash would expand to empty on a command line).
-  L.push('Also always read your base methodology chain (always-on conventions). FIRST run `npx tpm resolve-home` — its printed absolute path IS `%TPM_HOME%` (the claude-tpm bundle root). THEN read each of these, resolving `%TPM_HOME%` against that path: `%TPM_HOME%/claude-context/methodology/project-workspace.md`, `%TPM_HOME%/claude-context/methodology/subagent/handbook.md`, `%TPM_HOME%/claude-context/methodology/shared-conventions.md`, `%TPM_HOME%/claude-context/methodology/tool-conventions.md`, `%TPM_HOME%/claude-context/methodology/troubleshooting.md`, `%TPM_HOME%/claude-context/methodology/verification.md`.');
+  L.push('Also always read your base methodology chain (always-on conventions). FIRST run `tpm resolve-home` — its printed absolute path IS `%TPM_HOME%` (the claude-tpm bundle root). THEN read each of these, resolving `%TPM_HOME%` against that path: `%TPM_HOME%/claude-context/methodology/project-workspace.md`, `%TPM_HOME%/claude-context/methodology/subagent/handbook.md`, `%TPM_HOME%/claude-context/methodology/shared-conventions.md`, `%TPM_HOME%/claude-context/methodology/tool-conventions.md`, `%TPM_HOME%/claude-context/methodology/troubleshooting.md`, `%TPM_HOME%/claude-context/methodology/verification.md`.');
   L.push('');
 
   // Verifier carries an explicit HARD RULE independence line (verdict-not-repair).

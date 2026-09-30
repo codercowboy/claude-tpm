@@ -38,14 +38,15 @@
  *   - lib/task-model.js   · listBodyPaths / deriveLabelIndex / indexPathFor — nested scan + label map.
  *   - tpm-task-migrate.js · detectStore / MigrateError — the ONE old-format detector.
  *
- * ── NODE-INVOKABLE ── run via `npx tpm task doctor …` (routed), or bare `node tools/task/tpm-task-doctor.js …`;
+ * ── NODE-INVOKABLE ── run via `tpm task doctor …` (routed), or bare `node tools/task/tpm-task-doctor.js …`;
  *   programmatic callers `require()` it for `runDoctor(...)`. Zero third-party deps; Node built-ins only.
  *
  * USAGE
- *   npx tpm task doctor --tasks-dir <dir> [--json]
+ *   tpm task doctor --tasks-dir <dir> [--json]
  *
  * FLAGS
- *   --tasks-dir <dir>  REQUIRED. The task store root (holds bodies/<bucket>/ + tasks-index.json).
+ *   --tasks-dir <dir>  Optional (resolved from the project root via TPM_PROJECT_ROOT or the walk-up; this flag
+ *                      is an explicit override). The task store root (holds bodies/<bucket>/ + tasks-index.json).
  *                      READ-ONLY.
  *   --json             Emit the structured report as JSON instead of human text.
  *   --help             Show this usage.
@@ -153,7 +154,7 @@ function checkDrift(jsonPath, raw) {
  */
 function checkLabelIndex(tasksDir, bodyCount) {
   const indexPath = model.indexPathFor(tasksDir);
-  const reindexHint = 'npx tpm task reindex --tasks-dir "' + tasksDir + '"';
+  const reindexHint = 'tpm task reindex --tasks-dir "' + tasksDir + '"';
 
   if (!fs.existsSync(indexPath)) {
     if (bodyCount > 0) {
@@ -202,7 +203,7 @@ function checkOldFormat(tasksDir) {
     bodyCount: store.bodies.length,
     marker: store.marker,
     // Read-only: name the migrator + a placeholder out-dir; the human runs it.
-    suggestion: `npx tpm task migrate --in "${tasksDir}" --out-dir "<choose-an-output-dir>"`,
+    suggestion: `tpm task migrate --in "${tasksDir}" --out-dir "<choose-an-output-dir>"`,
   };
 }
 
@@ -365,7 +366,7 @@ function parseArgv(argv) {
 }
 
 const USAGE = `tpm-task-doctor — READ-ONLY task-store validator + drift detector (#1119)
-  run: npx tpm task doctor [--tasks-dir <dir>] [--json]
+  run: tpm task doctor [--tasks-dir <dir>] [--json]
 
   --tasks-dir <dir>  OPTIONAL (F4)  the task store root (READ-ONLY): bodies/<bucket>/task-<id>.json
                                (nested bucket layout) + tasks-index.json. Omitted → resolved from the

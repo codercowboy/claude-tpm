@@ -1,5 +1,9 @@
 # `tpm-session-ops.js` — session write-ops + import (#1115)
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 The node-invokable session **write-ops** + **#1115 import** tool for `kind:"session"` records (P06). It
 operates off the canonical JSON and, on every write, regenerates the derived human `.md` via the
 converter (`now` bound in a closure). Composes `lib/session-model.js` + `lib/session-converter.js` —
@@ -12,7 +16,7 @@ render). Overview + file map: [`README.md`](README.md). Export tool: [`tpm-sessi
 **Run (Q5 — no bin, no npm-run):** each verb is a TOP-LEVEL session verb — the old `ops` grouping was
 flattened away, so call the verb directly (typing the removed `ops` token now just hints at this form).
 ```
-npx tpm session <verb> [flags]
+tpm session <verb> [flags]
 ```
 Programmatic callers `require('./tpm-session-ops')` for `opOpen / opSave / opNote / opPunchlist /
 opClose / opImportHandoff / opImportLog / opImportPunchlist` (each returns the persisted record).
@@ -20,7 +24,7 @@ opClose / opImportHandoff / opImportLog / opImportPunchlist` (each returns the p
 ## Common flags
 | Flag | Meaning |
 |------|---------|
-| `--sessions-dir <dir>` | directory of `session-<NNNN>.json` (a SCRATCH or real dir; created for `open`). **Required.** |
+| `--sessions-dir <dir>` | directory of `session-<NNNN>.json` (a SCRATCH or real dir; created for `open`). **Optional:** omitted, it is resolved from the project root's `.claude/claude-tpm/config.json` (`session.notes.sessionsDir`); the flag overrides. |
 | `--session <NNNN>` | session number (aka `--number`). **Always 4-digit zero-padded** — `--session 1` is normalized to `0001`, so the on-disk folder (`session-0001/`) and the stored `meta.number` always agree (#3). |
 | `--now <iso>` | reference time for punchlist age (default: now, local offset). |
 
@@ -51,13 +55,13 @@ write's canonical JSON is still atomic.
 
 ## Examples
 ```
-npx tpm session open --sessions-dir /tmp/s --session 0021 \
+tpm session open --sessions-dir /tmp/s --session 0021 \
     --session-id abc --tpm-version 1.0.0 --prior-session-path /tmp/s/session-0020.json
-npx tpm session import-handoff --sessions-dir /tmp/s --session 0021 \
+tpm session import-handoff --sessions-dir /tmp/s --session 0021 \
     --txt-file where.txt --next "wire the router"
-npx tpm session import-log --sessions-dir /tmp/s --session 0021 --file entry.txt
-npx tpm session punchlist --sessions-dir /tmp/s --session 0021 --action add --text "do X"
-npx tpm session close --sessions-dir /tmp/s --session 0021
+tpm session import-log --sessions-dir /tmp/s --session 0021 --file entry.txt
+tpm session punchlist --sessions-dir /tmp/s --session 0021 --action add --text "do X"
+tpm session close --sessions-dir /tmp/s --session 0021
 ```
 
 Tests: `session-tooling/tests/session-ops.test.js` (auto-discovered by `tests/run-all.js`).

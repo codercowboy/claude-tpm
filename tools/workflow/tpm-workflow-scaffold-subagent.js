@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * npx tpm workflow scaffold (v2, epic-aware) — scaffold epic + phase folders for the
+ * tpm workflow scaffold (v2, epic-aware) — scaffold epic + phase folders for the
  * claude-tpm workflow module.
  *
  * PURPOSE
@@ -85,19 +85,19 @@
  *   ./tpm-workflow-check-filename.js   — guards emitted filenames against the blocked patterns.
  *
  * CONVENTIONS
- *   Zero runtime deps (Node built-ins only). Run via `npx tpm workflow scaffold …`.
+ *   Zero runtime deps (Node built-ins only). Run via `tpm workflow scaffold …`.
  *   Every subcommand supports --help; the bare tool prints usage. Value flags fail
  *   loudly if their value is missing. This file is ALSO a module (see module.exports)
  *   so the test can drive the pure helpers directly.
  *
  * EXAMPLES
- *   npx tpm workflow scaffold epic-init dev/my-epic
- *   npx tpm workflow scaffold add-phase dev/my-epic --slug build-parser --team ship \
+ *   tpm workflow scaffold epic-init dev/my-epic
+ *   tpm workflow scaffold add-phase dev/my-epic --slug build-parser --team ship \
  *         --pretask-ack dev/my-epic/00-epic-plan/pretask-01.md
- *   npx tpm workflow scaffold add-phase dev/my-epic --slug plan-it --team full \
+ *   tpm workflow scaffold add-phase dev/my-epic --slug plan-it --team full \
  *         --pretask-ack dev/my-epic/00-epic-plan/pretask-02.md --config ./cfg.json
- *   npx tpm workflow scaffold add-round dev/my-epic/01-build-parser --role builder
- *   npx tpm workflow scaffold --help
+ *   tpm workflow scaffold add-round dev/my-epic/01-build-parser --role builder
+ *   tpm workflow scaffold --help
  */
 
 'use strict';
@@ -105,6 +105,7 @@
 const fs = require('fs');
 const path = require('path');
 
+const { findRoot } = require('../lib/paths');
 const configResolver = require('./tpm-workflow-config-resolver.js');
 const { isBlockedFilename } = require('./tpm-workflow-check-filename.js');
 
@@ -152,7 +153,7 @@ function writeFileGuarded(target, content, opts, created, patterns) {
  * @returns {{roles: Array<{name, count, model, charterFile}>, resolved, projectRoot}}
  */
 function resolveTeamRoster(teamName, { configPath, startDir } = {}) {
-  const resolution = configResolver.resolveConfig(configPath, { startDir: startDir || process.cwd() });
+  const resolution = configResolver.resolveConfig(configPath, { startDir });
   const { resolved, projectRoot } = resolution;
 
   const team = (resolved.teams || []).find((t) => t.name === teamName);
@@ -185,7 +186,7 @@ function resolveTeamRoster(teamName, { configPath, startDir } = {}) {
  * @returns {{role: {name, count, model, charterFile}, projectRoot}}
  */
 function resolveRoleCharter(roleName, { configPath, startDir } = {}) {
-  const resolution = configResolver.resolveConfig(configPath, { startDir: startDir || process.cwd() });
+  const resolution = configResolver.resolveConfig(configPath, { startDir });
   const { resolved, projectRoot } = resolution;
   const sc = (resolved.subagentConfigs || []).find((s) => s.name === roleName) || {};
   return {
@@ -757,9 +758,9 @@ function addRound(phasePath, { role, count, patterns, configPath, startDir, char
   // from it. A config that can't resolve → undefined patterns (check-filename's defaults) and
   // no env override (built-in stub).
   let resolved;
-  let projectRoot = startDir || process.cwd();
+  let projectRoot = findRoot({ startDir, quiet: true }); // env-aware fallback if the config can't resolve
   try {
-    const res = configResolver.resolveConfig(configPath, { startDir: startDir || process.cwd() });
+    const res = configResolver.resolveConfig(configPath, { startDir });
     resolved = res.resolved;
     projectRoot = res.projectRoot;
   } catch (_e) {

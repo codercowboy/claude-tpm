@@ -1,7 +1,11 @@
 # `tpm-workflow-cost-ledger.js` — per-subagent cost ledger (v2, epic-aware)
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 Reference doc for `tools/workflow/tpm-workflow-cost-ledger.js`. Every claim below was confirmed by running the canonical tool
-(`tools/workflow/tpm-workflow-cost-ledger.js`, via `npx tpm workflow cost`) with `node v24.16.0`.
+(`tools/workflow/tpm-workflow-cost-ledger.js`, via `tpm workflow cost`) with `node v24.16.0`.
 
 ## Purpose
 
@@ -83,11 +87,11 @@ All run against scratch folders under `tmp/`.
 ### Append two rows to a flat round ledger, then summarize
 
 ```
-npx tpm workflow cost --dir <round-a> \
+tpm workflow cost --dir <round-a> \
   --agent w1 --role worker --model opus --tokens 715k --calls 198 --verdict ACCEPT --round "phase B" --note ok
-npx tpm workflow cost --dir <round-a> \
+tpm workflow cost --dir <round-a> \
   --agent v1 --role verifier --model sonnet --tokens 1.2m --calls 40 --verdict PASS
-npx tpm workflow cost --dir <round-a> --summary
+tpm workflow cost --dir <round-a> --summary
 ```
 
 The first append printed (ledger written to `<round-a>/tmp/cost-ledger.md`):
@@ -113,7 +117,7 @@ Cost ledger — …/round-a/tmp/cost-ledger.md
 ### Append to the epic ledger (lands in `00-epic-plan/`, not `tmp/`)
 
 ```
-npx tpm workflow cost --epic-path <my-epic> \
+tpm workflow cost --epic-path <my-epic> \
   --agent orch --role orchestrator --tokens 40k --calls 12 --round "epic bookkeeping"
 ```
 

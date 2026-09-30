@@ -1,5 +1,9 @@
 # `tpm-task-doctor.js` — read-only task-store validator + drift detector (`#1119`)
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 The task **doctor**: a strictly READ-ONLY health check over a task store. It validates every
 canonical `bodies/<bucket>/task-<id>.json`, detects derived-file **drift** (the JSON changed since
 its body `.md` was rendered), checks the **label reverse-index**, and detects an **old-format**
@@ -18,12 +22,12 @@ Overview + file map: [`README.md`](README.md). The old-format detector + migrate
 ## Usage
 
 ```
-npx tpm task doctor --tasks-dir <dir> [--json]
+tpm task doctor --tasks-dir <dir> [--json]
 ```
 
 | Flag | |
 |---|---|
-| `--tasks-dir <dir>` | **REQUIRED**, no default. The task store root (`bodies/<bucket>/task-<id>.json` in the nested bucket layout + `tasks-index.json`). READ-ONLY. |
+| `--tasks-dir <dir>` | **Optional:** omitted, it is resolved from the project root's `.claude/claude-tpm/config.json` (`tasks.tasksDir`); the flag overrides. The task store root (`bodies/<bucket>/task-<id>.json` in the nested bucket layout + `tasks-index.json`). READ-ONLY. |
 | `--json` | Emit the structured report as JSON instead of human text. |
 | `--help` | Show usage (exit `0`). |
 
@@ -98,7 +102,7 @@ nonzero, so a strict/advisory split would only muddy it.)
 Verified runs against scratch stores:
 
 ```
-$ npx tpm task doctor --tasks-dir <clean>
+$ tpm task doctor --tasks-dir <clean>
 task doctor · <clean>
 2 task(s) · 2 valid · 0 invalid · 0 drift · label-index OK
   bodies/1000-1999/task-1000.json  OK
@@ -107,15 +111,15 @@ task doctor · <clean>
 Clean — no problems found. (Read-only: the doctor never writes.)
 # exit 0
 
-$ npx tpm task doctor --tasks-dir <json-hand-edited>
+$ tpm task doctor --tasks-dir <json-hand-edited>
 2 task(s) · 2 valid · 0 invalid · 1 drift · label-index OK
   bodies/1000-1999/task-1119.json  OK · DRIFT (banner 855e551c5933 · current e981f136e25d — body out of date; re-save via `tpm task`)
 # exit 1
 
-$ npx tpm task doctor --tasks-dir <old-markdown-store>
+$ tpm task doctor --tasks-dir <old-markdown-store>
 OLD-FORMAT task store detected (2 markdown body(ies), Next ID marker 1150).
   → SUGGEST migrate (the doctor never converts):
-      npx tpm task migrate --in "<old-markdown-store>" --out-dir "<choose-an-output-dir>"
+      tpm task migrate --in "<old-markdown-store>" --out-dir "<choose-an-output-dir>"
 # exit 1
 ```
 

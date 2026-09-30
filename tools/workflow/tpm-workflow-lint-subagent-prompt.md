@@ -1,5 +1,9 @@
 # `tpm-workflow-lint-subagent-prompt.js`
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 Validate a subagent spawn prompt — and catch unresolved template sentinels — before a
 subagent is spawned or a finalized plan/charter is handed to a worker. A poka-yoke: it
 turns "I forgot a required read / left a placeholder / named a blocked file" into a loud,
@@ -40,15 +44,15 @@ just works.
 
 ```bash
 # Full spawn-prompt lint (manifest chain + structural + sentinels):
-npx tpm workflow lint --file draft-prompt.md
-npx tpm workflow lint --file draft.md --manifest path/to/reading-list.md
-npx tpm workflow lint --file draft.md --verifier --verbose
+tpm workflow lint --file draft-prompt.md
+tpm workflow lint --file draft.md --manifest path/to/reading-list.md
+tpm workflow lint --file draft.md --verifier --verbose
 
 # Sentinel-only scan of a finalized plan / charter (no env ritual, no chain):
-npx tpm workflow lint --file plan.md --sentinels-only --require charter
+tpm workflow lint --file plan.md --sentinels-only --require charter
 
 # Standalone blocked-filename guard (no body needed):
-npx tpm workflow lint --sentinels-only --filename my-findings.md
+tpm workflow lint --sentinels-only --filename my-findings.md
 ```
 
 The prompt body comes from `--file <path>`, or from a bare positional path (first non-flag
@@ -154,7 +158,7 @@ Given a draft prompt that reads the five base docs + `plan.md`, carries the env 
 project-root anchor + a `dev/…` path, and names `charter-builder.md` (present on disk):
 
 ```bash
-npx tpm workflow lint --file clean-prompt.md \
+tpm workflow lint --file clean-prompt.md \
   --manifest claude-context/methodology/subagent/reading-list.md \
   --charter-dir <dir-with-charter-builder.md> --verbose
 ```
@@ -194,7 +198,7 @@ degrades to the checks it can still run.
 **But an EXPLICIT `--manifest` that doesn't exist fails LOUD (exit 2)** — a typo'd path
 must never silently drop the entire doc-chain family:
 ```bash
-npx tpm workflow lint --file draft.md --manifest reading-lst.md   # typo
+tpm workflow lint --file draft.md --manifest reading-lst.md   # typo
 ```
 ```
 lint-subagent-prompt: --manifest "reading-lst.md" does not exist (resolved: …/reading-lst.md). An explicit manifest path must exist; omit --manifest to fall back to discovery + the SKIP-with-NOTE behavior.
@@ -204,7 +208,7 @@ Exit `2`.
 ### 3. Sentinel scan catches a leftover placeholder and an un-stripped note
 
 ```bash
-npx tpm workflow lint --file dirty.md --sentinels-only
+tpm workflow lint --file dirty.md --sentinels-only
 ```
 where `dirty.md` contains `{{TASK_CONTEXT}}` and `<!-- ORCHESTRATOR NOTE: pick opus -->`:
 ```
@@ -221,7 +225,7 @@ Exit `1`.
 ### 4. Standalone blocked-filename guard
 
 ```bash
-npx tpm workflow lint --sentinels-only --filename my-findings.md
+tpm workflow lint --sentinels-only --filename my-findings.md
 ```
 ```
 FAIL: 1 of 3 required directives missing:
@@ -235,7 +239,7 @@ empty body are fill-sentinel, strip-sentinel, and the filename guard.)
 ### 5. A named-but-missing charter fails
 
 ```bash
-npx tpm workflow lint --file names-missing-charter.md --sentinels-only --charter-dir <dir>
+tpm workflow lint --file names-missing-charter.md --sentinels-only --charter-dir <dir>
 ```
 where the body names `charter-nope.md` (not on disk):
 ```
@@ -290,7 +294,7 @@ appears in the body) PASSes.
 With `config.json` = `{ "workflow": { "deliverables": { "wiki": false } } }` and a body that
 still contains the `<!-- wiki-deliverable -->` marker:
 ```bash
-npx tpm workflow lint --file gated.md --sentinels-only \
+tpm workflow lint --file gated.md --sentinels-only \
   --config config.json --config-gate 'workflow.deliverables.wiki=<!-- wiki-deliverable -->'
 ```
 ```

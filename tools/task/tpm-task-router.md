@@ -1,5 +1,9 @@
 # `tpm-task-router.js` — the `tpm task` sub-router
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 The `task` sub-router for the `tpm` dispatcher (P06 port; near-verbatim). `task` is a SINGLE-TOOL suite:
 `tpm-task.js` owns all the ledger subcommands, so the router forwards almost everything straight through
 with the subcommand intact — `tpm task add …` ≡ `tpm-task.js add …`. The reserved verbs are `config`
@@ -16,7 +20,7 @@ Overview + file map: [`README.md`](README.md). The tools it forwards to: [`tpm-t
 
 **Run** (via the `tpm` bin at promotion; standalone in the sandbox):
 ```
-npx tpm task <subcommand> [args…]
+tpm task <subcommand> [args…]
 ```
 Programmatic callers `require('./tpm-task-router')` for `main`, `MAIN`, `CONFIG`, `EXPORT_TOOL`,
 `DOCTOR`, `MIGRATE`.
@@ -35,22 +39,22 @@ The child's exit code is returned unchanged (a signal-killed child maps to `1`);
 
 ## Examples (verified, sandbox)
 ```
-$ npx tpm task list --tasks-dir /tmp/t --now 2026-09-20T17:00:00-07:00
+$ tpm task list --tasks-dir /tmp/t --now 2026-09-20T17:00:00-07:00
 # → tpm-task.js list … (renders the human index view)
 
-$ npx tpm task config --get history.enabled
+$ tpm task config --get history.enabled
 true                                    # → tpm-task-config.js
 
-$ npx tpm task export --tasks-dir /tmp/t --state finished --json
+$ tpm task export --tasks-dir /tmp/t --state finished --json
 [ … ]                                   # → tpm-task-export.js (mode token kept)
 
-$ npx tpm task search --tasks-dir /tmp/t --match router
+$ tpm task search --tasks-dir /tmp/t --match router
 #1000  bodies/1000-1999/task-1000.json:6  "headline": "Wire the router",
 
-$ npx tpm task --help
+$ tpm task --help
 tpm-task — JSON-backed task verbs …      # → tpm-task.js --help (pass-through)
 
-$ npx tpm task bogus --tasks-dir /tmp/t   # → unknown verb
+$ tpm task bogus --tasks-dir /tmp/t   # → unknown verb
 # exit 2 (propagated from the child)
 ```
 

@@ -11,7 +11,7 @@ The consumer's task store is already configured. Resolve it and reuse it:
 TASKS_DIR="$(npx tpm task config --tasks-dir)"
 ```
 
-Every `npx tpm task …` verb needs `--tasks-dir "$TASKS_DIR"` — the tool never defaults to a live store. If
+Every `npx tpm task …` verb here passes `--tasks-dir "$TASKS_DIR"` as an explicit override (the flag is optional; the store is otherwise resolved from the project root via `TPM_PROJECT_ROOT` or the walk-up). If
 `task config --tasks-dir` prints nothing or errors, that is an immediate **FAIL** (stop; store not configured).
 
 > Task ids start at **1000**. When you `add` the first task it will be `#1000`; use the real id the tool

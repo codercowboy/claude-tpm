@@ -40,9 +40,9 @@ The small set you read at every session open, regardless of which modules are en
 > item is retired here rather than restored — boot no longer runs a self-quiz. (boot-redesign, session 014)
 
 Then the project-state reads outside `methodology/` — the task ledger under the `tasks` module store
-(`.claude/claude-tpm/tasks/`; read via `npx tpm task list`, **not** the old `docs/tasks.md`), the latest
+(`.claude/claude-tpm/tasks/`; read via `tpm task list`, **not** the old `docs/tasks.md`), the latest
 session record (`session-NNNN.json` + derived `.md`) under the configured sessions dir
-(`session.notes.sessionsDir`; read via `npx tpm session export`), and `tools/README.md`. The `tpm-session` skill (`open` mode) walks THIS list;
+(`session.notes.sessionsDir`; read via `tpm session export`), and `tools/README.md`. The `tpm-session` skill (`open` mode) walks THIS list;
 neither it nor `CLAUDE.md` re-states these docs (a second copy is what drifts).
 
 ## Tier 2 — Shared situational shelf (know it exists; read WHEN THE TRIGGER FIRES)

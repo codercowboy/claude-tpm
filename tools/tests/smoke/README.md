@@ -1,5 +1,12 @@
 # Stage-D functional smoke — `tools/tests/smoke/`
 
+> **LEGACY — the older LLM smoke suite.** Kept as-is (deliberately not retired), but the **current
+> real-session harness is `claude-tpm-dev/tools/dev-smoke/`** (in the dev workspace, not this shipped
+> bundle). Install instructions here match the current installer: in a project run **`npx tpm install .`**
+> (the plugin is installed at **project scope**; the marketplace is registered once per machine). The
+> harness's `--fresh` path does the equivalent by running `npx tpm install <new-consumer-dir>` from the
+> bundle. No behavior change.
+
 A **doc-driven functional smoke** of the promoted session/task tooling. The harness lays a *selected* set
 of stand-alone prose test docs into a fresh consumer, configures its stores, and spawns a headless
 ORCHESTRATOR-shaped agent that works through the docs using the `tpm-*` skills and `npx tpm <suite> <verb>`
@@ -10,7 +17,7 @@ work when a real headless agent uses it, with no hooks and no spoon-feeding?**
 
 | Rig | What it proves |
 |---|---|
-| `tools/consumer/smoke.sh` | **Quick install-sanity probe** — the plugin loads and its skills resolve their refs in a consumer. Deterministic CLI probes + a few JSON-schema LLM probes. |
+| `tools/consumer/smoke.sh` | **Quick install-sanity probe** — the plugin's skills surface and `npx tpm doc` / `npx tpm` resolve in a consumer. Deterministic CLI probes + a few JSON-schema LLM probes. |
 | `tools/tests/smoke/` (this dir) | **Richer doc-driven FUNCTIONAL smoke** — a real headless agent drives the session/task verbs through prose test docs and reports 3-bucket feedback. |
 | `tools/tests/run-all.js` | The **zero-dep unit suites** (`npm test`). This rig is not part of it (it needs a live `claude`). |
 
@@ -46,8 +53,9 @@ Prior `smoketest-*` runs are swept aside to `<scratch>/safe-to-delete/` via `mv`
 
 ## How the store gets configured (#1126.G)
 
-Every `npx tpm task|session` verb REQUIRES `--tasks-dir`/`--sessions-dir` — the tools never default to a
-live store, so a bare consumer errors `--tasks-dir <dir> is required`. The harness therefore writes
+`--tasks-dir`/`--sessions-dir` are optional on every `npx tpm task|session` verb: the store is resolved from the
+project root (`TPM_PROJECT_ROOT` or the walk-up), and the flags remain valid as explicit overrides. The tools never
+default to a live store outside a project, so a bare consumer with no project root errors `--tasks-dir is required`. The harness therefore writes
 `<consumer>/.claude/claude-tpm/config.json` with a `tasksDir` + `sessionsDir`, which makes
 `npx tpm task config --tasks-dir` and `npx tpm session config --sessions-dir` resolve to absolute paths.
 Each test doc opens by capturing those and passing them on every verb.

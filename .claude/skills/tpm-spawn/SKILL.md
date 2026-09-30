@@ -4,7 +4,7 @@ description: Use when the orchestrator is about to spawn a SINGLE subagent via t
 ---
 
 > In this file, `%TPM_HOME%` is the claude-tpm **installation home** — it is NOT always
-> `<project>/node_modules/@codercowboy/claude-tpm`. If you need its actual value, run `npx tpm resolve-home`.
+> `<project>/node_modules/@codercowboy/claude-tpm`. If you need its actual value, run `tpm resolve-home`.
 
 `/tpm-spawn` fires **one** subagent. It owns *role* judgment (which role, resolved forgivingly) and
 drives the standard spawn flow. It is judgment + routing only: the **charter owns posture**, the
@@ -59,20 +59,20 @@ spawn; it does not run or reason about the loop.
 
 Reference the tools by their promoted path (`%TPM_HOME%/tools/workflow/…`); a skill never bundles its own copy.
 
-1. **Scaffold the folder** (if not already present) — `npx tpm workflow scaffold …`
+1. **Scaffold the folder** (if not already present) — `tpm workflow scaffold …`
    (`add-phase` for a new phase, `add-round --role <role>` to append a kickback round in an existing
    phase — the tool auto-numbers the phase `NN` / round `r<N>` and drops the skeleton: `plan.md`
    stub, `charter-<role>.md` copied from the resolved `charterFile`, `spawn-prompt-<role>-r<N>.md`,
    `findings/ tools/ tests/ tmp/`, and the per-subagent `tmp/<role>-r<N>[-v<M>]/` scratch folder).
-   The role's charter + model come from the resolved config (`npx tpm workflow config`).
+   The role's charter + model come from the resolved config (`tpm workflow config`).
 2. **Fill `plan.md`** — pure structure (DoD triple table · task/method · Tools & MCP · curated
    Context · deliverables · constraints · budget). No posture — that's the charter file.
-3. **Compose the spawn prompt** — `npx tpm workflow compose --role <role>
+3. **Compose the spawn prompt** — `tpm workflow compose --role <role>
    --phase-dir <dir> --plan plan.md --charter charter-<role>.md [--round N --model <m>
    --project-root "$(pwd)" --out spawn-prompt-<role>-r<N>.md]`. Emits the working-folder line, the
    read-order (charter THEN plan), the env-source ritual, constraints, and return shape — you supply
    only the one `{{TASK_CONTEXT}}` fill.
-4. **Lint BEFORE the Agent call** — `npx tpm workflow lint --file
+4. **Lint BEFORE the Agent call** — `tpm workflow lint --file
    spawn-prompt-<role>-r<N>.md --require-charter --charter-dir <dir> [--verifier] [--resume]`. Exits
    0 = PASS, 1 = FAIL with a per-check missing-directive list. Do NOT spawn on a FAIL. The lint
    enforces the manifest reading chain, env ritual, working folder, charter-file-present, the sentinel

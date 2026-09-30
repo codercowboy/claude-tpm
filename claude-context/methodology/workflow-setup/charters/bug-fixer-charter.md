@@ -105,3 +105,8 @@ The corrected artifact is the product; documentation supports it and does not ge
 documents you owe, and where they go, is the plan's Deliverables section — this charter only sets the
 priority. Your handoff, at minimum, must say which findings you closed (with how each was verified) and
 which — if any — you could not, and why.
+
+`findings/HANDOFF.md` already holds the prior agents' content (the delivery agent's change lists, samples,
+evidence). **Add** your handoff as a clearly headed section at the **end** of it — `## Bug-fixer r<N>` — and
+leave everything above untouched; never overwrite or rewrite the existing file. If no `findings/HANDOFF.md`
+exists yet, create it.

@@ -1,5 +1,9 @@
 # `tpm-workflow-scaffold-subagent.js`
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 The epic-aware scaffolder for the claude-tpm workflow module. It owns the
 **mechanics** of the numbered-phase folder layout — auto-numbering phases,
 auto-numbering kickback rounds, and dropping the per-role / per-round /
@@ -11,7 +15,7 @@ hand-numbering them, and hand-tracking round lineage. The orchestrator decides
   `dev/workflow-module-build/24-tighten-scaffold-config/tools/scaffold-subagent.js` — the
   fable-review tightening version, superseding the phase-12 copy).
 - **Runtime:** Node built-ins only, zero runtime deps. Run portably with
-  `npx tpm workflow scaffold …` (verified on Node v24.16.0).
+  `tpm workflow scaffold …` (verified on Node v24.16.0).
 - **In-suite dependencies** (must sit beside it): `config-resolver.js` (resolves the
   team roster + each role's `charterFile`, plus `planTemplateFile` / `subagentEnvTemplate`)
   and `check-filename.js` (guards every emitted filename against the blocked patterns
@@ -70,7 +74,7 @@ Create `<epic-path>/00-epic-plan/` with `epic-plan.md`, `punchlist.md`, and
 (see [Overwrite protection](#overwrite-protection)).
 
 ```
-$ npx tpm workflow scaffold epic-init dev/my-epic
+$ tpm workflow scaffold epic-init dev/my-epic
   mkdir:   dev/my-epic
   mkdir:   dev/my-epic/00-epic-plan
   created: dev/my-epic/00-epic-plan/epic-plan.md
@@ -129,7 +133,7 @@ defaults; the exact set is printed on an unknown-team error):
 | `build` | builder |
 
 ```
-$ npx tpm workflow scaffold add-phase dev/my-epic --slug write-guide --team docs
+$ tpm workflow scaffold add-phase dev/my-epic --slug write-guide --team docs
   ...
   created: dev/my-epic/01-write-guide/plan.md
   created: dev/my-epic/01-write-guide/tmp/subagent.env
@@ -182,7 +186,7 @@ what lets the loop's `bug-fixer` (which is in no team's roster, so it was never
 charted at `add-phase` time) arrive complete:
 
 ```
-$ npx tpm workflow scaffold add-round dev/my-epic/02-build-thing --role bug-fixer
+$ tpm workflow scaffold add-round dev/my-epic/02-build-thing --role bug-fixer
   created: .../02-build-thing/spawn-prompt-bug-fixer-r1.md
   created: .../02-build-thing/charter-bug-fixer.md
   mkdir:   .../02-build-thing/tmp/bug-fixer-r1
@@ -343,22 +347,22 @@ line below was executed and observed.
 
 ```bash
 # 1. Initialize the epic (creates 00-epic-plan/).
-npx tpm workflow scaffold epic-init dev/demo-epic
+tpm workflow scaffold epic-init dev/demo-epic
 
 # 2. First phase, docs team → 01-write-guide/ (documentarian + verifier).
-npx tpm workflow scaffold add-phase dev/demo-epic --slug write-guide --team docs
+tpm workflow scaffold add-phase dev/demo-epic --slug write-guide --team docs
 
 # 3. Second phase, full team → 02-build-thing/
 #    (planning, builder, test-writer, documentarian, verifier).
-npx tpm workflow scaffold add-phase dev/demo-epic --slug build-thing --team full
+tpm workflow scaffold add-phase dev/demo-epic --slug build-thing --team full
 
 # 4. Verifier kicked back → spawn the loop's bug-fixer into the SAME phase.
 #    Drops spawn-prompt-bug-fixer-r1.md + charter-bug-fixer.md + tmp/bug-fixer-r1/.
-npx tpm workflow scaffold add-round dev/demo-epic/02-build-thing --role bug-fixer
+tpm workflow scaffold add-round dev/demo-epic/02-build-thing --role bug-fixer
 
 # 5. Re-run the builder (auto-numbers → r2) and re-check the verifier (→ r2, -v1).
-npx tpm workflow scaffold add-round dev/demo-epic/02-build-thing --role builder
-npx tpm workflow scaffold add-round dev/demo-epic/02-build-thing --role verifier
+tpm workflow scaffold add-round dev/demo-epic/02-build-thing --role builder
+tpm workflow scaffold add-round dev/demo-epic/02-build-thing --role verifier
 ```
 
 Resulting `02-build-thing/` (observed):

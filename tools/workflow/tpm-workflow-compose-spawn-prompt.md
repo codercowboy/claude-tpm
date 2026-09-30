@@ -1,5 +1,9 @@
 # `tpm-workflow-compose-spawn-prompt.js`
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 Mechanically emit the standard subagent spawn-prompt boilerplate so the orchestrator supplies
 only the one task-specific bit — a `{{TASK_CONTEXT}}` fill sentinel it fills in before
 spawning. A token-saver and a consistency guard: every prompt gets the same working-folder
@@ -52,7 +56,7 @@ contradicting a planner's or researcher's charter, and even a verifier's read-or
 | `verifier` | report a **VERDICT, not a repair**; adversarially attack each DoD claim (+ an explicit **HARD RULE** line) | the `findings/<slug>-verdict.md` verdict file (per-row PASS/FAIL) — **not** an artifact |
 | `planning` | **do NOT build**; deliver a plan proposal + risk map | a plan proposal + risk map to `findings/` — **not** a built artifact |
 | `researcher` | **do NOT build**; deliver knowledge | your findings to `findings/` (knowledge) — **not** a built artifact |
-| `bug-fixer` | **the verdict file is read-order item 1** (via `--verdict`); fix exactly its findings, nothing beyond | the targeted fixes + re-run evidence each finding is closed; touch nothing beyond the findings |
+| `bug-fixer` | **the verdict file is read-order item 1** (via `--verdict`); fix exactly its findings, nothing beyond | the targeted fixes + re-run evidence each finding is closed; touch nothing beyond the findings; APPEND a `## Bug-fixer r<N>` section to `findings/HANDOFF.md` (never overwrite it) |
 | *(any other role)* | neutral: *"the charter is authoritative; do exactly what it defines"* | *"whatever your charter and the plan's Deliverables define"* — never the builder default |
 
 A consumer-added role (`--role wizard`) falls through to the **neutral** row: it is never
@@ -73,17 +77,17 @@ this round a composed verifier prompt FAILed that check.
 ## Usage
 
 ```bash
-npx tpm workflow compose --role builder \
+tpm workflow compose --role builder \
   --phase-dir 'dev/epic/02b-lint-compose' \
   --plan plan.md --charter charter-builder.md
 
 # bug-fixer: --verdict is REQUIRED and becomes read-order item 1:
-npx tpm workflow compose --role bug-fixer --phase-dir <p> \
+tpm workflow compose --role bug-fixer --phase-dir <p> \
   --plan plan.md --charter charter-bug-fixer.md \
   --verdict findings/verifier-r1-v1-verdict.md
 
 # with optional round/model/env-ritual + write to a file:
-npx tpm workflow compose --role verifier --phase-dir <p> \
+tpm workflow compose --role verifier --phase-dir <p> \
   --plan plan.md --charter charter-verifier.md --round 1 --variant 2 \
   --model opus --project-root '/abs/repo/root' --out spawn-prompt-verifier-r1-v2.md
 ```
@@ -137,7 +141,7 @@ Verified: missing `--charter` → `Missing required flag --charter. Run --help f
 ### Minimal builder → stdout
 
 ```bash
-npx tpm workflow compose --role builder \
+tpm workflow compose --role builder \
   --phase-dir 'dev/epic/01-thing' --plan plan.md --charter charter-builder.md
 ```
 ```
@@ -163,7 +167,7 @@ Exit `0`.
 ### Bug-fixer → the verdict is read-order item 1 (mechanical handoff)
 
 ```bash
-npx tpm workflow compose --role bug-fixer \
+tpm workflow compose --role bug-fixer \
   --phase-dir 'dev/epic/01-thing' --plan plan.md --charter charter-bug-fixer.md \
   --verdict findings/verifier-r1-v1-verdict.md
 ```
@@ -184,7 +188,7 @@ Task for this round:
 
 Constraints: write ONLY inside the working folder above; zero external deps; portable `node <file>`; scratch → `tmp/bug-fixer/`; never name a file report/summary/analysis/findings (server-side blocked).
 
-Return-shape: your deliverable = the targeted fixes on the real artifact + re-run evidence that each verdict finding is closed, on disk, plus `findings/HANDOFF.md`. Touch nothing beyond the verdict's findings. Return a one-paragraph summary: each finding and how you closed it, the exact commands you ran + their results, the `findings/HANDOFF.md` path, and any caveat.
+Return-shape: your deliverable = the targeted fixes on the real artifact + re-run evidence that each verdict finding is closed, on disk, plus `findings/HANDOFF.md`. Touch nothing beyond the verdict's findings. `findings/HANDOFF.md` already holds the prior agents' content: ADD your own section headed `## Bug-fixer r<N>` at the END of it and leave everything above untouched - never overwrite or rewrite the existing HANDOFF (if none exists yet, create it). Return a one-paragraph summary: each finding and how you closed it, the exact commands you ran + their results, the `findings/HANDOFF.md` path, and any caveat.
 ```
 Exit `0`. Omit `--verdict` here and it fails loudly: `Missing required flag --verdict.`
 (exit `2`) — the verify→fix handoff can't ship without the verdict named.
@@ -192,7 +196,7 @@ Exit `0`. Omit `--verdict` here and it fails loudly: `Missing required flag --ve
 ### Verifier with round/variant/model/epic/project-root → `--out` file
 
 ```bash
-npx tpm workflow compose --role verifier --phase-dir 'dev/epic/01-thing' \
+tpm workflow compose --role verifier --phase-dir 'dev/epic/01-thing' \
   --plan plan.md --charter charter-verifier.md --round 1 --variant 2 \
   --model opus --epic 'demo epic' --project-root '/abs/root' --out composed-verifier.md
 ```
@@ -205,9 +209,9 @@ stderr: `Wrote spawn prompt to composed-verifier.md`. The file contains the head
 ### The poka-yoke round-trip with the linter
 
 ```bash
-npx tpm workflow compose --role builder --phase-dir 'dev/epic/01-thing' \
+tpm workflow compose --role builder --phase-dir 'dev/epic/01-thing' \
   --plan plan.md --charter charter-builder.md --out composed-raw.md
-npx tpm workflow lint --file composed-raw.md --sentinels-only
+tpm workflow lint --file composed-raw.md --sentinels-only
 ```
 ```
 FAIL: 1 of 3 required directives missing:
@@ -235,7 +239,7 @@ methodology reading chain (`project-workspace.md`, `shared-conventions.md`, `han
 
 ```bash
 # composed WITHOUT --project-root, {{TASK_CONTEXT}} filled with plain task text:
-npx tpm workflow lint --file composed-filled.md \
+tpm workflow lint --file composed-filled.md \
   --manifest claude-context/methodology/subagent/reading-list.md --charter-dir <dir>
 ```
 ```

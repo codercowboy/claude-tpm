@@ -3,13 +3,14 @@
  * tpm-hooks-router.js — the `hooks` sub-router for the `tpm` dispatcher.
  *
  * PURPOSE
- *   `tpm hooks <verb> [args…]` dispatches to a claude-tpm HOOK program (PreToolUse).
+ *   `tpm hooks <verb> [args…]` dispatches to a claude-tpm HOOK program (PreToolUse, SessionStart).
  *   This router OWNS
  *   the hook verb table; the top-level `tpm.js` forwards `hooks <anything…>` here without knowing the
  *   verbs (design: dev/tpm-cli-design.md §0). It exists so a plugin `hooks.json` can invoke a hook by
- *   a STABLE, path-independent command — `npx tpm hooks gate-spawn` — instead of hard-coding a deep
- *   `node "${CLAUDE_PLUGIN_ROOT}/tools/<suite>/hooks/<script>.js"` path that breaks whenever a script
- *   moves or is renamed.
+ *   a STABLE command — `node "${CLAUDE_PLUGIN_ROOT}/tools/tpm.js" hooks gate-spawn` — instead of
+ *   hard-coding a deep `…/tools/<suite>/hooks/<script>.js` path that breaks whenever a script moves or
+ *   is renamed. (Not `npx tpm …`: that fails in projects with no node_modules copy of the package; the
+ *   plugin root is always known to the harness.)
  *
  *   The hook script still LIVES in its owning suite (gate-spawn under `workflow/`) — a workflow gate
  *   belongs to the workflow suite, and gate-spawn deep-requires its sibling `tpm-workflow-signoff.js`.
@@ -27,6 +28,7 @@
  *
  * USAGE
  *   tpm hooks gate-spawn         # → workflow/hooks/tpm-workflow-gate-spawn.js  (PreToolUse: Agent|Task)
+ *   tpm hooks session-start      # → ./tpm-hooks-session-start.js  (SessionStart: export TPM_PROJECT_ROOT / TPM_HOME)
  *   tpm hooks --help | -h
  */
 
@@ -38,23 +40,30 @@ const { spawnSync } = require('child_process');
 // short verb -> the hook script, relative to THIS file's dir. Targets live in their owning suite.
 const VERBS = {
   'gate-spawn': '../workflow/hooks/tpm-workflow-gate-spawn.js',
+  'session-start': './tpm-hooks-session-start.js',
+  // Back-compat NO-OP: a mixed install (a live 0.1.0 hooks.json wiring this PostToolUse verb, answered
+  // by a 0.2.0 CLI) would otherwise error "unknown verb" on every read. The shim exits 0 and rewrites
+  // nothing. TEMPORARY — drop with the #27.1/#27.2 contamination cleanup. See the shim's header.
+  'expand-tpm-home-content': './tpm-hooks-expand-tpm-home-content-noop.js',
 };
 
 function help() {
-  console.log(`tpm hooks — claude-tpm PreToolUse hook router
+  console.log(`tpm hooks — claude-tpm hook router
 
 Usage:
   tpm hooks <verb> [args…]
 
 Verbs:
   gate-spawn               block a tpm-workflow round spawn without a fresh kickoff  (PreToolUse: Agent|Task)
+  session-start            export TPM_PROJECT_ROOT / TPM_HOME into the session's env file  (SessionStart)
+  expand-tpm-home-content  back-compat NO-OP for mixed 0.1.0/0.2.0 installs — exits 0, rewrites nothing (temp)
 
   tpm hooks --help, -h
 
 This is a harness-invoked hook. A PreToolUse hook's exit code decides the tool's fate (0 = allow,
 2 = block); the payload arrives on stdin and stdout flows back to the harness. Wire it from a plugin
-hooks.json, e.g.:
-  { "type": "command", "command": "npx tpm hooks gate-spawn" }`);
+hooks.json, e.g. (not 'npx tpm', which fails in projects with no node_modules copy):
+  { "type": "command", "command": "node \\"\${CLAUDE_PLUGIN_ROOT}/tools/tpm.js\\" hooks gate-spawn" }`);
 }
 
 function main(argv) {

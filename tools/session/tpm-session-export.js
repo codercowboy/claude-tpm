@@ -29,7 +29,7 @@
  * ages render and open items never hit the converter's loud "opts.now is required" throw.
  *
  * ── NODE-INVOKABLE, NO BIN (Q5) ──
- * Runs via `npx tpm session export …` (routed through the `tpm` bin), or bare
+ * Runs via `tpm session export …` (routed through the `tpm` bin), or bare
  * `node tools/session/tpm-session-export.js …`. Programmatic callers `require()` it for `exportSessions(...)`.
  *
  * Zero third-party deps; Node built-ins only.
@@ -260,7 +260,7 @@ function parseArgv(argv) {
   return opts;
 }
 
-const USAGE = `tpm-session-export — session export tool (run: npx tpm session export …)
+const USAGE = `tpm-session-export — session export tool (run: tpm session export …)
 
   --sessions-dir <dir>     directory of session-<NNNN>.json (a SCRATCH or real dir). OPTIONAL (F4):
                            omitted → resolved from the LOCAL project's .claude/claude-tpm/config.json

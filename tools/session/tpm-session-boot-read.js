@@ -27,12 +27,12 @@
  *
  * SESSIONS DIR
  *   `--sessions-dir <dir>` if given (used by tests + explicit callers). Otherwise resolved from the
- *   session config (the same value `npx tpm session config --sessions-dir` prints), best-effort — a
+ *   session config (the same value `tpm session config --sessions-dir` prints), best-effort — a
  *   resolution failure degrades to a clean message + exit 0, it never crashes boot.
  *
  * CLI
- *   npx tpm session boot-read [--sessions-dir <dir>]
- *   npx tpm session boot-read --help
+ *   tpm session boot-read [--sessions-dir <dir>]
+ *   tpm session boot-read --help
  */
 
 'use strict';
@@ -54,7 +54,7 @@ function padNumber(number) {
 function resolveSessionsDir(explicit) {
   if (explicit) return explicit;
   try {
-    // In-process resolution == `npx tpm session config --sessions-dir`.
+    // In-process resolution == `tpm session config --sessions-dir`.
     // eslint-disable-next-line global-require
     const cfg = require('./tpm-session-config');
     const { resolved, projectRoot } = cfg.resolveSessionConfig();
@@ -192,7 +192,7 @@ function emitPrior(prior, sessionsDir) {
     out.push(open.map((it) => `#${it.id} · ${it.text}  [${it.slug}]`).join('\n'));
     out.push(
       `for full detail: read ${mdPath} (## Punchlist / ## Log), or run: ` +
-        `npx tpm session export --sessions-dir ${sessionsDir} --session ${number} --style human`,
+        `tpm session export --sessions-dir ${sessionsDir} --session ${number} --style human`,
     );
   } else {
     out.push('(no open punchlist items)');
@@ -205,7 +205,7 @@ function emitPrior(prior, sessionsDir) {
 function printHelp() {
   process.stdout.write(
     [
-      'Usage: npx tpm session boot-read [--sessions-dir <dir>]',
+      'Usage: tpm session boot-read [--sessions-dir <dir>]',
       '',
       "Pure-read boot pickup: emits the highest PRIOR session's handoff (from the canonical",
       'session-NNNN.json, via the session model) + its open punchlist headlines + the JSON/.md file',

@@ -58,6 +58,15 @@ const out = r.stdout;
 
 check('names the role (BUILDER)', /BUILDER subagent/.test(out), out);
 check('emits the working folder', out.includes(PHASE), out);
+// 4.8 — the worker is told to run BARE `tpm resolve-home` (never `npx tpm`: npx can fall through to an unrelated registry package).
+check('tells the worker to run bare `tpm resolve-home`', /run `tpm resolve-home`/.test(out), out);
+check('emits no `npx tpm` anywhere', !/npx\s+tpm/.test(out), out);
+{
+  const composed = path.join(SCRATCH, 'composed-bare.md');
+  fs.writeFileSync(composed, out);
+  const lr = run(LINT, ['--file', composed, '--sentinels-only']);
+  check('a freshly composed prompt passes the bare-`tpm` resolve-home lint rules (no resolve-home/anchor violation)', !/resolve-home|anchor/i.test(lr.stdout + lr.stderr), lr.stdout + lr.stderr);
+}
 check('read-order lists charter THEN plan (charter appears before plan)',
   out.indexOf('charter-builder.md') !== -1 &&
   out.indexOf('charter-builder.md') < out.indexOf('plan.md'), out);
@@ -188,6 +197,13 @@ check("bug-fixer: verdict is read BEFORE the charter (item 1)", bfOut.indexOf(VE
 check('bug-fixer: return-shape is fixer-shaped (fixes + nothing beyond the findings)',
   /Touch nothing beyond the verdict's findings/.test(bfOut) && /each finding and how you closed it/.test(bfOut), bfOut);
 check('bug-fixer: does NOT emit the plain builder "built artifact" return', !/built artifact \+ its passing checks/.test(bfOut), bfOut);
+// HANDOFF append rule (task #1141 D): the fixer ADDS a section; it never overwrites the delivery agent's HANDOFF.
+check('bug-fixer: return-shape tells the fixer to ADD a "## Bug-fixer r<N>" section at the END of findings/HANDOFF.md',
+  /ADD your own section headed `## Bug-fixer r<N>` at the END of it/.test(bfOut) && /findings\/HANDOFF\.md` already holds the prior agents' content/.test(bfOut), bfOut);
+check('bug-fixer: return-shape forbids overwriting/rewriting the existing HANDOFF and covers the none-yet case',
+  /never overwrite or rewrite the existing HANDOFF/.test(bfOut) && /if none exists yet, create it/.test(bfOut), bfOut);
+check('append rule is bug-fixer-only (builder prompt does not carry it)',
+  !/Bug-fixer r<N>/.test(composeRole('builder')) && !/never overwrite or rewrite/.test(composeRole('verifier', ['--round', '1', '--variant', '1'])), 'leaked');
 // --verdict is MANDATORY for a bug-fixer (the handoff is only mechanical if named).
 r = run(COMPOSE, ['--role', 'bug-fixer', '--phase-dir', PHASE, '--plan', 'plan.md', '--charter', 'charter-bug-fixer.md']); // no --verdict
 check('bug-fixer WITHOUT --verdict fails loudly (exit 2)', r.code === 2 && /Missing required flag --verdict/.test(r.stderr), `code=${r.code}\n${r.stderr}`);
@@ -229,6 +245,19 @@ check('MUTANT reintroduces the bug: verifier loses its verdict return-shape',
   /built artifact \+ its passing checks/.test(mutVer) && !/verdict to `findings/.test(mutVer), mutVer);
 check('...and the real tool does NOT (guard would fire red on the mutant)',
   !/built artifact \+ its passing checks/.test(planOut) && !/built artifact \+ its passing checks/.test(verOut), 'real tool leaked builder shape');
+
+// MUTATION-CHECK (append rule): strip the rule from a temp copy of compose; the bug-fixer guard must go red.
+{
+  const RULE_START = "\"`findings/HANDOFF.md` already holds";
+  const i = composeSrc.indexOf(RULE_START);
+  const j = composeSrc.indexOf("'Return a one-paragraph summary: each finding", i);
+  check('append-rule mutation anchors present in compose source', i !== -1 && j > i, 'bug-fixer returnShape layout changed');
+  const noRulePath = path.join(SCRATCH, 'compose-no-append-rule.js');
+  fs.writeFileSync(noRulePath, composeSrc.slice(0, i) + composeSrc.slice(j));
+  const mutBf = run(noRulePath, ['--role', 'bug-fixer', '--phase-dir', PHASE, '--plan', 'plan.md', '--charter', 'charter-bug-fixer.md', '--verdict', VERDICT]).stdout;
+  check('MUTANT without the append rule: the append-rule guard would go RED',
+    mutBf.length > 0 && !/ADD your own section headed `## Bug-fixer r<N>`/.test(mutBf) && !/never overwrite or rewrite the existing HANDOFF/.test(mutBf), mutBf);
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

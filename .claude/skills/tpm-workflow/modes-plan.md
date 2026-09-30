@@ -1,7 +1,7 @@
 # `plan` mode — pre-task Q&A → charter → scaffold → plan.md → compose + lint
 
 > In this file, `%TPM_HOME%` is the claude-tpm **installation home** — it is NOT always
-> `<project>/node_modules/@codercowboy/claude-tpm`. If you need its actual value, run `npx tpm resolve-home`.
+> `<project>/node_modules/@codercowboy/claude-tpm`. If you need its actual value, run `tpm resolve-home`.
 
 **Do NOT freehand a `plan.md`.** The template + tools exist for exactly this. Plan mode drives the
 real pipeline: **pre-task questions → resolve config → scaffold → fill `plan.md` → compose → lint —
@@ -10,7 +10,7 @@ BEFORE any spawn.** Present the plan for review, then hand off to `run` mode.
 ## 1. Resolve config first (the raw defaults)
 
 ```
-npx tpm workflow config --json
+tpm workflow config --json
 ```
 
 This hands you the RESOLVED picture — the **7 personas** (`subagentConfigs[]`: `planning` · `builder`
@@ -84,10 +84,10 @@ Advanced — all defaulted ("-v" expands):
      time 2h · scope task-folder · retries builder 5 / verify-loop 5 / everyone-else 1
 ```
 
-**Sample B — a `docs` round (document the already-delivered cost-ledger tool, run as `npx tpm workflow cost`):**
+**Sample B — a `docs` round (document the already-delivered cost-ledger tool, run as `tpm workflow cost`):**
 
 ```
-Pre-task — docs round: document the cost-ledger tool (`npx tpm workflow cost`)
+Pre-task — docs round: document the cost-ledger tool (`tpm workflow cost`)
 Defaults run the team AS CONFIGURED. Reply "all defaults" to accept; name only what you want changed.
 
 ① Roster + sequencing — serial:
@@ -161,15 +161,15 @@ harm is not "knowing another role exists," it's *adopting the weaker definition 
 > **Gate A — questions answered (gates SCAFFOLDING).** Present the §2 roster, then STOP. When the user
 > answers (`all defaults` or explicit deltas): (1) capture it to **`dev/<epic>/00-epic-plan/pretask-<NN>.md`**
 > — the roster shown, the user's response **quoted**, an **`**Accepted:** <their phrase>`** line; (2) record
-> it: **`npx tpm workflow signoff questions --roster "<one-line>"`**; then scaffold. EVERY `add-phase`
+> it: **`tpm workflow signoff questions --roster "<one-line>"`**; then scaffold. EVERY `add-phase`
 > passes **`--pretask-ack <that receipt>`** and **the scaffolder REFUSES without it** (exit 1). *(This got
 > silently skipped in session-007. No bypass flag: if you want one, you haven't run §2.)*
 >
 > **Gate B — spawn confirmed (gates the SPAWN itself — the critical gate).** After scaffolding + composing +
 > linting, ask an **explicit** "kick it off now?" and STOP. A rambly / discussion / "process-what-I'm-saying"
-> turn is **NOT** a kickoff. Only on an explicit "yes": **`npx tpm workflow signoff spawn --round
+> turn is **NOT** a kickoff. Only on an explicit "yes": **`tpm workflow signoff spawn --round
 > "<phase-dir>" --roster "<one-line>"`** (`--round` = the phase-folder path), then spawn. A **`PreToolUse` hook**
-> (`npx tpm hooks gate-spawn`) BLOCKS any workflow spawn whose `compose`-stamped marker (`<!-- tpm-workflow-spawn
+> (`tpm hooks gate-spawn`) BLOCKS any workflow spawn whose `compose`-stamped marker (`<!-- tpm-workflow-spawn
 > phase=… -->`) has no **fresh, same-round, same-session** `spawn` token — so a missed/faked Gate B, or a
 > token for a different round, fails loudly at spawn time. **Only ever write the token from an explicit user
 > confirmation — never from your own inference.**
@@ -183,8 +183,8 @@ harm is not "knowing another role exists," it's *adopting the weaker definition 
 than one delivery agent shares the deliverable** — `full` (planner → builder → test-writer →
 documentarian), or multiple builders. Below that, no epic overhead.
 
-- **Epic:** `npx tpm workflow scaffold epic-init dev/<epic>` then
-  `npx tpm workflow scaffold add-phase dev/<epic> --slug <slug> --team <team> --pretask-ack dev/<epic>/00-epic-plan/pretask-<NN>.md`.
+- **Epic:** `tpm workflow scaffold epic-init dev/<epic>` then
+  `tpm workflow scaffold add-phase dev/<epic> --slug <slug> --team <team> --pretask-ack dev/<epic>/00-epic-plan/pretask-<NN>.md`.
   `add-phase` auto-computes the next `NN` (append-only; never renumber), drops the phase skeleton:
   `plan.md` (**seeded from the config's `planTemplateFile` when one resolves on disk — the scaffolder
   consumes it, phase 24 fix #9; the built-in sentinel stub is only the fallback**), per-role
@@ -216,7 +216,7 @@ marks as wrong/stale so the worker doesn't trust it.
 ## 6. Compose + lint the spawn prompt — BEFORE the spawn
 
 ```
-npx tpm workflow compose --role builder \
+tpm workflow compose --role builder \
   --phase-dir 'dev/<epic>/NN-<slug>' --plan plan.md --charter charter-builder.md \
   [--round 1 --model <model> --project-root "$(pwd)" --out spawn-prompt-builder-r1.md]
 ```
@@ -225,7 +225,7 @@ Then **lint** the finalized plan/charter/prompt (the poka-yoke that makes token-
 safe — you grep the template, the lint catches the gaps):
 
 ```
-npx tpm workflow lint --file spawn-prompt-builder-r1.md \
+tpm workflow lint --file spawn-prompt-builder-r1.md \
   --require-charter --charter-dir 'dev/<epic>/NN-<slug>' [--verifier] [--resume]
 ```
 

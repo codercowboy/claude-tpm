@@ -6,7 +6,7 @@
 # DETERMINISTICALLY: each probe asks the consumer-claude to answer in a STRICT JSON schema, then
 # tpm-consumer-check-json.js parses that JSON and checks fields (instead of fuzzy-grepping prose). This is the
 # LLM-in-the-loop complement to the zero-dep node unit tests — it proves the lived integration (do the
-# plugin-loaded tpm-* skills actually surface + resolve their ${TPM_HOME} refs when consumed).
+# plugin-delivered tpm-* skills actually surface, and does the bundle's doc / tool resolution work when consumed).
 #
 # Repeatable + growing: run it after installing into a consumer (`npx tpm install <dir>`), and re-run it
 # as we build skills — each new behavior gets one more `probe` below.
@@ -65,8 +65,8 @@ echo "=== claude-tpm consumer smoke tests → $DIR ==="
 
 # ── PROBES (add one per skill/behavior as the toolset grows) ─────────────────
 
-# 1. Skills present at boot: under the plugin route the tpm-* skills eager-load, so they're live from
-#    message #1 with NO boot preamble (no CLAUDE.md boot block, no boot.md). Ask COLD, assert the JSON.
+# 1. Skills present at boot: the plugin delivers the tpm-* skills (eager-loaded by Claude Code), so they are
+#    live from message #1 with NO boot preamble (no CLAUDE.md boot block, no boot.md). Ask COLD, assert the JSON.
 probe "skills-present" \
 'Without reading any "boot" file or special setup instructions, reply with ONLY this JSON object (no prose, no code fences), describing the skills / slash-commands available to you right now:
 {"tpm_skills": [<exact names of every tpm-* skill available to you, e.g. tpm-session>],
@@ -78,9 +78,9 @@ probe "skills-present" \
   --includes tpm_skills=tpm-session \
   --includes tpm_skills=tpm-workflow
 
-# 2. DEEP: a skill that must read the SHARED methodology — proves the relocatable methodology paths
-#    resolve. Skills reference methodology as `${TPM_HOME}/claude-context/methodology/…`; the expand
-#    hook rewrites that to the bundle's copy under `node_modules/@codercowboy/claude-tpm/`.
+# 2. DEEP: a skill that must read the SHARED methodology. Skills read methodology through the self-locating
+#    `npx tpm doc <bundle-relative-path>` verb (it prints the doc with the bundle-home placeholder resolved),
+#    so the read works wherever the plugin's folder lives. The probe has the skill flow actually open one.
 probe "methodology-resolves" \
 'Begin the first steps of the /tpm-session open ritual — which requires READING a claude-tpm methodology file (e.g. its orchestrator reading-list, or something under claude-context/methodology/). ACTUALLY try to open one such file from disk (do not simulate). Then reply with ONLY this JSON object (no prose, no code fences):
 {"skill_flow_started": <true|false>,
@@ -89,19 +89,17 @@ probe "methodology-resolves" \
  "first_error": "<the error text if the read failed, else empty string>"}' \
   --eq methodology_files_readable=true
 
-# 3. TOKEN RESOLUTION: the ${TPM_HOME} placeholder in a skill's methodology-doc refs resolves in a
-#    consumer — a methodology READ proven from the consumer root via the self-locating expand hook.
-#    (Tool INVOCATIONS no longer use ${TPM_HOME} at all — they route through `npx tpm <suite> <verb>`;
-#    that path is covered by probe 4 below.)
-probe "token-methodology-read" \
-'Use the Read tool on this exact literal path, verbatim (do NOT resolve ${TPM_HOME} yourself): `${TPM_HOME}/claude-context/methodology/overview.md`. Then reply with ONLY this JSON (no prose): {"read_ok": <true|false>, "first_line": "<the exact first line of the file, or empty string>"}' \
-  --truthy read_ok \
-  --truthy first_line
+# 3. DOC RESOLUTION (deterministic, no LLM): `npx tpm doc <path>` resolves a bundle doc from the consumer —
+#    it prints the doc's content and never leaves an unresolved %TPM_HOME% / ${TPM_HOME} placeholder in it —
+#    and `npx tpm resolve-home` prints an existing folder (the bundle root). This replaces the retired
+#    probe of the old `${TPM_HOME}` content-hook rewrite, which no longer exists.
+probe_cli "tpm-doc-resolves" \
+  'out="$(npx tpm doc claude-context/methodology/overview.md)" && [ -n "$out" ] && ! printf "%s" "$out" | grep -qE "%TPM_HOME%|[$][{]TPM_HOME[}]" && [ -d "$(npx tpm resolve-home)" ]'
 
-# 4. TOOL INVOCATION: skills now invoke bundle tools via `npx tpm <suite> <verb>` (the routers
-#    self-locate the bundle — no ${TPM_HOME}, no env var). Prove the `tpm` bin actually resolves and
-#    runs FROM the consumer. Deterministic (no LLM) — this is the replacement for the retired
-#    Bash-`${TPM_HOME}/tools/…` coverage.
+# 4. TOOL INVOCATION: skills invoke bundle tools via `npx tpm <suite> <verb>` (the routers self-locate the
+#    bundle — no env var needed). Prove the `tpm` bin actually resolves and runs FROM the consumer
+#    (the consumer's node_modules/.bin/tpm). Deterministic (no LLM). DELIBERATE: this one uses `npx tpm`
+#    itself, because that exact resolution path is what is under test.
 probe_cli "npx-tpm-resolves" 'npx tpm session config --json | grep -q "\"enabled\""'
 
 echo ""

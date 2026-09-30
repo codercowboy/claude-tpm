@@ -6,7 +6,7 @@
  * exported lintFile() directly for the rule-level assertions.
  *
  * Locks in the lint's contract (see the tool's header), post-#1102 respell:
- *   1. relocatable forms pass: `npx tpm <suite> <verb>`, `npx tpm doc <relpath>`, `%TPM_HOME%/…` citations;
+ *   1. relocatable forms pass: bare `tpm <suite> <verb>`, bare `tpm doc <relpath>`, `%TPM_HOME%/…` citations;
  *   2. non-relocatable bundle refs are flagged: bare `node tools/…`, `` `tools/… ``, bare
  *      `claude-context/methodology/…`, `` `methodology/… ``;
  *   3. GUARD — the legacy shell-expanding `${TPM_HOME}` spelling is flagged ANYWHERE in content, so it
@@ -50,8 +50,8 @@ function check(name, fn) {
 check('relocatable skill → clean (exit 0)', () => {
   const { dir, file } = fixture([
     '# tpm-example',
-    'Run `npx tpm task list` for the ledger.',
-    'Read the reading-list with `npx tpm doc claude-context/methodology/subagent/reading-list.md`.',
+    'Run `tpm task list` for the ledger.',
+    'Read the reading-list with `tpm doc claude-context/methodology/subagent/reading-list.md`.',
     'The tools live under `%TPM_HOME%/tools/workflow/` and the chain at `%TPM_HOME%/claude-context/methodology/overview.md`.',
   ].join('\n') + '\n');
   const { out, code } = runLint(file);
@@ -73,19 +73,19 @@ check('planted ${TPM_HOME} in content → flagged (exit 1)', () => {
 // 3. bare `node tools/…` invocation is flagged (rule 1).
 check('bare `node tools/…` → flagged', () => {
   const v = lintFile(fixtureFileWith('Run node tools/task/tpm-task.js list.\n'));
-  assert(v.some(x => /npx tpm/.test(x.why)), 'expected the bin-invocation fix');
+  assert(v.some(x => /`tpm <suite> <verb>`/.test(x.why) && !/`npx tpm <suite>/.test(x.why)), 'expected the bare-tpm fix');
 });
 
 // 4. bare methodology read is flagged (rule 2); its fix names `tpm doc`.
 check('bare `claude-context/methodology/…` read → flagged (fix names tpm doc)', () => {
   const v = lintFile(fixtureFileWith('Read claude-context/methodology/overview.md first.\n'));
   assert(v.length >= 1, 'expected a violation');
-  assert(v.some(x => /tpm doc/.test(x.why)), 'expected the fix to name `npx tpm doc`');
+  assert(v.some(x => /`tpm doc /.test(x.why) && !/npx/.test(x.why)), 'expected the fix to name bare `tpm doc`');
 });
 
 // 5. `npx tpm doc <relpath>` read is NOT flagged (the `doc ` lookbehind exempts it).
-check('`npx tpm doc claude-context/methodology/…` read → NOT flagged', () => {
-  const v = lintFile(fixtureFileWith('Read via `npx tpm doc claude-context/methodology/overview.md`.\n'));
+check('`tpm doc claude-context/methodology/…` read → NOT flagged', () => {
+  const v = lintFile(fixtureFileWith('Read via `tpm doc claude-context/methodology/overview.md`.\n'));
   assert.strictEqual(v.length, 0, `expected 0 violations, got ${JSON.stringify(v)}`);
 });
 
@@ -105,7 +105,7 @@ check('legacy `${TPM_HOME}/claude-context/methodology/…` → flagged by guard 
 
 // 8. #1126 — a BARE bundle-script name in backticks (`tpm-task.js`) is flagged as an invocation; the fix
 //    routes it through the bin.
-check('bare `tpm-task.js` invocation → flagged (fix names npx tpm)', () => {
+check('bare `tpm-task.js` invocation → flagged (fix names bare tpm)', () => {
   const v = lintFile(fixtureFileWith('Run `tpm-task.js list` for the ledger.\n'));
   assert(v.length >= 1, 'expected a violation');
   assert(v.some(x => /bundle-script invocation/.test(x.why)), 'expected the bare-script rule to fire');
@@ -144,6 +144,41 @@ check('#24.9 — `--js-only` ignores relocatability rules, still catches `.js`',
   assert.strictEqual(only.status, 1, `--js-only should flag the .js token (exit 1), got ${only.status}\n${onlyOut}`);
   assert(/1 non-relocatable/.test(onlyOut), `--js-only should report exactly 1 (the .js token), got:\n${onlyOut}`);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+
+// 13. bare `tpm <suite> <verb>` and `tpm doc <relpath>` are relocatable.
+check('bare `tpm <suite> <verb>` and `tpm doc <relpath>` → NOT flagged', () => {
+  const v = lintFile(fixtureFileWith('Run `tpm task list`, `tpm workflow lint plan.md`, and `tpm doc claude-context/methodology/overview.md`.\n'));
+  assert.strictEqual(v.length, 0, `expected 0 violations, got ${JSON.stringify(v)}`);
+});
+
+// 14. `npx tpm …` in skill content is flagged with a fix to use bare `tpm`; also via the CLI (exit 1).
+check('`npx tpm …` → flagged (fix says use bare tpm / PATH / registry fallthrough)', () => {
+  for (const line of ['Run `npx tpm task list`.', 'npx tpm doc claude-context/methodology/overview.md', 'x && npx  tpm home']) {
+    const v = lintFile(fixtureFileWith(line + '\n'));
+    assert(v.some(x => /npx tpm/.test(x.why) && /bare `tpm/.test(x.why) && /PATH/.test(x.why) && /registry/.test(x.why)), `expected the npx rule for: ${line}; got ${JSON.stringify(v)}`);
+  }
+  const { dir, file } = fixture('# skill\nRun `npx tpm session open`.\n');
+  const { out, code } = runLint(file);
+  assert.strictEqual(code, 1, `expected exit 1, got ${code}\n${out}`);
+  assert(/forbidden `npx tpm`/.test(out), 'expected the npx fix text echoed');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// 15. `npx` of something else, and words merely containing "tpm", are not flagged by the npx rule.
+check('`npx other-pkg` / `tpmx` → NOT flagged by the npx rule', () => {
+  const v = lintFile(fixtureFileWith('Use `npx prettier` and the tpmx word, and npx tpm-foo? no: `npx somepkg tpm`.\n'));
+  assert(!v.some(x => /forbidden `npx tpm`/.test(x.why)), `unexpected npx flag: ${JSON.stringify(v)}`);
+});
+
+// 16. existing relocatability rules still fire, with fix text pointing at bare `tpm` (never `npx tpm`).
+check('all relocatability fix texts point at bare `tpm`, not `npx tpm`', () => {
+  const { RELOCATABILITY_RULES } = require(LINT);
+  for (const r of RELOCATABILITY_RULES) {
+    if (/forbidden `npx tpm`/.test(r.why)) continue;
+    assert(!/npx tpm/.test(r.why), `fix text still names npx tpm: ${r.why}`);
+  }
 });
 
 // helper: write a one-off fixture file and return its path (used by the lintFile()-level checks).

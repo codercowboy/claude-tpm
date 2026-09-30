@@ -2,6 +2,12 @@
 #
 # run-smoke.sh — the Stage-D FUNCTIONAL smoke harness for claude-tpm's promoted session/task tooling.
 #
+# LEGACY — this is the OLDER LLM smoke suite, kept as-is (not retired). The CURRENT real-session harness is
+#   claude-tpm-dev/tools/dev-smoke/ (it lives in the dev workspace, not in this shipped bundle). The install
+#   model this rig assumes is the current one: in a project run `npx tpm install .` (registers the
+#   marketplace once per machine and installs the plugin at PROJECT scope). The --fresh path below does the
+#   same thing by passing the new consumer's dir explicitly from the bundle. No behavior change here.
+#
 # WHAT THIS IS (vs the other smokes — read once to avoid "three smokes" confusion):
 #   • tools/consumer/smoke.sh          = QUICK install-sanity probe (does the plugin load + resolve refs).
 #   • tools/tests/smoke/  (THIS rig)   = richer DOC-DRIVEN FUNCTIONAL smoke: lay a SELECTED set of
@@ -9,19 +15,19 @@
 #                                        headless ORCHESTRATOR-shaped agent work through them and leave
 #                                        structured 3-bucket feedback. It answers the "spiritual" question:
 #                                        does the promoted session/task tooling actually WORK when a real
-#                                        headless agent uses it via the skills / `npx tpm` verbs — no hooks,
+#                                        headless agent uses it via the skills / `tpm` verbs — no hooks,
 #                                        no spoon-feeding?
 #
 # FLOW
 #   1. scaffold a fresh consumer (--fresh) OR point at an existing one (--target <dir>).
 #   2. CONFIGURE the consumer's stores: write .claude/claude-tpm/config.json with a tasksDir + sessionsDir
-#      so `npx tpm task/session config --tasks-dir/--sessions-dir` RESOLVE (a bare consumer errors
+#      so `tpm task/session config --tasks-dir/--sessions-dir` RESOLVE (a bare consumer errors
 #      "--tasks-dir <dir> is required" — proven #1126.G; every task/session verb needs the dir on the CLI).
 #   3. lay down ONLY the --tests-selected docs/test-*.md into <consumer>/smoke/  (workflow / resume docs
 #      are NEVER laid down by a session/task run — selective lay-down is the point).
 #   4. spawn an ORCHESTRATOR-shaped headless `claude -p` (permission mode per --mode) whose prompt says:
 #      "work through each smoke/*.md in order; do exactly what each says using the claude-tpm skills /
-#       `npx tpm <suite> <verb>` verbs; append your results + the 3-bucket feedback to smoke/feedback-<doc>.md."
+#       `tpm <suite> <verb>` verbs; append your results + the 3-bucket feedback to smoke/feedback-<doc>.md."
 #   5. leave the consumer + feedback files on disk for inspection.
 #
 # SCAFFOLD REUSE:  the --fresh path PORTS the proven claude-tpm-dev/tools/hooktest/scaffold-consumer.sh
@@ -216,11 +222,11 @@ feedback, exactly as each doc instructs.
 
 Rules:
   • This project's task/session stores are already configured. Resolve them ONCE and reuse:
-      TASKS_DIR    = \$(npx tpm task config --tasks-dir)
-      SESSIONS_DIR = \$(npx tpm session config --sessions-dir)
+      TASKS_DIR    = \$(tpm task config --tasks-dir)
+      SESSIONS_DIR = \$(tpm session config --sessions-dir)
     Pass --tasks-dir "\$TASKS_DIR" / --sessions-dir "\$SESSIONS_DIR" on every task/session verb (they are
     REQUIRED — the tools never default to a live store).
-  • Use ONLY the claude-tpm skills and \`npx tpm <suite> <verb>\` verbs the docs name. Never call a .js path.
+  • Use ONLY the claude-tpm skills and \`tpm <suite> <verb>\` verbs the docs name. Never call a .js path.
   • For EACH doc smoke/<doc>.md: do exactly what it says, then WRITE your results + the doc's required
     3-bucket feedback (What worked / What didn't / What would help to work differently) plus a per-step
     PASS/FAIL summary to smoke/feedback-<doc>.md (e.g. smoke/feedback-test-session-smoke.md).

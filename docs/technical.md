@@ -6,8 +6,8 @@ Note: **Claude wrote nearly all of this code and these docs.** I'm the ideas guy
 
 A couple of expectation-setters before the deep dive:
 
-- **This is a personal tool, v0.1.0.** Mac-first, works-on-my-machine energy. It's a methodology I lifted out of months of real use, not a product with a support line. I haven't tested it across a matrix of operating systems, so if you're on Linux or Windows, you're a little further out on the frontier than I am.
-- **Distribution is GitHub, not the npm registry.** claude-tpm installs from GitHub - as a project dependency (`npm install github:codercowboy/claude-tpm`) or from a local clone you point at your projects. There's no published `@codercowboy/claude-tpm` on the public npm registry, so nothing below assumes you can install it from there.
+- **This is a personal tool, pre-1.0.** Mac-first, works-on-my-machine energy. It's a methodology I lifted out of months of real use, not a product with a support line. I haven't tested it across a matrix of operating systems, so if you're on Linux or Windows, you're a little further out on the frontier than I am.
+- **Distribution is GitHub, not the npm registry.** claude-tpm installs from GitHub - as a project dependency (`npm install --save-dev github:codercowboy/claude-tpm`) or from a local clone you point at your projects. There's no published `@codercowboy/claude-tpm` on the public npm registry, so nothing below assumes you can install it from there.
 
 ---
 
@@ -179,7 +179,8 @@ The skills are the brains; the `tpm` command-line tool is the hands. It's a Node
           ├── session   → tools/session/tpm-session-router.js   (config · current · notes · review)
           ├── task      → tools/task/tpm-task-router.js          (add · list · show · … · config)
           ├── workflow  → tools/workflow/tpm-workflow-router.js   (scaffold · compose · lint · audit · cost · signoff · doctor · …)
-          └── hooks     → tools/hooks/tpm-hooks-router.js         (gate-spawn)
+          ├── hooks     → tools/hooks/tpm-hooks-router.js         (gate-spawn · session-start)
+          └── plugin    → tools/plugin/tpm-plugin-router.js       (install · uninstall · doctor)
 
    flat consumer aliases (NOT suites — they map straight to a script):
           ├── install    → tools/consumer/tpm-consumer-install.js
@@ -189,13 +190,20 @@ The skills are the brains; the `tpm` command-line tool is the hands. It's a Node
 
 Dispatch happens by **child process** (`spawnSync('node', …, {stdio:'inherit'})`) with faithful argv/stdio pass-through, and the child's exit code is propagated up. Unknown command → exit 2 plus the menu; bare `tpm` or `--help` → menu, exit 0.
 
-The four suites are `session`, `task`, `workflow`, and `hooks`. On top of those sit three flat, human-facing porcelain aliases (`install`, `uninstall`, `doctor`) because "graft this onto my project" and "check my install" are things a *person* types, not a suite/verb pair. `doctor` is literally `install --check` with the flag injected by the dispatcher.
+The five suites are `session`, `task`, `workflow`, `hooks`, and `plugin`. On top of those sit three flat, human-facing porcelain aliases (`install`, `uninstall`, `doctor`) because "graft this onto my project" and "check my install" are things a *person* types, not a suite/verb pair. `doctor` is literally `install --check` with the flag injected by the dispatcher.
 
-> **A doc-map note:** there are two tool docs in the tree. `tools/README.md` is the self-titled canonical tool ledger - the exhaustive index of every tool that ships. `tools/tpm.md` is the narrower reference for the `tpm` dispatcher itself (the two-level model, the suite/verb tables, exit codes). Both cover the four suites (`session` / `task` / `workflow` / `hooks`) plus the `install` / `uninstall` / `doctor` aliases; **if they ever disagree, `tools/README.md` wins.**
+> **A doc-map note:** there are two tool docs in the tree. `tools/README.md` is the self-titled canonical tool ledger - the exhaustive index of every tool that ships. `tools/tpm.md` is the narrower reference for the `tpm` dispatcher itself (the two-level model, the suite/verb tables, exit codes). Both cover the five suites (`session` / `task` / `workflow` / `hooks` / `plugin`) plus the `install` / `uninstall` / `doctor` aliases; **if they ever disagree, `tools/README.md` wins.**
 
-### Self-locating, no environment variables
+### Self-locating
 
-The design goal that shapes all of this: **nothing in the `tpm …` chain needs `%TPM_HOME%` or any env var.** Every router self-locates its own scripts relative to `__dirname`. You can run `npx tpm …` from anywhere, in any consumer project, and it finds its own pieces. No setup step, no shell rc edits, no "did you export the path?" support questions. The one place a `%TPM_HOME%` placeholder *does* appear is in read-path references inside spawn prompts and skills, and resolution there is **anchor-first**: a reader runs `npx tpm resolve-home` once, treats the printed absolute path as `%TPM_HOME%`, and resolves any `%TPM_HOME%/…` reference against it — no hook required (see [Hooks](#hooks) below).
+Every router finds its own scripts relative to `__dirname`, so a tool never needs an environment variable to
+find claude-tpm's code. The one thing a tool cannot work out alone is which *project* it serves; see
+[How it fits together](#how-it-fits-together) and the [config guide](config-guide.md#which-project-a-tool-works-on).
+
+Bundle docs referenced as `%TPM_HOME%/…` resolve against the bundle root. A reader runs `tpm resolve-home`
+(an alias of `tpm home`), which prints the absolute bundle root, and `tpm doc <bundle-relative-path>` prints a
+bundle doc with its in-content tokens already resolved. Both locate the bundle from the running script and
+ignore the `TPM_HOME` environment variable.
 
 ---
 
@@ -209,7 +217,7 @@ Capabilities in claude-tpm are **modules**, and the activation model is opt-*out
 - **`hygiene`** - periodic project-wide drift sweeps. **Planned, not fully shipped.** Its config is still being finalized and no hygiene doc directory ships in the bundle yet. Don't count on it working today.
 - **`motd`** - a boot greeting. Named in the design, but there's no config section or shipped implementation for it yet. Treat it as **planned**.
 
-Config lives in one file: **`.claude/claude-tpm/config.json`**, versioned (`"version": 1`). Every module ships with sensible built-in defaults, so an *absent* config file (or an absent section) just means "use the defaults." You only add config to *change* something. (The installer does not create the file. The full schema is documented in the [config guide](config-guide.md).)
+Config lives in one file: **`.claude/claude-tpm/config.json`**, versioned (`"version": 1`). Every module ships with sensible built-in defaults, so an *absent* config file (or an absent section) just means "use the defaults." You only add config to *change* something. (The installer writes a starter file with the default task and session folders if none exists, and never overwrites one. The full schema is documented in the [config guide](config-guide.md).)
 
 ### Module opacity
 
@@ -227,38 +235,123 @@ And the reason it matters beyond saving tokens: **awareness is behavior.** An or
 
 ---
 
+## How it fits together
+
+This is the chain from "plugin enabled" to "a tool is working on the right project". The project root
+enters at the SessionStart hook, which exports it as `TPM_PROJECT_ROOT`; the tools read it from there.
+
+```
+ you: npx tpm install .           (once per project; human, pre-install)
+        │
+        ▼
+ plugin enabled in the project     .claude/settings.json: "enabledPlugins": { "claude-tpm@claude-tpm-market-<version>": true }
+        │                          (Claude Code runs the plugin from the registered folder, in place)
+        ▼
+ Claude session starts ──► SessionStart hook   hooks/hooks.json → node "${CLAUDE_PLUGIN_ROOT}/tools/tpm.js" hooks session-start
+        │                       writes to $CLAUDE_ENV_FILE:  TPM_PROJECT_ROOT = the project folder
+        │                                                    TPM_HOME         = the claude-tpm folder (informational)
+        ▼
+ Claude Code puts the plugin's bin/ on PATH for every Bash call (main session and subagents)
+        │
+        ▼
+ a skill runs bare   tpm task list
+        │
+        ▼
+ bin/tpm  ──►  tools/tpm.js  ──►  per-suite router  ──►  tool
+                                                           │
+                                                           ▼
+                              resolve the project root:  explicit flag
+                                                          > $TPM_PROJECT_ROOT
+                                                          > walk up for .claude/claude-tpm/
+```
+
+Where `npx tpm` fits: it is the human form, typed in a project shell. It runs the `tpm` bin from the
+project's own `node_modules`, which is a link to (or a copy of) the same claude-tpm folder the plugin runs
+from. So `npx tpm`, bare `tpm` and the hook's `${CLAUDE_PLUGIN_ROOT}` path all end at the same
+`tools/tpm.js`. The three forms exist because each context has a different way to find it:
+
+| Form | Used by | Why |
+|---|---|---|
+| `npx tpm …` | You, in a project shell; every pre-install step | The project's own dependency. Works before the plugin is enabled. |
+| bare `tpm …` | Skills, mode files, methodology docs and tool output, all read by Claude | The plugin's `bin/` is on PATH in every Claude Bash call, even in a project with no `node_modules` copy. |
+| `node "${CLAUDE_PLUGIN_ROOT}/tools/tpm.js" …` | `hooks/hooks.json` | Hooks don't get the plugin's `bin/` on PATH, and Claude Code fills in `${CLAUDE_PLUGIN_ROOT}` in hook commands. |
+
+Don't use `npx tpm` inside a Claude session. In a project with no local `node_modules/.bin/tpm`, npx
+downloads an unrelated package named `tpm` and runs that.
+
+`bin/tpm` is a small shell script that resolves its own symlinks and runs the `tools/tpm.js` beside it.
+
+---
+
 ## Plugin + marketplace mechanics
 
-claude-tpm installs as a Claude Code plugin, and the `tpm install` CLI wires up the whole chain for you so you don't have to hand-run the `claude plugin` commands.
+claude-tpm installs as a Claude Code plugin, and `tpm install` wires up the chain so you don't run the
+`claude plugin` commands by hand.
 
-The pieces:
+- The **plugin** is named `claude-tpm` (`.claude-plugin/plugin.json`). Its manifest points at the skills
+  folder (`"skills": ["./.claude/skills"]`), which is how the six `tpm-*` skills become slash commands. The
+  bundle-root `hooks/hooks.json` carries the plugin's two hooks.
+- The **marketplace** is named for the version: `claude-tpm-market-<version>` (for example
+  `claude-tpm-market-0.2.0-dev`), stamped into `.claude-plugin/marketplace.json` from `package.json` by
+  `tools/build/stamp-manifests.js`. The version lives in the marketplace name, not the plugin name, so the
+  skill namespace stays `claude-tpm:tpm-*` for every version, and a project enables
+  `claude-tpm@claude-tpm-market-<version>` to choose which version it runs. A machine ends up with one
+  registry row per installed version. Don't enable two `claude-tpm@*` plugins in one project: the first
+  silently wins.
+- **The registered folder is the code.** A plugin registered from a local folder runs in place from it.
+  Claude Code also writes a copy under its plugin cache, but never runs it. If the folder moves, the plugin
+  fails to load (Claude Code calls it "cache-miss"). The installer therefore registers its own real folder,
+  never a project's `node_modules` link, so every project on a version shares one row pointing at one
+  folder.
+- **Scopes.** The marketplace is registered at user scope and the plugin is installed at project scope. The
+  project's checked-in settings end up holding only the `enabledPlugins` line, with no machine-specific path.
 
-- The **plugin** is named `claude-tpm` (`.claude-plugin/plugin.json`). Its manifest points at the skills directory (`"skills": ["./.claude/skills"]`), which is how the six `tpm-*` skills become live slash commands, and the bundle-root `hooks/hooks.json` carries the plugin's own PreToolUse hooks.
-- The **marketplace** is named `claude-tpm-market` (`.claude-plugin/marketplace.json`, owner `codercowboy`). A marketplace is Claude Code's mechanism for making a plugin installable; claude-tpm ships its own single-plugin one.
-
-The installer (`tools/consumer/tpm-consumer-install.js`) runs a **check-then-act, idempotent, 5-step flow**, all scoped `--scope project`:
+The installer (`tools/consumer/tpm-consumer-install.js`) runs a check-then-act, idempotent, 5-step flow:
 
 ```mermaid
 flowchart LR
-  A["1 · preflight<br/>npm + package.json + claude CLI<br/>(writes nothing)"] --> B["2 · dependency<br/>add to optionalDependencies<br/>npm install"]
-  B --> C["3 · marketplace add<br/>claude plugin marketplace add<br/>./node_modules/@codercowboy/claude-tpm"]
-  C --> D["4 · plugin install<br/>claude plugin install<br/>claude-tpm@claude-tpm-market"]
+  A["1 · preflight<br/>npm + package.json + claude CLI<br/>(writes nothing)"] --> B["2 · dependency<br/>file: dev-dependency<br/>npm install"]
+  B --> C["3 · marketplace<br/>claude plugin marketplace add<br/>(the real claude-tpm folder, user scope)"]
+  C --> D["4 · plugin install<br/>claude plugin install<br/>claude-tpm@claude-tpm-market-version --scope project"]
   D --> E["5 · enable<br/>if installed-but-disabled"]
+  E --> F["final check<br/>doctor"]
 ```
 
-The important restraint: **the installer never authors your project files** (`package.json`, README, LICENSE, `.gitignore`) and **never edits your `settings.json`.** The plugin carries its own hooks, so there's nothing for you to hand-wire. It's also interactive by default: it prints the exact command it's about to run and asks before changing anything.
+Step 3 compares the registered folder with the installer's own (both resolved): same folder leaves the row
+alone, a gone folder is re-pointed, a live different folder is never re-pointed without an explicit yes, and
+a real copy inside another project's `node_modules` gets its own warning. [INSTALL.md](INSTALL.md) has the
+user-facing version.
 
-The `tpm uninstall` reverses all of it (plugin uninstall → marketplace remove → drop the dependency) and is **scope-aware**, because the plugin and marketplace are machine-global singletons: it asks whether you mean *this project only* (disable here, drop the dep, leave the shared marketplace for other projects) or *the whole system* (fully remove the plugin + global marketplace). It never deletes your files.
+The installer never authors your project files and never edits `settings.json` itself. It writes
+`.claude/claude-tpm/config.json` with the default folders if none exists.
+
+`tpm uninstall` mirrors it and is scope-aware, because one marketplace row serves every project on that
+version. *This project only* uninstalls the plugin here, drops the dependency, and removes the marketplace
+row only if no other project still has the plugin installed. *The whole system* removes the row too, which
+uninstalls it for every project on that version. It never deletes your files.
 
 ---
 
 ## Hooks
 
-claude-tpm auto-wires a single [PreToolUse hook](https://docs.claude.com/en/docs/claude-code/hooks) through `hooks/hooks.json` - no hand-wiring in the consumer's `settings.json`. It's invoked by the harness under a stable, path-independent `npx tpm hooks <verb>` command, and the `hooks` suite router forwards the harness's payload/stdout/exit-code through unchanged.
+claude-tpm ships two hooks in `hooks/hooks.json`, with nothing to wire in the consumer's `settings.json`.
+Each is invoked as `node "${CLAUDE_PLUGIN_ROOT}/tools/tpm.js" hooks <verb>`, a path-independent form that
+works in a project with no `node_modules` copy. The `hooks` suite router passes the harness's payload,
+stdout and exit code through unchanged.
 
-- **`gate-spawn`** - matches `Agent|Task` (the spawn tools). It's the **spawn gate**: it blocks a marked subagent spawn that fails the sign-off check. This is the enforcement behind "you can't fire off a formal round without the recorded two-token sign-off." The gate reads the sign-off ledger (`tpm-workflow-signoff.js`) and refuses a marked spawn that hasn't been signed off. Script: `tools/workflow/hooks/tpm-workflow-gate-spawn.js`.
+- **`session-start`** (SessionStart). Appends `export TPM_PROJECT_ROOT=…` (the project, from
+  `$CLAUDE_PROJECT_DIR`) and `export TPM_HOME=…` (the real path of `$CLAUDE_PLUGIN_ROOT`) to
+  `$CLAUDE_ENV_FILE`. Those variables then reach every Bash call, subagents included. It skips a variable
+  that is already set (so a `.claude/settings.local.json` override wins), skips lines already in the file
+  (SessionStart fires again on `/compact`, `/clear` and resume), prints nothing on success, and always
+  exits 0. `TPM_HOME` is informational. It never touches PATH: Claude Code adds the plugin's `bin/` itself.
+- **`gate-spawn`** (PreToolUse, matches `Agent|Task`). The spawn gate: it blocks a marked subagent spawn that
+  fails the sign-off check. This is the enforcement behind "you can't fire off a formal round without the
+  recorded two-token sign-off". It reads the sign-off ledger (`tpm-workflow-signoff.js`). Script:
+  `tools/workflow/hooks/tpm-workflow-gate-spawn.js`.
 
-**`%TPM_HOME%` resolution is anchor-first, not hooked.** Earlier builds resolved the `%TPM_HOME%/…` bundle placeholder with a token-rewriting hook on the read family; those hooks were **retired in #1126**. Today a reader resolves the bundle explicitly: run **`npx tpm resolve-home`** (an alias of `tpm home`; self-locating from `__dirname`, works in every permission mode including `--dangerously-skip-permissions`) — the printed absolute path **is** `%TPM_HOME%`, and any `%TPM_HOME%/…` path resolves against it. `npx tpm doc <bundle-relative-path>` stays as a convenience that prints a bundle doc with its in-content tokens already resolved. This keeps the *rest* of the system env-var-free without a hook firing on every read.
+The older `%TPM_HOME%` token-rewriting hooks were retired in #1126. Bundle docs resolve through
+`tpm resolve-home` and `tpm doc` instead (see [Self-locating](#self-locating)).
 
 ---
 
@@ -277,7 +370,7 @@ That's a real feature, not an accident. Every dependency you *don't* take is a d
 - **[Node.js](https://nodejs.org) + [npm](https://www.npmjs.com/)** - the `tpm` CLI is a Node program (`bin` = `tools/tpm.js`), and install drives `npm`. Both need to be on your PATH. *No minimum Node version is pinned*: there's no `engines` field and no floor declared anywhere, so I won't assert one.
 - **The [Claude Code](https://claude.com/claude-code) CLI** - the whole thing rides on it. claude-tpm *is* a Claude Code plugin; without the `claude` command on your PATH there is nothing to plug into.
 - **An existing project with a `package.json`** - claude-tpm grafts onto a project you already have; it won't create one. If you don't have one, `npm init -y` first.
-- **A way to get the bundle** - you install from GitHub, either as a project dependency (`npm install --save-optional github:codercowboy/claude-tpm`, then `npx tpm install .`) or from a local clone you point at your projects (`git clone …/claude-tpm && npx tpm install ../my-project`). There's no npm-registry package. See [`INSTALL.md`](INSTALL.md) for both routes.
+- **A way to get the bundle** - you install from GitHub, either as a project dependency (`npm install --save-dev github:codercowboy/claude-tpm`, then `npx tpm install .`) or from a central folder you point at your projects (`cd claude-tpm && npx tpm install ../my-project`). There's no npm-registry package. See [`INSTALL.md`](INSTALL.md) for both routes.
 
 Platform-wise: it's **Mac-first with works-on-my-machine energy.** I haven't done a real cross-platform test pass, so I'm not going to claim tested Linux/Windows support. The code is plain Node with no obvious OS-specific tricks, so it *should* travel, but "should" is doing real work in that sentence.
 

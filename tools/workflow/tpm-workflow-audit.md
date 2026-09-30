@@ -1,7 +1,11 @@
 # `tpm-workflow-audit.js` — task-folder adherence audit (v2, epic-aware)
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 Reference doc for `tools/workflow/tpm-workflow-audit.js`. Every claim below was confirmed by running the canonical tool
-(`tools/workflow/tpm-workflow-audit.js`, via `npx tpm workflow audit`) with `node v24.16.0`.
+(`tools/workflow/tpm-workflow-audit.js`, via `tpm workflow audit`) with `node v24.16.0`.
 
 ## Purpose
 
@@ -87,7 +91,7 @@ Built a scratch tree under `tmp/` containing a clean epic (`demo-epic`), a delib
 (`broken-epic`), and a legacy flat task (`legacy-task`), then ran:
 
 ```
-npx tpm workflow audit \
+tpm workflow audit \
   --out audit-report.md --tasks-root <scratch-work> --strict
 ```
 

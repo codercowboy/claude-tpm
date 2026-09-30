@@ -28,6 +28,11 @@ check('runAll: 3 checks, all green in claude-tpm', () => {
   const failed = results.filter(([, r]) => !r.ok);
   assert.strictEqual(failed.length, 0, `failed: ${failed.map(([n]) => n).join(', ')}`);
 });
+check('checkCompose: composed prompt carries the bare `tpm resolve-home` anchor (doctor accepts it)', () => {
+  const r = doctor.checkCompose();
+  assert.strictEqual(r.ok, true, r.detail + ' ' + (r.fix || ''));
+  assert.ok(/resolve-home anchor/.test(r.detail), r.detail);
+});
 check('every FAIL result carries a fix (fail-loud contract)', () => {
   const r = doctor.checkSignoffWritable('/dev/null'); // mkdir under a non-directory → guaranteed FAIL
   assert.strictEqual(r.ok, false);

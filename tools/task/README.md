@@ -1,5 +1,9 @@
 # task-tooling — JSON-first task storage (`#1112`)
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 The greenfield task store for `kind:"task"` records: one canonical JSON file per task (source of
 truth), a derived human body `.md` plus a machine `tasks-index.json` and three human index `.md` views,
 all regenerated on every write, and node-invokable tools for task verbs, `#1092` export/search, and the
@@ -7,8 +11,8 @@ all regenerated on every write, and node-invokable tools for task verbs, `#1092`
 
 **Status: promoted.** This store was built and hardened in the
 `dev/20260920-task-features/task-tooling/` sandbox and promoted into this `tools/` tree as a gated step,
-together with the session store. `--tasks-dir` is REQUIRED on every store op and never defaults to the
-live `.claude/claude-tpm/tasks/` — pass a *scratch* dir for tests, the real dir only when you name it.
+together with the session store. `--tasks-dir` is optional on every store op: when omitted the store is resolved from the project root's
+`.claude/claude-tpm/config.json` (`tasks.tasksDir`); the flag overrides it. Pass a *scratch* dir for tests.
 
 The canonical JSON envelope + `task` payload (with the editable-vs-mechanical field table and disk
 layout) and the derived human render + export/search surface are described under [The JSON envelope +
@@ -181,7 +185,7 @@ first, then the five derived files). It re-implements none of the model/converte
 [`tpm-task.md`](tpm-task.md).
 
 ```
-npx tpm task <verb> --tasks-dir <dir> [flags]
+tpm task <verb> --tasks-dir <dir> [flags]
 ```
 
 | Verb | Effect |
@@ -218,7 +222,7 @@ only when `--match` or `--closed-since` needs it). Export emits the RECORDS, sea
 `id·file·line·snippet` POINTERS. Full reference: [`tpm-task-export.md`](tpm-task-export.md).
 
 ```
-npx tpm task <export|search> --tasks-dir <dir> [SELECTORS…] [SHAPE…]
+tpm task <export|search> --tasks-dir <dir> [SELECTORS…] [SHAPE…]
 ```
 
 - **Selectors** (AND together): ids/ranges (also the comma form `"1112,1119"`) · `--state <s>[,<s>]`

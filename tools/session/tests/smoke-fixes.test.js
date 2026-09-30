@@ -125,6 +125,7 @@ test('F4: CLI open works with NO --sessions-dir inside a project, FAILS LOUD out
   const fail = run(['open', '--session', '1', '--session-id', 'x'], { cwd: bare });
   assert.strictEqual(fail.status, 1, 'no flag + no project fails loud (exit 1)');
   assert.ok(/--sessions-dir is required/.test(fail.stderr), 'names the flag in the loud error');
+  assert.ok(/claude-tpm plugin, run `npx tpm install \.` here to set it up/.test(fail.stderr), 'refusal also points a plugin user at `npx tpm install .`');
 });
 
 // ── #1132: precedence arg > env > local config > project-local default > FAIL LOUD ──────────────────

@@ -6,7 +6,7 @@ has no reason to open it.
 This file is the **single source of truth** for the step-zero reading chain. Two things consume it:
 
 - **The orchestrator**, when writing a spawn prompt (via the `spawn-subagent` skill).
-- **The subagent-prompt lint** (`npx tpm workflow lint`), which parses the marked blocks below and derives its
+- **The subagent-prompt lint** (`tpm workflow lint`), which parses the marked blocks below and derives its
   checks from them. Add a doc here and the lint starts requiring it; remove one and it stops. They
   cannot drift.
 
@@ -89,7 +89,7 @@ Your spawn prompt names which of these apply. Read them after the base list, bef
 
 <!-- lint:begin bug-fixer -->
 - **[`verification.md`](../verification.md)** — the verifier's verdict format and the reproducibility bar your fix must re-clear; the concerns you are fixing are stated against it.
-- **`HANDOFF.md`** — the prior delivery agent's handoff: the artifact under fix and where it lives.
+- **`HANDOFF.md`** — the prior delivery agent's handoff: the artifact under fix and where it lives. You do not rewrite it: **add** your own `## Bug-fixer r<N>` section at the end and leave everything above untouched (create the file only if none exists).
 <!-- lint:end -->
 
 ## Consumer projects

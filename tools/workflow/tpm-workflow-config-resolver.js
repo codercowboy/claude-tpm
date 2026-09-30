@@ -57,10 +57,10 @@
  *   findProjectRoot(startDir)        -> absolute path
  *
  * EXAMPLES
- *   npx tpm workflow config --json
- *   npx tpm workflow config --config ./sample-config.json --json
- *   npx tpm workflow config --get verifier.multiCountMode
- *   npx tpm workflow config --config ./sample-config.json --validate
+ *   tpm workflow config --json
+ *   tpm workflow config --config ./sample-config.json --json
+ *   tpm workflow config --get verifier.multiCountMode
+ *   tpm workflow config --config ./sample-config.json --validate
  */
 
 'use strict';
@@ -263,12 +263,12 @@ function mergeWorkflowConfig(rawWorkflow) {
  * Locate, read, and resolve config.json's `workflow` section.
  * @param {string|undefined} configPathArg explicit --config value, or undefined for the default location
  * @param {object} [opts]
- * @param {string} [opts.startDir] where to start walking up for the project root (default cwd)
+ * @param {string} [opts.startDir] where to start walking up for the project root (default: $TPM_PROJECT_ROOT, else cwd walk-up)
  * @returns {{resolved: object, projectRoot: string, configPath: string, usedDefaultLocation: boolean, configExists: boolean}}
  */
 function resolveConfig(configPathArg, opts = {}) {
-  const startDir = opts.startDir || process.cwd();
-  const projectRoot = findProjectRoot(startDir);
+  // No cwd default: findRoot's precedence is explicit startDir > $TPM_PROJECT_ROOT > cwd walk-up (3.4).
+  const projectRoot = findProjectRoot(opts.startDir);
   const usedDefaultLocation = !configPathArg;
   const configPath = configPathArg
     ? path.resolve(configPathArg)
@@ -364,7 +364,7 @@ function getDotted(obj, dottedKey) {
 function printHelp() {
   process.stdout.write(
     [
-      'Usage: npx tpm workflow config [--config <path>] (--json | --get <dotted.key> | --validate) [--help]',
+      'Usage: tpm workflow config [--config <path>] (--json | --get <dotted.key> | --validate) [--help]',
       '',
       "Resolves the 'workflow' section of a claude-tpm config.json over built-in defaults.",
       'Absent/partial config -> defaults (never an error). A config referencing a missing file',
@@ -378,9 +378,9 @@ function printHelp() {
       '  --help                Show this message.',
       '',
       'Examples:',
-      '  npx tpm workflow config --json',
-      '  npx tpm workflow config --config ./sample-config.json --get deliverables.tldr',
-      '  npx tpm workflow config --config ./sample-config.json --validate',
+      '  tpm workflow config --json',
+      '  tpm workflow config --config ./sample-config.json --get deliverables.tldr',
+      '  tpm workflow config --config ./sample-config.json --validate',
       '',
     ].join('\n'),
   );

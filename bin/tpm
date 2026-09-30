@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# bin/tpm — PATH shim. Claude Code puts an enabled plugin's bin/ on PATH for every Bash call (main session and
+# subagents), so a bare `tpm <suite> <verb>` works in any project, even one with no node_modules copy of
+# claude-tpm (where `npx tpm` could fetch an unrelated registry package). Self-locating: resolves its own real
+# path (following symlinks, incl. a symlinked bundle dir) and execs the bundle's dispatcher; exit code propagates.
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"
+  case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+done
+exec node "$(cd -P "$(dirname "$src")" && pwd)/../tools/tpm.js" "$@"

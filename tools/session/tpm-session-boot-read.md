@@ -1,5 +1,9 @@
 # `tpm-session-boot-read.js`
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 The boot-time pickup emitter, reworked for the JSON-first note format (#1123 Stage C). A
 **pure-read** verb whose stdout **is** the boot pickup payload — `session open` (the `tpm-session`
 skill's boot ritual) runs it so prior state enters context via a tool call, not by the model
@@ -34,20 +38,20 @@ one-line message + exit 0.
 ## Sessions dir
 
 `--sessions-dir <dir>` if given (used by tests + explicit callers). Otherwise resolved from the
-session config — the same value `npx tpm session config --sessions-dir` prints — best-effort; a
+session config — the same value `tpm session config --sessions-dir` prints — best-effort; a
 resolution failure degrades to a clean message + exit 0.
 
 ## CLI
 
 ```
-npx tpm session boot-read [--sessions-dir <dir>]
-npx tpm session boot-read --help
+tpm session boot-read [--sessions-dir <dir>]
+tpm session boot-read --help
 ```
 
 ### Example
 
 ```
-$ npx tpm session boot-read --sessions-dir .claude/claude-tpm/sessions
+$ tpm session boot-read --sessions-dir .claude/claude-tpm/sessions
 == PRIOR SESSION 0022 · …/session-0022/ ==
 files: …/session-0022.json · …/session-0022.md   (canonical JSON + derived .md; the log reads newest-first)
 --- HANDOFF (read fully) ---
@@ -58,5 +62,5 @@ files: …/session-0022.json · …/session-0022.md   (canonical JSON + derived 
 --- OPEN PUNCHLIST (2) ---
 #22.3 · wire the export pointer  [a1b2c3]
 #22.4 · rerun both suites  [d4e5f6]
-for full detail: read …/session-0022.md (## Punchlist / ## Log), or run: npx tpm session export …
+for full detail: read …/session-0022.md (## Punchlist / ## Log), or run: tpm session export …
 ```

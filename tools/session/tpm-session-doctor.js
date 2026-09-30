@@ -31,7 +31,7 @@
  *  migrations exist, at which point hashing raw keeps the compare meaningful against a banner made
  *  from older bytes.
  *
- * ── NODE-INVOKABLE ── run via `npx tpm session doctor …` (routed), or bare `node tools/session/tpm-session-doctor.js …`;
+ * ── NODE-INVOKABLE ── run via `tpm session doctor …` (routed), or bare `node tools/session/tpm-session-doctor.js …`;
  *  programmatic callers `require()` it for `runDoctor(...)`.
  *
  * Zero third-party deps; Node built-ins only.
@@ -40,7 +40,8 @@
  *   node tpm-session-doctor.js --sessions-dir <dir> [--json] [--strict]
  *
  * FLAGS
- *   --sessions-dir <dir>  REQUIRED. The sessions store. Canonical JSON is discovered in the nested
+ *   --sessions-dir <dir>  Optional (resolved from the project root via TPM_PROJECT_ROOT or the walk-up; this
+ *                         flag is an explicit override). The sessions store. Canonical JSON is discovered in the nested
  *                         per-session-folder layout (session-<NNNN>/session-<NNNN>.json, the live
  *                         store's canonical shape); old-format 3-file subdirectories are detected
  *                         too. READ-ONLY.
@@ -207,7 +208,7 @@ function checkOldFormat(dirPath, subName) {
     number: shape.number,
     migratable: true,
     // The doctor is read-only: it names the migrator + a placeholder out-dir; the human runs it.
-    suggestion: `npx tpm session migrate --in "${dirPath}" --out-dir "<choose-an-output-dir>"`,
+    suggestion: `tpm session migrate --in "${dirPath}" --out-dir "<choose-an-output-dir>"`,
   };
 }
 
@@ -355,7 +356,7 @@ function parseArgv(argv) {
 }
 
 const USAGE = `tpm-session-doctor — READ-ONLY session-store validator + drift detector (#1119)
-  run: npx tpm session doctor [--sessions-dir <dir>] [--json] [--strict]
+  run: tpm session doctor [--sessions-dir <dir>] [--json] [--strict]
 
   --sessions-dir <dir>  OPTIONAL (F4)  the sessions store (READ-ONLY). Omitted → resolved from the LOCAL
                                   project's .claude/claude-tpm/config.json (session.notes.sessionsDir); the
@@ -368,7 +369,7 @@ const USAGE = `tpm-session-doctor — READ-ONLY session-store validator + drift 
 
 Exit: 0 = healthy (advisories allowed) · 1 = a validation FAIL · 2 = --strict + an advisory.
 STRICTLY READ-ONLY: no --fix, no write path. Old-format sessions are DETECTED + a migrate command
-is SUGGESTED; the doctor never converts (that is npx tpm session migrate, run explicitly by a human).`;
+is SUGGESTED; the doctor never converts (that is tpm session migrate, run explicitly by a human).`;
 
 function main(argv) {
   let opts;

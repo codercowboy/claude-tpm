@@ -1,5 +1,9 @@
 # `tpm-session-export.js` — session export (`#1113`)
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 The node-invokable export tool for `kind:"session"` records (P05). It reads canonical JSON through the
 model's load path (read → migrate → validate) and emits JSON and/or the human render — one session or
 many, combined or per-file. It **composes** the blessed shared pieces (`loadSession`,
@@ -8,7 +12,7 @@ none of them.
 
 **Run (Q5 — no bin, no npm-run):**
 ```
-npx tpm session export [flags]
+tpm session export [flags]
 ```
 Programmatic callers `require('./tpm-session-export')` for `exportSessions(opts)` (plus helpers
 `resolveRecords`, `enumerateSessions`, `normalizeStyles`, `padNumber`).
@@ -17,7 +21,7 @@ Programmatic callers `require('./tpm-session-export')` for `exportSessions(opts)
 
 | Flag | Meaning |
 |------|---------|
-| `--sessions-dir <dir>` | directory of `session-<NNNN>.json` (a SCRATCH or real dir). Required unless pre-loaded `records` are passed programmatically. |
+| `--sessions-dir <dir>` | directory of `session-<NNNN>.json` (a SCRATCH or real dir). **Optional:** omitted, it is resolved from the project root's `.claude/claude-tpm/config.json` (`session.notes.sessionsDir`); the flag overrides. |
 | `--last N` | export the N most-recent sessions, **newest first**. |
 | `--session <NNNN>[,NNNN] …` | explicit selector list (repeatable / comma-list) — the `#1092` seam, resolved in the order given; no re-matching. |
 | `--style json\|human\|both` | output format(s); repeatable / comma-list. Default `json`. |
@@ -65,25 +69,25 @@ CLI flag.
 
 ```
 # single-session full JSON to stdout
-npx tpm session export --sessions-dir /tmp/s --session 0050 --style json
+tpm session export --sessions-dir /tmp/s --session 0050 --style json
 #   -> {
 #        "schemaVersion": "1.0.0",
 #        "kind": "session",
 #        "meta": { "number": "0050", …
 
 # last 2 sessions, combined human — one # Session header per session
-npx tpm session export --sessions-dir /tmp/s --last 2 --style human
+tpm session export --sessions-dir /tmp/s --last 2 --style human
 #   -> 2 "# Session NNNN" headers
 
 # last 2 sessions, combined JSON — a bare array of envelopes
-npx tpm session export --sessions-dir /tmp/s --last 2 --style json
+tpm session export --sessions-dir /tmp/s --last 2 --style json
 #   -> [
 #        {
 #          "schemaVersion": "1.0.0",
 #          …
 
 # per-file, both styles, into an out dir
-npx tpm session export --sessions-dir /tmp/s --last 2 --style both --combine per-file --out /tmp/s/out
+tpm session export --sessions-dir /tmp/s --last 2 --style both --combine per-file --out /tmp/s/out
 #   -> wrote 4 file(s):
 #        /tmp/s/out/session-0051.json
 #        /tmp/s/out/session-0050.json

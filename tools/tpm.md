@@ -1,7 +1,9 @@
 # `tpm` — the claude-tpm command dispatcher
 
 `tpm` is the single git-style front door to claude-tpm's tooling. It is shipped as the package `bin`,
-so in a consumer it's reachable as `npx tpm …` (or a linked `tpm` on `PATH`).
+so in a Claude session (plugin enabled) the plugin's `bin/` is on `PATH` and it's just `tpm …`.
+
+Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
 
 ```
 tpm <suite> <verb> [args…]
@@ -18,7 +20,7 @@ Adding, renaming, or removing a verb touches only that suite's router — never 
 tool ledger is [`tools/README.md`](README.md).
 
 **No `%TPM_HOME%` / env needed.** Every router self-locates its scripts from its own `__dirname`, so a
-`tpm …` invocation resolves the bundle on its own. This is why skill prose can call `npx tpm <suite>
+`tpm …` invocation resolves the bundle on its own. This is why skill prose can call `tpm <suite>
 <verb>` instead of `node %TPM_HOME%/tools/<suite>/<tool>.js` — routing through `tpm` removes the
 `%TPM_HOME%` token from Bash invocations entirely.
 
@@ -46,7 +48,7 @@ verbs exist for the harness to invoke, not for a human to type.
 | `tpm uninstall [dir] [options]` | `tools/consumer/tpm-consumer-uninstall.js` |
 | `tpm doctor [dir]` | `tools/consumer/tpm-consumer-install.js` (with `--check` appended: `doctor` *is* `install --check`) |
 
-These are the human porcelain for adoption (`npx tpm install .`), so they stay top-level rather than
+These are the human porcelain for adoption (`npx tpm install .` — human terminal, before the plugin's bin is on `PATH`), so they stay top-level rather than
 under a `consumer` suite.
 
 ## Bundle primitives (self-locating; work in every permission mode)
@@ -58,7 +60,7 @@ under a `consumer` suite.
 | `tpm doc <bundle-relative-path>` | `tools/tpm-doc.js` — print a bundle doc with in-content tokens resolved |
 
 `resolve-home` is the self-documenting name for the **anchor-first** doctrine: a reader runs
-`npx tpm resolve-home` once, treats the printed absolute path as `%TPM_HOME%`, and resolves any
+`tpm resolve-home` once, treats the printed absolute path as `%TPM_HOME%`, and resolves any
 `%TPM_HOME%/…` reference against it — no token-resolving hook required. `home` remains as a working alias.
 
 ## Exit codes
@@ -72,14 +74,14 @@ under a `consumer` suite.
 ## Examples
 
 ```
-npx tpm                                      # top menu
-npx tpm session notes resume --where "…" --next "…"
-npx tpm session current --sessions-dir .claude/claude-tpm/sessions --open
-npx tpm task add --from ./tmp/tpm-task/add-foo.md
-npx tpm task config --tasks-dir
-npx tpm workflow scaffold add-phase dev/<epic> --slug <slug> --team <team>
-npx tpm workflow doctor --json
-npx tpm install .
+tpm                                      # top menu
+tpm session save --session 0030
+tpm session current --sessions-dir .claude/claude-tpm/sessions --open
+tpm task add --headline "Fix the thing"
+tpm task config --tasks-dir
+tpm workflow scaffold add-phase dev/<epic> --slug <slug> --team <team>
+tpm workflow doctor --json
+npx tpm install .                            # human terminal only (pre-install)
 ```
 
 ## Tests

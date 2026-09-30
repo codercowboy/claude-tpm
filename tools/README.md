@@ -3,26 +3,35 @@
 The single source of truth for every tool that ships in claude-tpm: what it is, how (if at all) you run
 it, and where its fuller doc lives. **Keep this current** — when you add, remove, or rename a tool,
 update this file in the same change. The ledger is exhaustive (every tool that exists is listed) and
-honest (nothing that no longer exists is listed). This is the one canonical index; suites do **not** each
-carry their own README. The authoring rules behind it — portability, the "runnable by a bare `node`"
+honest (nothing that no longer exists is listed). This is the one canonical index. Two suites (`session/`, `task/`) additionally
+keep a long-form `README.md` (architecture, data format, per-verb walk-through) that this ledger does not
+duplicate — everything else is documented per tool in `<tool>.md`. The authoring rules behind it — portability, the "runnable by a bare `node`"
 convention, and this ledger's contract — live in
 [`../claude-context/methodology/tool-conventions.md`](../claude-context/methodology/tool-conventions.md).
 
 **How to read a bullet.** Each tool is `` `path` `` — one sentence. A **Run:** line appears only when the
-tool is wired into a run command (claude-tpm exposes the `tpm` bin, so that's `npx tpm …`); tools with no
+tool is wired into a run command (claude-tpm exposes the `tpm` bin, so that's `tpm …`); tools with no
 `npm run` / `npx` wiring — internal helpers, hook scripts invoked by the harness, one-off utilities — get
 no Run line. A **Doc:** pointer names the tool's reference (`<tool>.md`) or "header" when the doc is the
 top-of-file docstring.
 
-**The `tpm` front door.** `tools/tpm.js` is the package `bin`, so everything wired runs as `npx tpm
-<suite> <verb>` (or a linked `tpm <suite> <verb>`). `tpm.js` is a **dumb top dispatcher**: it knows only
-the four suites (`session` / `task` / `workflow` / `hooks`) plus the flat consumer aliases
+**Command forms.** In a Claude session (plugin enabled) the plugin's `bin/` is on `PATH`, so Claude runs the bare
+`tpm <suite> <verb>`; every Run: line below is written that way. A *human* at a terminal inside a project that vendors
+the package runs the same commands as `npx tpm <suite> <verb>` (never `npx tpm` where there is no local
+`node_modules/.bin/tpm` — npx would fetch an unrelated registry package).
+
+Human terminal: the pre-install porcelain (`install` / `uninstall` / `doctor`) runs before the plugin's bin is on `PATH`, so it is listed as `npx tpm …`.
+
+**The `tpm` front door.** `tools/tpm.js` is the package `bin`, so everything wired runs as `tpm
+<suite> <verb>`. `tpm.js` is a **dumb top dispatcher**: it knows only
+the five suites (`session` / `task` / `workflow` / `hooks` / `plugin`) plus the flat consumer aliases
 (`install` / `uninstall` / `doctor`), and forwards `<everything-after>` to that suite's own router. The per-suite
 routers own their verb tables and self-locate their scripts via `__dirname`, so no `%TPM_HOME%`/env is
 needed. Dispatch is by child process with faithful arg/stdio pass-through and exit-code propagation.
 
-- **`tools/tpm.js`** — the top dispatcher / front door; routes `<suite> <verb>` to the per-suite router, plus the flat consumer aliases `install` / `uninstall` / `doctor` (unknown → exit 2; bare / `--help` → menu). Run: `npx tpm <suite> <verb>` · Doc: `tpm.md`
-- **`tools/tpm-reading-list.js`** — emit a role's methodology reading chain in anchor form (a `npx tpm resolve-home` line + one `npx tpm doc <bundle-relpath>` per entry), derived from the live reading-list manifests; self-locating, zero-dep. Run: `npx tpm reading-list <role>` (orchestrator | subagent) · Doc: `tpm-reading-list.md`
+- **`bin/tpm`** — bash PATH shim (`exec node …/tools/tpm.js "$@"`, symlink-safe, self-locating). Claude Code puts the plugin's `bin/` on PATH, so a bare `tpm <suite> <verb>` works in every project (no `npx tpm` registry-fallthrough risk). Run: `tpm <suite> <verb>` · Doc: header · Test: `tools/tests/tpm-bin-shim.test.js`
+- **`tools/tpm.js`** — the top dispatcher / front door; routes `<suite> <verb>` to the per-suite router, plus the flat consumer aliases `install` / `uninstall` / `doctor` (unknown → exit 2; bare / `--help` → menu). Run: `tpm <suite> <verb>` · Doc: `tpm.md`
+- **`tools/tpm-reading-list.js`** — emit a role's methodology reading chain in anchor form (a `tpm resolve-home` line + one `tpm doc <bundle-relpath>` per entry), derived from the live reading-list manifests; self-locating, zero-dep. Run: `tpm reading-list <role>` (orchestrator | subagent) · Doc: `tpm-reading-list.md`
 
 ---
 
@@ -30,17 +39,17 @@ needed. Dispatch is by child process with faithful arg/stdio pass-through and ex
 
 The tools the `/tpm-workflow` + `/tpm-spawn*` skills compose to run a formal multi-agent round: scaffold →
 compose → lint → Agent, plus config resolution, cost, audit, sign-off, and a fail-loud preflight. All wired
-as `npx tpm workflow <verb>`.
+as `tpm workflow <verb>`.
 
-- **`tools/workflow/tpm-workflow-config-resolver.js`** — resolve the `workflow` registry from `.claude/claude-tpm/config.json` (personas · teams · `verifier.loopFixer` · charter homes) over built-in defaults. Run: `npx tpm workflow config` · Doc: `tpm-workflow-config-resolver.md`
-- **`tools/workflow/tpm-workflow-scaffold-subagent.js`** — scaffold an epic/phase work folder (`epic-init` / `add-phase` / `add-round`): per-role charter, spawn-prompt stub, `tmp/<role>-r<N>/`, `subagent.env`. Run: `npx tpm workflow scaffold` · Doc: `tpm-workflow-scaffold-subagent.md`
-- **`tools/workflow/tpm-workflow-compose-spawn-prompt.js`** — emit the standard spawn-prompt boilerplate (role-conditional read-order + return-shape, env ritual, base chain, `{{TASK_CONTEXT}}` sentinel). Run: `npx tpm workflow compose` · Doc: `tpm-workflow-compose-spawn-prompt.md`
-- **`tools/workflow/tpm-workflow-lint-subagent-prompt.js`** — lint a spawn prompt / plan / charter against the subagent reading-list manifest + prompt-shape + sentinel checks; enforces the verifier HARD RULE, fails loud on a bad `--manifest`. Run: `npx tpm workflow lint` · Doc: `tpm-workflow-lint-subagent-prompt.md`
-- **`tools/workflow/tpm-workflow-check-filename.js`** — guard: reject `.md` deliverable names matching blocked patterns (report/summary/analysis/findings). Run: `npx tpm workflow check-filename` · Doc: `tpm-workflow-check-filename.md`
-- **`tools/workflow/tpm-workflow-audit.js`** — audit a `dev/` epic/phase tree against the canonical layout + `00-epic-plan/` charter-cleanliness; emits a markdown punch list. Run: `npx tpm workflow audit` · Doc: `tpm-workflow-audit.md`
-- **`tools/workflow/tpm-workflow-cost-ledger.js`** — per-subagent cost rows in `00-epic-plan/`, with `--summary` / `--rollup`. Run: `npx tpm workflow cost` · Doc: `tpm-workflow-cost-ledger.md`
-- **`tools/workflow/tpm-workflow-signoff.js`** — the user-sign-off ledger for workflow kickoffs: records the deterministic two-token sign-off that the spawn gate checks before a round is allowed to spawn subagents. Run: `npx tpm workflow signoff` · Doc: header
-- **`tools/workflow/tpm-workflow-doctor.js`** — fail-loud PREFLIGHT: charters resolve · sign-off writable · compose emits a marker + `%TPM_HOME%` paths; self-locates the bundle, runs in a consumer. Every ✗ prints its fix. Run: `npx tpm workflow doctor` · Doc: header
+- **`tools/workflow/tpm-workflow-config-resolver.js`** — resolve the `workflow` registry from `.claude/claude-tpm/config.json` (personas · teams · `verifier.loopFixer` · charter homes) over built-in defaults. Run: `tpm workflow config` · Doc: `tpm-workflow-config-resolver.md`
+- **`tools/workflow/tpm-workflow-scaffold-subagent.js`** — scaffold an epic/phase work folder (`epic-init` / `add-phase` / `add-round`): per-role charter, spawn-prompt stub, `tmp/<role>-r<N>/`, `subagent.env`. Run: `tpm workflow scaffold` · Doc: `tpm-workflow-scaffold-subagent.md`
+- **`tools/workflow/tpm-workflow-compose-spawn-prompt.js`** — emit the standard spawn-prompt boilerplate (role-conditional read-order + return-shape, env ritual, base chain, `{{TASK_CONTEXT}}` sentinel). Run: `tpm workflow compose` · Doc: `tpm-workflow-compose-spawn-prompt.md`
+- **`tools/workflow/tpm-workflow-lint-subagent-prompt.js`** — lint a spawn prompt / plan / charter against the subagent reading-list manifest + prompt-shape + sentinel checks; enforces the verifier HARD RULE, fails loud on a bad `--manifest`. Run: `tpm workflow lint` · Doc: `tpm-workflow-lint-subagent-prompt.md`
+- **`tools/workflow/tpm-workflow-check-filename.js`** — guard: reject `.md` deliverable names matching blocked patterns (report/summary/analysis/findings). Run: `tpm workflow check-filename` · Doc: `tpm-workflow-check-filename.md`
+- **`tools/workflow/tpm-workflow-audit.js`** — audit a `dev/` epic/phase tree against the canonical layout + `00-epic-plan/` charter-cleanliness; emits a markdown punch list. Run: `tpm workflow audit` · Doc: `tpm-workflow-audit.md`
+- **`tools/workflow/tpm-workflow-cost-ledger.js`** — per-subagent cost rows in `00-epic-plan/`, with `--summary` / `--rollup`. Run: `tpm workflow cost` · Doc: `tpm-workflow-cost-ledger.md`
+- **`tools/workflow/tpm-workflow-signoff.js`** — the user-sign-off ledger for workflow kickoffs: records the deterministic two-token sign-off that the spawn gate checks before a round is allowed to spawn subagents. Run: `tpm workflow signoff` · Doc: header
+- **`tools/workflow/tpm-workflow-doctor.js`** — fail-loud PREFLIGHT: charters resolve · sign-off writable · compose emits a marker + `%TPM_HOME%` paths; self-locates the bundle, runs in a consumer. Every ✗ prints its fix. Run: `tpm workflow doctor` · Doc: header
 - **`tools/workflow/tpm-workflow-router.js`** — the `workflow` sub-router (owns the verb table above; forwarded to by `tpm.js`). Internal plumbing, not a CLI. Doc: header
 
 ---
@@ -50,16 +59,16 @@ as `npx tpm workflow <verb>`.
 The JSON-first session-memory subsystem behind the `tpm-session` skill's modes: ONE canonical
 `session-NNNN.json` per session (source of truth) + a derived `session-NNNN.md` (`## Handoff` /
 `## Punchlist` / `## Log`, regenerated on every write), nested under `session-NNNN/`. Self-contained
-(no imports outside the suite). User-facing verbs wired as `npx tpm session <verb>`; the `lib/` model +
+(no imports outside the suite). User-facing verbs wired as `tpm session <verb>`; the `lib/` model +
 `paths` module are internal.
 
-- **`tools/session/tpm-session-config.js`** — resolve the `session` config section over built-in defaults (`--json` / `--get` / `--sessions-dir` / `--modules` — the cross-module ENABLED map for the boot MOTD). Run: `npx tpm session config` · Doc: `tpm-session-config.md`
-- **`tools/session/tpm-session-current.js`** — the current-session pointer: open-vs-not state, next-`session-NNNN` allocation, idempotent `--open`, `--seal` at close. Run: `npx tpm session current` · Doc: `tpm-session-current.md`
-- **`tools/session/tpm-session-ops.js`** — the notes WRITE surface + `#1115` import: `open` / `save` / `note (--log|--decision)` / `punchlist --action add|close|reopen|drop|carry-in` / `close` (close-guard: refuses without a handoff AND a punchlist) / `import-handoff|import-log|import-punchlist`. Every write is atomic; the `.md` is regenerated from the JSON. These are TOP-LEVEL session verbs (the `ops` grouping was flattened away). Run: `npx tpm session <open|save|note|punchlist|close|import-handoff|import-log|import-punchlist>` · Doc: `tpm-session-ops.md`
-- **`tools/session/tpm-session-export.js`** — the READ / export API: `--last N | --session NNNN[,NNNN]` · `--style json|human|both` · `--out <dir|file>` (default: JSON to stdout). Run: `npx tpm session export` · Doc: `tpm-session-export.md`
-- **`tools/session/tpm-session-migrate.js`** — `#1114` opt-in convert ONE old 3-file markdown session → canonical JSON (`--in` / `--out-dir`). Run: `npx tpm session migrate` · Doc: `tpm-session-migrate.md`
-- **`tools/session/tpm-session-boot-read.js`** — the boot-time pickup emit: the prior session's handoff verbatim + open punchlist headlines + the JSON/`.md` file locations; self-resolves the sessions dir via config; degrades to one clean line, always exits 0. Run: `npx tpm session boot-read` · Doc: `tpm-session-boot-read.md`
-- **`tools/session/tpm-session-doctor.js`** — `#1119` READ-ONLY health check: validate + hash-drift + detect/suggest-migrate (`--sessions-dir` / `--json` / `--strict`). Run: `npx tpm session doctor` · Doc: `tpm-session-doctor.md`
+- **`tools/session/tpm-session-config.js`** — resolve the `session` config section over built-in defaults (`--json` / `--get` / `--sessions-dir` / `--modules` — the cross-module ENABLED map for the boot MOTD). Run: `tpm session config` · Doc: `tpm-session-config.md`
+- **`tools/session/tpm-session-current.js`** — the current-session pointer: open-vs-not state, next-`session-NNNN` allocation, idempotent `--open`, `--seal` at close. Run: `tpm session current` · Doc: `tpm-session-current.md`
+- **`tools/session/tpm-session-ops.js`** — the notes WRITE surface + `#1115` import: `open` / `save` / `note (--log|--decision)` / `punchlist --action add|close|reopen|drop|carry-in` / `close` (close-guard: refuses without a handoff AND a punchlist) / `import-handoff|import-log|import-punchlist`. Every write is atomic; the `.md` is regenerated from the JSON. These are TOP-LEVEL session verbs (the `ops` grouping was flattened away). Run: `tpm session <open|save|note|punchlist|close|import-handoff|import-log|import-punchlist>` · Doc: `tpm-session-ops.md`
+- **`tools/session/tpm-session-export.js`** — the READ / export API: `--last N | --session NNNN[,NNNN]` · `--style json|human|both` · `--out <dir|file>` (default: JSON to stdout). Run: `tpm session export` · Doc: `tpm-session-export.md`
+- **`tools/session/tpm-session-migrate.js`** — `#1114` opt-in convert ONE old 3-file markdown session → canonical JSON (`--in` / `--out-dir`). Run: `tpm session migrate` · Doc: `tpm-session-migrate.md`
+- **`tools/session/tpm-session-boot-read.js`** — the boot-time pickup emit: the prior session's handoff verbatim + open punchlist headlines + the JSON/`.md` file locations; self-resolves the sessions dir via config; degrades to one clean line, always exits 0. Run: `tpm session boot-read` · Doc: `tpm-session-boot-read.md`
+- **`tools/session/tpm-session-doctor.js`** — `#1119` READ-ONLY health check: validate + hash-drift + detect/suggest-migrate (`--sessions-dir` / `--json` / `--strict`). Run: `tpm session doctor` · Doc: `tpm-session-doctor.md`
 - **`tools/session/lib/`** — the JSON model the tools share: `session-model.js` (read → migrate → validate + render), `session-schema.js` (the envelope + `session` payload schema), `session-converter.js` (old 3-file → JSON). Internal helpers (imported, not CLIs). Doc: header
 - **`tools/session/tpm-session-paths.js`** — the suite's project-root / path resolver. Internal helper (imported, not a CLI). Doc: header
 - **`tools/session/tpm-session-router.js`** — the `session` sub-router (forwarded to by `tpm.js`; routes `ops` / `export` / `migrate` / `doctor` / `config` / `current` / `boot-read`). Internal plumbing, not a CLI. Doc: header
@@ -73,11 +82,11 @@ task (+ derived `.md`, machine `tasks-index.json`, and three human index views).
 ledger CLI, its config resolver, and the export/doctor/migrate tools are user-facing, the `lib/` model
 is internal.
 
-- **`tools/task/tpm-task.js`** — the ledger CLI: `list` / `show` / `add` / `edit` / `import` (per-id JSON, `--template` / `--prune`) / `add-subtask` / `check` / `label` / `unlabel` / `labels` / `start` / `finish` / `drop` / `remove [--hard]` (`--hard` PURGES the body, config-gated on `tasks.allowHardDelete`, off by default) / `reopen`, plus `reindex` / `history`. Run: `npx tpm task <subcmd>` · Doc: `tpm-task.md`
-- **`tools/task/tpm-task-config.js`** — resolve the `tasks` config section over defaults (`--json` / `--get` / `--tasks-dir`; owns the `allowHardDelete` gate + the `#1109` history gate). Run: `npx tpm task config` · Doc: `tpm-task-config.md`
-- **`tools/task/tpm-task-export.js`** — export + search on ONE selector core: ids/ranges, `--state`, `--open`/`--closed`, `--label`, `--match`, `--opened-since`/`--updated-since`/`--closed-since`, `--last N --by …`; shape `--json`/`--human` (default `--human` to stdout), `--out <dir|file>`, `--per-file`, `--thin`. Run: `npx tpm task export|search` · Doc: `tpm-task-export.md`
-- **`tools/task/tpm-task-doctor.js`** — `#1119` READ-ONLY task-store validator + drift detector (`--tasks-dir` / `--json`). Run: `npx tpm task doctor` · Doc: `tpm-task-doctor.md`
-- **`tools/task/tpm-task-migrate.js`** — `#1114.B` opt-in whole-store old-markdown → JSON task migrator (`--in` / `--out-dir` / `--dry-run`). Run: `npx tpm task migrate` · Doc: `tpm-task-migrate.md`
+- **`tools/task/tpm-task.js`** — the ledger CLI: `list` / `show` / `add` / `edit` / `import` (per-id JSON, `--template` / `--prune`) / `add-subtask` / `check` / `label` / `unlabel` / `labels` / `start` / `finish` / `drop` / `remove [--hard]` (`--hard` PURGES the body, config-gated on `tasks.allowHardDelete`, off by default) / `reopen`, plus `reindex` / `history`. Run: `tpm task <subcmd>` · Doc: `tpm-task.md`
+- **`tools/task/tpm-task-config.js`** — resolve the `tasks` config section over defaults (`--json` / `--get` / `--tasks-dir`; owns the `allowHardDelete` gate + the `#1109` history gate). Run: `tpm task config` · Doc: `tpm-task-config.md`
+- **`tools/task/tpm-task-export.js`** — export + search on ONE selector core: ids/ranges, `--state`, `--open`/`--closed`, `--label`, `--match`, `--opened-since`/`--updated-since`/`--closed-since`, `--last N --by …`; shape `--json`/`--human` (default `--human` to stdout), `--out <dir|file>`, `--per-file`, `--thin`. Run: `tpm task export|search` · Doc: `tpm-task-export.md`
+- **`tools/task/tpm-task-doctor.js`** — `#1119` READ-ONLY task-store validator + drift detector (`--tasks-dir` / `--json`). Run: `tpm task doctor` · Doc: `tpm-task-doctor.md`
+- **`tools/task/tpm-task-migrate.js`** — `#1114.B` opt-in whole-store old-markdown → JSON task migrator (`--in` / `--out-dir` / `--dry-run`). Run: `tpm task migrate` · Doc: `tpm-task-migrate.md`
 - **`tools/task/lib/`** — the JSON model the tools share: `task-model.js` (read → migrate → validate + render + `reindex`), `task-schema.js`, `task-converter.js` + `legacy-task-format.js` (old markdown → JSON), `base.js` (shared path/root helpers). Internal helpers (imported, not CLIs). Doc: header
 - **`tools/task/tpm-task-router.js`** — the `task` sub-router (forwarded to by `tpm.js`; routes `config` / `export` / `search` / `doctor` / `migrate`, else → `tpm-task.js`). Internal plumbing, not a CLI. Doc: header
 
@@ -88,23 +97,26 @@ is internal.
 How a downstream project adopts claude-tpm as a dependency. `install`/`uninstall` are wired as flat `tpm`
 aliases; the rest support the smoke suites and skill-relocatability.
 
-- **`tools/consumer/tpm-consumer-install.js`** — graft claude-tpm onto an existing project (check-then-act, idempotent 5-step flow: preflight → dep → marketplace → plugin install → enable, all `--scope project`; `--check` doctor / `--quiet` / `--force`). Calls `npm` + `claude plugin …` directly; never authors project files or `settings.json`. Run: `npx tpm install [dir]` · Doc: header
+- **`tools/plugin/tpm-plugin-router.js`** — the `plugin` suite router: `tpm plugin install` / `uninstall` / `doctor` route (child process, args + stdin + exit code passed through) to the consumer scripts below; `doctor` = `install --check`. The flat `tpm install` / `uninstall` / `doctor` aliases stay and are identical. No `update` verb (a local-folder plugin runs in place from the registered folder — nothing to refresh). Run: `npx tpm plugin <verb>` · Doc: header · Test: `tools/tests/tpm-router.test.js`
+- **`tools/consumer/tpm-consumer-install.js`** — graft claude-tpm onto an existing project (check-then-act, idempotent 5-step flow: preflight → dep → marketplace → plugin install → enable, all `--scope project`; `--check` doctor / `--quiet` / `--force`). The `--check` doctor (`tpm doctor`, `tpm plugin doctor`) verifies what actually matters for a local-folder plugin: marketplace source is this bundle's folder and exists, install record vs settings, hooks delivered (SessionStart + gate-spawn), version agreement, one `claude-tpm@*` enabled, project set up, in-session `tpm` on PATH, `TPM_HOME` vs self-location — every WARN/FAIL prints its fix. Calls `npm` + `claude plugin …` directly; never authors project files or `settings.json`. Run: `npx tpm install [dir]` · Doc: header
 - **`tools/consumer/tpm-consumer-uninstall.js`** — reverse the install, **scope-aware** (the plugin + marketplace are machine-global singletons): asks *this project only* (disable here + drop the dep, leave the shared marketplace for others) vs *whole system* (plugin uninstall + global marketplace remove + drop the dep), with a secondary consent + a guard when the shared marketplace's source points at this project. `--project` / `--system` set the scope non-interactively. Never deletes the user's files. Run: `npx tpm uninstall [dir]` · Doc: header
 - **`npx tpm doctor [dir]`** — read-only health check; a porcelain alias for `install --check` (all the doctor rows, changes nothing). Run: `npx tpm doctor [dir]` · Doc: `tpm.md` / `install` header
 - **`tools/consumer/tpm-consumer-check-json.js`** — extract + assert on the strict JSON a headless `claude -p` probe returns (`--truthy` / `--eq` / `--includes`); backs the smoke suites deterministically. Doc: header
-- **`tools/consumer/tpm-consumer-lint-skill-refs.js`** — keep the `tpm-*` skills relocatable: flag any bare bundle ref that must carry `%TPM_HOME%/`. Doc: header
-- **`tools/consumer/smoke.sh`** — LLM-in-the-loop consumer smoke: headless `claude -p` probes (`skills-present`, `methodology-resolves`, `token-methodology-read`, + the deterministic `npx-tpm-resolves`) asserted via `tpm-consumer-check-json.js`. Run against an installed consumer dir. Doc: header
+- **`tools/consumer/tpm-consumer-lint-skill-refs.js`** — keep the `tpm-*` skills relocatable: flag any bare bundle ref that must carry `%TPM_HOME%/`; accepts bare `tpm …` and flags `npx tpm …` in skill content. Doc: header
+- **`tools/consumer/smoke.sh`** — LLM-in-the-loop consumer smoke: headless `claude -p` probes (`skills-present`, `methodology-resolves`, `tpm-doc-resolves`, + the deterministic `npx-tpm-resolves`) asserted via `tpm-consumer-check-json.js`. Run against an installed consumer dir. Doc: header
 
 ---
 
 ## Hooks — `tools/hooks/` + suite hook scripts
 
-claude-tpm's PreToolUse hooks. The plugin auto-invokes them via the bundle-root `hooks/hooks.json`, which
-calls each by a **stable, path-independent** `npx tpm hooks <verb>` command; the hook scripts themselves
+claude-tpm's hooks (PreToolUse, SessionStart). The plugin auto-invokes them via the bundle-root `hooks/hooks.json`, which
+calls each by a **stable, path-independent** `node "${CLAUDE_PLUGIN_ROOT}/tools/tpm.js" hooks <verb>` command (not `npx tpm`, which fails where there is no `node_modules` copy); the hook scripts themselves
 live in their owning suite (a workflow gate under `workflow/`, the read-path resolver under `consumer/`).
 
-- **`tools/hooks/tpm-hooks-router.js`** — the `hooks` sub-router: exposes each hook under one stable verb table (`npx tpm hooks <verb>`), dispatching by child process so the harness's PreToolUse payload/stdout/exit-code pass through unchanged. Internal plumbing. Doc: header
-- **`tools/workflow/hooks/tpm-workflow-gate-spawn.js`** — PreToolUse hook on `Agent|Task`: the spawn gate (blocks a marked subagent spawn that fails the sign-off check). Run: `npx tpm hooks gate-spawn` · Doc: header
+- **`tools/hooks/tpm-hooks-router.js`** — the `hooks` sub-router: exposes each hook under one stable verb table (`tpm hooks <verb>`), dispatching by child process so the harness's PreToolUse payload/stdout/exit-code pass through unchanged. Internal plumbing. Doc: header
+- **`tools/workflow/hooks/tpm-workflow-gate-spawn.js`** — PreToolUse hook on `Agent|Task`: the spawn gate (blocks a marked subagent spawn that fails the sign-off check). Run: `node tools/tpm.js hooks gate-spawn` · Doc: header
+- **`tools/hooks/tpm-hooks-session-start.js`** — SessionStart hook: appends `export TPM_PROJECT_ROOT=<CLAUDE_PROJECT_DIR>` and `export TPM_HOME=<realpath CLAUDE_PLUGIN_ROOT>` to `$CLAUDE_ENV_FILE` (skip-if-already-set, idempotent, silent, fail-open). Run: `node tools/tpm.js hooks session-start` · Doc: header
+- **`tools/hooks/tests/tpm-hooks-session-start.test.js`** — unit tests for the session-start hook. Run: `node tools/hooks/tests/tpm-hooks-session-start.test.js`
 
 ---
 
@@ -140,7 +152,7 @@ Every suite's tests are self-contained (zero-dep) and safe to run anywhere (they
 - **`tools/workflow/tests/run-all.js`** — the workflow suite. Run: `node tools/workflow/tests/run-all.js`
 - **`tools/session/tests/run-all.js`** (+ `tools/session/tests/mutation-check.js`) — the session suite (27 suites, 0 failed). Run: `node tools/session/tests/run-all.js`
 - **`tools/task/tests/run-all.js`** (+ `tools/task/tests/mutation-check.js`) — the task suite (18 suites, 0 failed; incl. `show-selectors.test.js` for the #1132 `show` selector grammar). Run: `node tools/task/tests/run-all.js`
-- **`tools/consumer/tests/run-all.js`** — install / uninstall (pure exported helpers, incl. `parsePluginList`) + the skill-ref lint. (The `expand-hook` suites were retired in #1126 with the %TPM_HOME% resolution hooks.) Run: `node tools/consumer/tests/run-all.js`
+- **`tools/consumer/tests/run-all.js`** — install / uninstall (pure exported helpers, incl. `parsePluginList`) + the doctor-row suite (`tpm-consumer-doctor/`, fake `claude` + temp worlds) + the skill-ref lint. (The `expand-hook` suites were retired in #1126 with the %TPM_HOME% resolution hooks.) Run: `node tools/consumer/tests/run-all.js`
 - **`tools/misc/fix-git-rename/tests/tpm-fix-git-rename-refs/test.js`** — the rename migrator (hermetic temp-dir fixtures). Run: `node tools/misc/fix-git-rename/tests/tpm-fix-git-rename-refs/test.js`
 - **`tools/tests/lib/`** — shared test-support (the scratch-dir helper), not a suite.
 

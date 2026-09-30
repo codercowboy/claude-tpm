@@ -229,6 +229,8 @@ test('LABEL-INDEX — a drifted labels map → MISMATCH + SUGGEST reindex, exit 
   idx.labels = { ghost: ['9999'] }; // no longer matches deriveLabelIndex(idx.tasks)
   fs.writeFileSync(ip, JSON.stringify(idx, null, 2) + '\n');
   const r = doctor.runDoctor({ tasksDir: dir });
+  assert.ok(/^tpm task reindex /.test(r.labelIndex.suggestion) && !/npx tpm/.test(r.labelIndex.suggestion), 'reindex hint is bare `tpm`, no `npx tpm`');
+  assert.ok(!/npx tpm/.test(doctor.renderHuman(r)), 'human render has no `npx tpm`');
   assert.strictEqual(r.labelIndex.status, 'MISMATCH', 'mismatch detected');
   assert.ok(/reindex/.test(r.labelIndex.suggestion), 'suggests reindex');
   assert.strictEqual(r.exitCode, 1, 'exit 1');
@@ -238,6 +240,8 @@ test('LABEL-INDEX — a MISSING index beside bodies → SUGGEST reindex, exit 1'
   const dir = healthyStore();
   fs.unlinkSync(path.join(dir, 'tasks-index.json'));
   const r = doctor.runDoctor({ tasksDir: dir });
+  assert.ok(/^tpm task reindex /.test(r.labelIndex.suggestion) && !/npx tpm/.test(r.labelIndex.suggestion), 'reindex hint is bare `tpm`, no `npx tpm`');
+  assert.ok(!/npx tpm/.test(doctor.renderHuman(r)), 'human render has no `npx tpm`');
   assert.strictEqual(r.labelIndex.status, 'MISSING', 'missing index detected');
   assert.ok(/reindex/.test(r.labelIndex.suggestion), 'suggests reindex');
   assert.strictEqual(r.exitCode, 1, 'exit 1');
@@ -247,6 +251,8 @@ test('LABEL-INDEX — a CORRUPT index → SUGGEST reindex, exit 1', () => {
   const dir = healthyStore();
   fs.writeFileSync(path.join(dir, 'tasks-index.json'), '{ broken json');
   const r = doctor.runDoctor({ tasksDir: dir });
+  assert.ok(/^tpm task reindex /.test(r.labelIndex.suggestion) && !/npx tpm/.test(r.labelIndex.suggestion), 'reindex hint is bare `tpm`, no `npx tpm`');
+  assert.ok(!/npx tpm/.test(doctor.renderHuman(r)), 'human render has no `npx tpm`');
   assert.strictEqual(r.labelIndex.status, 'CORRUPT', 'corrupt index detected');
   assert.strictEqual(r.exitCode, 1, 'exit 1');
 });
@@ -257,7 +263,9 @@ test('OLD-FORMAT — a markdown-only store is DETECTED and migrate is SUGGESTED 
   assert.ok(r.oldFormat && r.oldFormat.detected, 'old-format detected');
   assert.strictEqual(r.oldFormat.bodyCount, 2, 'both markdown bodies counted');
   assert.strictEqual(r.oldFormat.marker, '1002', 'Next ID marker read from task-index.md');
-  assert.ok(/npx tpm task migrate/.test(r.oldFormat.suggestion), 'suggests the migrator');
+  assert.ok(/^tpm task migrate /.test(r.oldFormat.suggestion), 'suggests the migrator in bare `tpm` form');
+  assert.ok(!/npx tpm/.test(r.oldFormat.suggestion), 'migrate suggestion has no `npx tpm`');
+  assert.ok(!/npx tpm/.test(doctor.renderHuman(r)), 'human render has no `npx tpm`');
   assert.strictEqual(r.exitCode, 1, 'old-format is a problem → exit 1');
   assert.ok(/SUGGEST migrate/.test(doctor.renderHuman(r)), 'human render suggests migrate');
 });

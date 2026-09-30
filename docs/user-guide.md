@@ -65,27 +65,33 @@ To confirm the wiring is healthy, run the read-only health check from your proje
 npx tpm doctor .
 ```
 
-A healthy consumer project reports 9 of 9 checks passing and exits 0:
+A healthy project prints one line per check and ends with a count. The command exits 0 when nothing is
+broken:
 
 ```
-  [PASS] package.json exists
-  [PASS] "@codercowboy/claude-tpm" declared as a dependency
-  [PASS] marketplace "claude-tpm-market" registered
-  [PASS] marketplace "claude-tpm-market" source resolves
-  [PASS] plugin claude-tpm@claude-tpm-market installed
-  [PASS] plugin claude-tpm@claude-tpm-market enabled for this project
-  [PASS] plugin claude-tpm@claude-tpm-market cache present (loads)
-  [PASS] plugin delivers its hook (gate-spawn PreToolUse)
-  [PASS] consumer config.json is valid JSON (if present)
+  ✓ package.json
+  ✓ claude-tpm dependency       @codercowboy/claude-tpm
+  ✓ marketplace                 "claude-tpm-market-0.2.0-dev" is registered
+  ✓ marketplace source          this bundle's folder
+  ✓ plugin install record       claude-tpm@claude-tpm-market-0.2.0-dev
+  ✓ plugin enablement           enabled for this project
+  ✓ enabled claude-tpm plugins  claude-tpm@claude-tpm-market-0.2.0-dev
+  ✓ project folder              .claude/claude-tpm/ present
+  · install-record path         present (informational — the cache is not what runs)
+  ✓ plugin hooks                session-start + gate-spawn
+  ✓ bundle version              0.2.0-dev, plugin and node_modules copy agree
+  ✓ config.json                 valid JSON
+  · tpm on PATH                 skipped — only checked inside a Claude Code Bash call (TPM_PROJECT_ROOT / TPM_HOME not set here)
+  Summary: 12 ok · 0 warnings · 0 problems · 1 skipped
 ```
 
-`doctor` changes nothing. If a check fails, it prints what's wrong; re-run `npx tpm install .` to
-repair, and see the troubleshooting section of [INSTALL.md](INSTALL.md).
+`✓` is fine, `⚠` works but deserves a look, `✗` is broken, and `·` was skipped. Every `⚠` and `✗` row is
+followed by a `fix:` line. The doctor changes nothing. If a check fails, run `npx tpm install .` to repair,
+and see [INSTALL.md](INSTALL.md) for what each row means.
 
-> One gotcha: `npx tpm doctor .` run *inside the claude-tpm library itself* reports two
-> failures and exits 1, because the library is not its own consumer (it doesn't declare itself as a
-> dependency or enable its own plugin). That's expected. The 9/9 PASS above is what a real project you
-> installed it into looks like.
+> One gotcha: `npx tpm doctor .` run *inside the claude-tpm folder itself* reports `✗` rows and exits 1,
+> because the folder is not its own consumer (it doesn't declare itself as a dependency or enable its own
+> plugin). That is expected. The clean output above is what a project you installed it into looks like.
 
 Slash commands work in two forms — the short `/tpm-session` and the namespaced
 `/claude-tpm:tpm-session`. Use whichever you like; this guide uses the short form.
@@ -762,18 +768,34 @@ Usage:
   tpm <suite> <verb> [args…]
 
 Suites:
-  session    session-notes tooling   (config / current / notes / review)
-  task       task ledger             (add / list / show / … / config)
+  session    session-notes tooling   (ops / export / migrate / doctor)
+  task       task ledger             (add / list / show / … / config / export / migrate / doctor)
   workflow   multi-agent rounds      (audit / compose / lint / scaffold / cost / signoff / doctor / config)
-  hooks      PreToolUse hooks        (gate-spawn)
+  hooks      PreToolUse hooks        (gate-spawn / session-start)
+  plugin     plugin management       (install / uninstall / doctor)
 
 Consumer adoption:
   install [dir] [options]     graft claude-tpm onto an existing project
   uninstall [dir] [options]   reverse it (asks: this project only, or the whole system)
   doctor [dir]                read-only health check (= install --check)
+
+Bundle primitives (self-locating; work in every permission mode):
+  resolve-home                print the absolute bundle root — its output IS %TPM_HOME%
+  home                        alias of resolve-home
+  reading-list <role>         emit a role's reading chain in anchor form (orchestrator | subagent)
+  doc <bundle-relative-path> print a bundle doc with ${TPM_HOME}/%TPM_HOME% resolved
+
+  tpm <suite> --help          list that suite's verbs
+  tpm --help, -h              show this message
+
+Everything after the suite is passed straight through, e.g.:
+  tpm task list
+  npx tpm install .     # pre-install step: run from a plain project shell
+
+In a plain project shell (outside a Claude Code session), run these as `npx tpm …` (e.g. `npx tpm doctor .`).
 ```
 
-Four suites plus three flat consumer aliases:
+Five suites plus three flat consumer aliases and a few bundle primitives:
 
 - **`session`** and **`task`** are the ones you'd reasonably type by hand — inspecting config, reading
   back notes, or scripting the ledger. A few useful ones:
@@ -788,11 +810,16 @@ Four suites plus three flat consumer aliases:
   orchestrator plumbing the skills invoke for you. You'll rarely type them directly. The exhaustive
   verb tables are in [technical.md](technical.md).
 
-- **`hooks`** (`gate-spawn`) is a harness-invoked `PreToolUse` hook delivered by the
-  plugin. You do not wire it by hand — it's how the kickoff gate is enforced. (The `%TPM_HOME%`
-  resolution hooks were retired in #1126; resolution is anchor-first via `npx tpm resolve-home`.)
+- **`hooks`** are harness-invoked hooks the plugin delivers: `session-start` (a SessionStart hook that
+  tells every tool which project it is running in) and `gate-spawn` (a `PreToolUse` hook that enforces the
+  kickoff gate). You do not wire or run them by hand. See [technical.md](technical.md#how-it-fits-together).
+
+- **`plugin`** routes `install`, `uninstall` and `doctor` to the consumer scripts. The flat aliases below
+  do the same thing.
 
 - **`install` / `uninstall` / `doctor`** are the consumer lifecycle aliases; see [INSTALL.md](INSTALL.md).
+
+In a project shell you type `npx tpm …`. Inside a Claude session the same commands are bare `tpm …`.
 
 One filename convention the workflow tools enforce: deliverable filenames
 whose basename contains `report`, `summary`, `analysis`, or `findings` are blocked (a server-side
@@ -836,13 +863,49 @@ Full config reference, including the per-role `retryCount` and the `verifyLoopCa
 
 ---
 
+## Something looks stale?
+
+Claude Code runs the plugin straight from the folder it was registered from, so most edits show up at once.
+A few things are remembered for the length of a session. This table says which fix to reach for. It was
+observed on Claude Code 2.1.286 with a plugin registered from a local folder, which is how claude-tpm is
+installed.
+
+| What you changed | Live already? | What to do |
+|---|---|---|
+| A script (`tools/*.js`, `bin/tpm`) | Yes, the next time it runs | Nothing. |
+| A file a skill tells Claude to read (the `modes-*.md` files, methodology docs) | Yes, on the next read | Nothing. If Claude says the file is unchanged since its last read, ask it to read it again. |
+| A `SKILL.md` | No, the session keeps the old text | `/reload-skills` (or `/reload-plugins`). |
+| A new skill folder | No, it isn't listed | `/reload-skills` (or `/reload-plugins`). |
+| `hooks/hooks.json`, or what the SessionStart hook writes | No | Start a new session (exit and relaunch, or `/clear`). `/reload-plugins` re-reads the hook list, but a SessionStart change only shows at the next session start. |
+| `plugin.json` or `marketplace.json` | Not tested | Restart to be safe. |
+| You moved or renamed the claude-tpm folder | The plugin stops loading (Claude Code calls this "cache-miss") | Move it back, or run `npx tpm install <project>` from the new location. See [INSTALL.md](INSTALL.md#if-you-move-the-folder). |
+
+The short version: edited a skill, run `/reload-skills`. Edited a hook, start a new session. Edited a
+script, nothing, it is already live.
+
+**Claude says `npx tpm` fetched a strange package.** Inside a Claude session the commands are bare `tpm …`.
+`npx tpm` only works in a project that has claude-tpm in its own `node_modules`; anywhere else npx downloads
+an unrelated package named `tpm` from the npm registry and runs it. In a Claude session use `tpm …`. In
+your own shell, run `npx tpm …` inside an installed project. To see which one you have, run `npx tpm home`
+in the project and check that the folder it prints is THIS project's copy (or the central folder you installed
+from), not merely some claude-tpm folder.
+
+There is a second hazard. If the project has no local `node_modules/.bin/tpm`, `npx tpm` walks UP the folder tree
+and runs the first `node_modules/.bin/tpm` it finds in a parent folder (for example, an older claude-tpm installed
+above the project). Only if no parent has one does npx fetch the unrelated registry package. So a parent folder's
+copy can run silently instead of yours; `npx tpm home` shows which one you got.
+
+**Not sure the install is healthy?** Run `npx tpm doctor .`. See [INSTALL.md](INSTALL.md#check-it-with-the-doctor).
+
+---
+
 ## Caveats & gotchas
 
 - **`claude-tpm` rides entirely on the Claude Code CLI.** It *is* a Claude Code plugin — no `claude` on
   your PATH means nothing to plug into.
 - **It grafts onto an existing project; it won't create one.** You need a repo with a `package.json`
   first (`npm init -y` if you don't have one).
-- **v0.1.0, Mac-first, works-on-my-machine.** No pinned minimum Node version and no cross-platform test
+- **Pre-1.0, Mac-first, works-on-my-machine.** No pinned minimum Node version and no cross-platform test
   pass yet. It's distributed from GitHub only, not the public npm registry.
 - **The orchestrator never spawns a round on its own.** Every kickoff is behind the two-gate rule; the
   argument you pass is the spec, never the sign-off.

@@ -35,22 +35,22 @@ add → [ OPEN #N ] ──start──▶ in-progress   (stays in task-index.md; 
 
 ## `finish`
 
-`npx tpm task finish <id> --action "<what was done>"`. The `--action` text is required (it becomes the
+`tpm task finish <id> --action "<what was done>"`. The `--action` text is required (it becomes the
 `End action:` line) — draft a one-line "what was actually done / where it shipped" from the user's
 words. Confirm the id + headline first unless `autoConfirm.finish` is true.
 
 ## `drop`
 
-`npx tpm task drop <id> --reason "<why>"`. Stamps `dropped` + `End action: WON'T DO — <reason>`. Draft the
+`tpm task drop <id> --reason "<why>"`. Stamps `dropped` + `End action: WON'T DO — <reason>`. Draft the
 reason from the user. Confirm unless `autoConfirm.drop` is true.
 
 ## `remove` — non-destructive by default
 
-- **Default (`npx tpm task remove <id>`)** moves the task to the removed stash — say *"stashed to removed,
+- **Default (`tpm task remove <id>`)** moves the task to the removed stash — say *"stashed to removed,
   recoverable via `reopen`."* This is the safe default; prefer it.
 - **Hard delete (`--hard`)** only when the user EXPLICITLY says not to stash / to delete permanently.
   First warn, verbatim intent: *"This permanently deletes #<id> with NO stash — unrecoverable. Confirm?"*
-  Only on an explicit yes call `npx tpm task remove <id> --hard`. Hard delete is **always** confirmed,
+  Only on an explicit yes call `tpm task remove <id> --hard`. Hard delete is **always** confirmed,
   regardless of any `autoConfirm`. It is also **config-gated and OFF by default**: the tool purges only
   when `tasks.allowHardDelete: true` — otherwise it **refuses (exit 1), names the key, and touches
   nothing** (relay that). So on a default-config project `--hard` is unavailable; soft `remove` (stash)
@@ -58,7 +58,7 @@ reason from the user. Confirm unless `autoConfirm.drop` is true.
 
 ## `reopen`
 
-`npx tpm task reopen <id>`. Any ended/removed task → back to `open` (keeps its Created date; strips the now
+`tpm task reopen <id>`. Any ended/removed task → back to `open` (keeps its Created date; strips the now
 -stale `Ended:` / `End action:` lines; stamps `Reopened:` as history — G4). Reopening an already-active
 task is a no-op notice. Use `reopen` before re-`finish`/`start`/`drop` on a task the tool refused as a
 nonsensical transition.

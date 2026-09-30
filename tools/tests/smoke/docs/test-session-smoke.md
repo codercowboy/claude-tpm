@@ -12,8 +12,8 @@ The consumer's session store is already configured. Resolve it and reuse it on e
 SESSIONS_DIR="$(npx tpm session config --sessions-dir)"
 ```
 
-Every `npx tpm session …` verb needs `--sessions-dir "$SESSIONS_DIR"` — the tool never defaults to a live
-store. If `session config --sessions-dir` prints nothing or errors, that is an immediate **FAIL** (record
+Every `npx tpm session …` verb here passes `--sessions-dir "$SESSIONS_DIR"` as an explicit override (the flag is
+optional; the store is otherwise resolved from the project root via `TPM_PROJECT_ROOT` or the walk-up). If `session config --sessions-dir` prints nothing or errors, that is an immediate **FAIL** (record
 it and stop — the store is not configured).
 
 ## Steps

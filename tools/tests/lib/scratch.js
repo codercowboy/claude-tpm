@@ -3,21 +3,24 @@
 /**
  * tools/tests/lib/scratch.js — the ONE place tools tests get throwaway scratch directories.
  *
- * Every tools test writes its throwaway output under  <bundle>/tmp/scratch/<run-slug>/  — a single,
- * git-ignored, easy-to-nuke location. NOT os.tmpdir() (keeps all run output together, inside the repo,
- * for inspection) and NOT inside tools/ (so it never pollutes the repo tree or an `npm pack`).
+ * Every tools test writes its throwaway output under  <os.tmpdir()>/tpm-tests/<run-slug>/  — one
+ * easy-to-nuke location OUTSIDE the bundle. (It used to live at <bundle>/tmp/scratch/, but that made the
+ * bundle itself grow by hundreds of MB per few runs, which every bundle-copying / hashing test then had to
+ * walk — the install suite got slower with every run.) Never inside the bundle, so it can't pollute the repo
+ * tree, an `npm pack`, or a bundle copy.
  *
  * ONE slug PER RUN. A run-all calls ensureRunSlug() before spawning its child suites, so every child
  * inherits the same TPM_TEST_RUN env var → all suites in one `npm test` land under ONE
  * tests-run-<slug>/ folder. A standalone `node …/some/test.js` invents its own slug. Nothing is
  * auto-deleted — each run is an isolated, uniquely-named folder you can inspect, then nuke
- * `tmp/scratch/` (or `tmp/`) wholesale whenever.
+ * the OS temp dir's `tpm-tests/` wholesale whenever.
  *
  * This is shared TEST infrastructure, deliberately requ­ired across suites. The tool-conventions
  * self-containment rule is about the TOOLS a consumer copies suite-by-suite — not the tests, which are
  * never copied. Keeping this in one file avoids the copy-drift the workflow test tools just suffered.
  */
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const BUNDLE_MARKER = '@codercowboy/claude-tpm';
@@ -48,9 +51,9 @@ function ensureRunSlug() {
   return process.env.TPM_TEST_RUN;
 }
 
-/** <bundle>/tmp/scratch/<run-slug>/ — created on demand. */
+/** <os.tmpdir()>/tpm-tests/<run-slug>/ — created on demand (outside the bundle). */
 function scratchRoot() {
-  const root = path.join(bundleRoot(), 'tmp', 'scratch', ensureRunSlug());
+  const root = path.join(os.tmpdir(), 'tpm-tests', ensureRunSlug());
   fs.mkdirSync(root, { recursive: true });
   return root;
 }

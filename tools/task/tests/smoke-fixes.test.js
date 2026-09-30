@@ -3,7 +3,7 @@
  * smoke-fixes.test.js — pins the Stage-D first-run smoke UX fixes for the TASK suite.
  *
  * Covers:
- *   F2 — `task show`'s history hint is a FULLY RUNNABLE command (npx tpm … --tasks-dir "<dir>").
+ *   F2 — `task show`'s history hint is a FULLY RUNNABLE command (tpm … --tasks-dir "<dir>").
  *   F3 — a required-arg (or any) error prints the `tpm-task:` prefix EXACTLY ONCE (never doubled).
  *   F4 — `--tasks-dir` is OPTIONAL: flag > local project config.json > FAIL LOUD (never a live default).
  *   F5 — `add-subtask` / `check` accept the subtask key as a POSITIONAL and as `--key`.
@@ -43,17 +43,17 @@ function scratchProject(rel) {
 }
 
 // ── F2 ────────────────────────────────────────────────────────────────────────────
-test('F2: task show history hint is fully runnable (npx tpm … --tasks-dir "<dir>")', () => {
+test('F2: task show history hint is fully runnable (tpm … --tasks-dir "<dir>")', () => {
   const rec = model.openTask({ headline: 'h', tasksDir: scratch('tpm-f2-') });
   rec.history = [{ at: '2026-09-19T09:00:00-07:00', op: 'create' }];
   const md = conv.render(rec, { now: '2026-09-19T10:00:00-07:00', tasksDir: '/scratch/x y' });
-  assert.ok(md.includes('see `npx tpm task history ' + rec.id + ' --tasks-dir "/scratch/x y"`._'),
+  assert.ok(md.includes('see `tpm task history ' + rec.id + ' --tasks-dir "/scratch/x y"`._'),
     'inlines the resolved --tasks-dir, quoted');
   // With NO tasksDir (the persisted body) the hint still carries the flag shape (portable placeholder).
   const bare = conv.render(rec, { now: '2026-09-19T10:00:00-07:00' });
-  assert.ok(bare.includes('see `npx tpm task history ' + rec.id + ' --tasks-dir <dir>`._'),
-    'placeholder form still names --tasks-dir + uses npx command-emission');
-  assert.ok(bare.indexOf('see `tpm task history') === -1, 'no bare (non-npx) command emitted');
+  assert.ok(bare.includes('see `tpm task history ' + rec.id + ' --tasks-dir <dir>`._'),
+    'placeholder form still names --tasks-dir + uses bare tpm command-emission');
+  assert.ok(bare.indexOf('npx tpm') === -1 && md.indexOf('npx tpm') === -1, 'no npx form emitted (bare tpm only)');
 });
 
 // ── F3 ────────────────────────────────────────────────────────────────────────────
@@ -100,6 +100,7 @@ test('F4: CLI works with NO --tasks-dir inside a project, and FAILS LOUD outside
   const fail = run(['list'], { cwd: bare });
   assert.strictEqual(fail.status, 1, 'no flag + no project fails loud (exit 1)');
   assert.ok(/--tasks-dir is required/.test(fail.stderr), 'names the flag in the loud error');
+  assert.ok(/claude-tpm plugin, run `npx tpm install \.` here to set it up/.test(fail.stderr), 'refusal also points a plugin user at `npx tpm install .`');
 });
 
 test('F4: the explicit --tasks-dir flag still overrides (existing tests\' path stays green)', () => {

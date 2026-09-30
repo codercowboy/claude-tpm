@@ -1,5 +1,9 @@
 # `tpm-session-migrate.js` — opt-in old→new session migrator (`#1114.C`)
 
+> Commands below use bare `tpm` (on `PATH` in a Claude session).
+>
+> Human terminal: outside a Claude session, run the same commands as `npx tpm …` from the project.
+
 Convert-on-demand tool that turns ONE old-format 3-file markdown session (the clean marked
 `session-<NNNN>-{handoff,log,punchlist}.md` shape written by the pre-JSON `tpm-session` tooling —
 sessions **0020 / 0021**-style) into the new canonical `session-<NNNN>.json` envelope.
@@ -20,7 +24,7 @@ Node-invokable, no `bin` (Q5): run via bare `node`. Zero third-party deps.
 ## Usage
 
 ```
-npx tpm session migrate --in <old-session-dir> --out-dir <dir> \
+tpm session migrate --in <old-session-dir> --out-dir <dir> \
     [--number NNNN] [--dry-run] [--emit-md|--no-emit-md] [--force] [--now <iso>]
 ```
 
@@ -41,7 +45,7 @@ No flag has a default path (tool-conventions "no hardcoded paths / no silent def
 ### Example
 
 ```
-npx tpm session migrate \
+tpm session migrate \
   --in  .claude/claude-tpm/sessions/session-0021 \
   --out-dir /tmp/migrated
 # -> /tmp/migrated/session-0021.json  (+ session-0021.md — the .md is emitted by default; --no-emit-md skips it)
