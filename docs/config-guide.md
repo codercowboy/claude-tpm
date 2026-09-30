@@ -31,7 +31,6 @@ behavior is on, where notes live and what the boot/close messages say.
   "notes": {
     "enabled": true,                                // gates ONLY the notes-writing behavior
     "sessionsDir": ".claude/claude-tpm/sessions"      // where session-NNN/ notes + the current-session pointer live.
-                                                       // (This library overrides to "claude-context/sessions".)
   },
   "showTPMOpenMessage":  true,      // show TPM's built-in open MOTD = the menu of ENABLED tpm-* commands
   "showTPMCloseMessage": true,      // show TPM's built-in close sign-off (what happened + notes-saved pointer)

@@ -29,7 +29,11 @@
     "!**/*.test.js"
   ],
   "scripts": {
-    "test": "node tools/tests/run-all.js"
+    "test": "node tools/tests/run-all.js",
+    "stamp": "node tools/build/stamp-manifests.js",
+    "stamp:check": "node tools/build/stamp-manifests.js --check",
+    "version": "npm run stamp",
+    "prepack": "npm run stamp"
   },
   "directories": {
     "doc": "docs"

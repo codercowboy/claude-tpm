@@ -24,7 +24,7 @@ progressive-disclosure shape as `tpm-workflow`'s `modes-*.md` split):
 
 - `npx tpm session config --sessions-dir` — resolves the configured sessions directory
   (`.claude/claude-tpm/config.json` → `session.notes.sessionsDir`; default
-  `.claude/claude-tpm/sessions`, which this library overrides to `claude-context/sessions`). Also
+  `.claude/claude-tpm/sessions`). Also
   `--json` (whole `session` section), `--get <dotted.key>`, and `--modules` (the cross-module ENABLED
   map for the boot MOTD).
 - `npx tpm session current --sessions-dir <dir> [--state|--open|--seal|--next-number]`

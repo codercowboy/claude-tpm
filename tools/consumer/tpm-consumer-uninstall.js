@@ -71,8 +71,44 @@ const readline = require('readline');
 const { spawnSync } = require('child_process');
 
 const TPM_PKG_NAME = '@codercowboy/claude-tpm';
-const MARKETPLACE_NAME = 'claude-tpm-market';
-const PLUGIN_NAME = 'claude-tpm';
+
+// Self-location + version-scoped identity — MUST mirror tpm-consumer-install.js so uninstall targets
+// the SAME marketplace name install registered. The name is READ from this bundle's own
+// .claude-plugin/marketplace.json (version-scoped there, e.g. "claude-tpm-market-0.2.0"), not
+// hardcoded, so a bare-named 0.1.0 bundle and a scoped 0.2.0 bundle each remove their OWN registry
+// citizen instead of one version clobbering the other's global singleton. findBundleRoot walks up
+// for the bundle's own package.json (name === TPM_PKG_NAME) — the neutral marker that survives
+// packaging. Kept self-contained (zero shared imports across tools) per tool-conventions.md.
+function findBundleRoot(startDir) {
+  let dir = path.resolve(startDir);
+  for (;;) {
+    const pkgPath = path.join(dir, 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+        if (pkg && pkg.name === TPM_PKG_NAME) return dir;
+      } catch (_e) { /* not our marker — keep walking up */ }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+function readBundleIdentity() {
+  const fallback = { marketplace: 'claude-tpm-market', plugin: 'claude-tpm' };
+  const bundleRoot = findBundleRoot(__dirname);
+  if (!bundleRoot) return fallback;
+  try {
+    const mp = JSON.parse(fs.readFileSync(path.join(bundleRoot, '.claude-plugin', 'marketplace.json'), 'utf8'));
+    const marketplace = (mp && typeof mp.name === 'string' && mp.name) ? mp.name : fallback.marketplace;
+    const plugin = (mp && Array.isArray(mp.plugins) && mp.plugins[0] && typeof mp.plugins[0].name === 'string' && mp.plugins[0].name)
+      ? mp.plugins[0].name : fallback.plugin;
+    return { marketplace, plugin };
+  } catch (_e) { return fallback; }
+}
+const _ident = readBundleIdentity();
+const MARKETPLACE_NAME = _ident.marketplace;
+const PLUGIN_NAME = _ident.plugin;
 const PLUGIN_ID = `${PLUGIN_NAME}@${MARKETPLACE_NAME}`;
 
 // ── operation-trace (--debug / TPM_DEBUG) + honest spawn-error model ────────────────────────────────
@@ -536,5 +572,6 @@ module.exports = {
   makeDbg, debugEnabled, formatChildExit, classifySpawn, spawnErrorReason, preflightMessage,
   readPackageJson, hasTpmDependency, claudeCliAvailable, marketplaceRegistered, pluginState, parsePluginList,
   parseMarketplaceList, marketplacePointsAt,
+  findBundleRoot, readBundleIdentity,
   TPM_PKG_NAME, MARKETPLACE_NAME, PLUGIN_NAME, PLUGIN_ID,
 };

@@ -1,8 +1,8 @@
 # Session Notes Process
 
 This document defines how Claude keeps continuity across sessions using the configured sessions dir
-(`session.notes.sessionsDir`; default `.claude/claude-tpm/sessions`, which this library overrides to
-`claude-context/sessions`) — and it is a MECHANISM doc, not a set of manual steps: the `tpm-session`
+(`session.notes.sessionsDir`; default `.claude/claude-tpm/sessions`) — and it is a MECHANISM doc, not
+a set of manual steps: the `tpm-session`
 skill + `tools/session/` own the actual work described below. Read this to understand what happens,
 not as instructions to execute by hand.
 

@@ -1,5 +1,5 @@
 {
-  "name": "claude-tpm-market",
+  "name": "claude-tpm-market-0.2.0",
   "owner": { "name": "codercowboy" },
   "plugins": [
     { "name": "claude-tpm", "source": "./", "description": "all claude-tpm skills (tpm-session, tpm-task, tpm-workflow, tpm-spawn, tpm-spawn-team, tpm-reap)" }

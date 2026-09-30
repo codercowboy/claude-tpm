@@ -459,7 +459,7 @@ try{fs.appendFileSync(process.env.NPM_LOG,JSON.stringify(a)+'\\n')}catch(e){}
 if(a[0]==='--version'){process.stdout.write('9.9.9\\n');process.exit(0)}
 if(a[0]==='install'){
   const flag=a[a.length-1];
-  const bucket=flag==='--save'?'dependencies':(flag==='--save-optional'?'optionalDependencies':'dependencies');
+  const bucket=flag==='--save'?'dependencies':(flag==='--save-optional'?'optionalDependencies':(flag==='--save-dev'?'devDependencies':'dependencies'));
   const pj=path.join(process.cwd(),'package.json');
   const pkg=JSON.parse(fs.readFileSync(pj,'utf8'));
   pkg[bucket]=pkg[bucket]||{}; pkg[bucket][process.env.FAKE_PKG]=a[1];
@@ -506,22 +506,23 @@ function runDepStep({ answers, quiet, force, already }) {
   return { status: r.status, out, result, installCalls, pkg };
 }
 
-check('doDependencyStep: interactive OPTIONAL (y / enter / y) → --save-optional, dep in optionalDependencies', () => {
+check('doDependencyStep: interactive DEV (y / enter / y) → --save-dev, dep in devDependencies', () => {
   const r = runDepStep({ answers: 'y\n\ny\n' });
   assert.strictEqual(r.result.ok, true);
-  assert.deepStrictEqual(r.installCalls[0], ['install', 'file:../bundle', '--save-optional']);
-  assert.ok(r.pkg.optionalDependencies && r.pkg.optionalDependencies[TPM_PKG_NAME], 'dep in optionalDependencies');
+  assert.deepStrictEqual(r.installCalls[0], ['install', 'file:../bundle', '--save-dev']);
+  assert.ok(r.pkg.devDependencies && r.pkg.devDependencies[TPM_PKG_NAME], 'dep in devDependencies');
   assert.ok(!r.pkg.dependencies || !r.pkg.dependencies[TPM_PKG_NAME], 'not in dependencies');
+  assert.ok(!r.pkg.optionalDependencies || !r.pkg.optionalDependencies[TPM_PKG_NAME], 'not in optionalDependencies (0.2.0 default moved from optional → dev)');
   assert.ok(/Install .*into this project's package.json via npm\? \(y\/n\)/.test(r.out), 'asks the add-at-all question');
-  assert.ok(/\(1\) regular dependency or \(2\) optional dependency\? \[default 2\]/.test(r.out), 'asks regular vs optional');
-  assert.ok(/About to run: npm install .* --save-optional\. Proceed\? \(y\/n\)/.test(r.out), 'confirms the exact command');
+  assert.ok(/\(1\) regular dependency or \(2\) dev dependency\? \[default 2\]/.test(r.out), 'asks regular vs dev');
+  assert.ok(/About to run: npm install .* --save-dev\. Proceed\? \(y\/n\)/.test(r.out), 'confirms the exact command');
 });
 check('doDependencyStep: interactive REGULAR (y / 1 / y) → --save, dep in dependencies', () => {
   const r = runDepStep({ answers: 'y\n1\ny\n' });
   assert.strictEqual(r.result.ok, true);
   assert.deepStrictEqual(r.installCalls[0], ['install', 'file:../bundle', '--save']);
   assert.ok(r.pkg.dependencies && r.pkg.dependencies[TPM_PKG_NAME], 'dep in dependencies');
-  assert.ok(!r.pkg.optionalDependencies || !r.pkg.optionalDependencies[TPM_PKG_NAME], 'not in optionalDependencies');
+  assert.ok(!r.pkg.devDependencies || !r.pkg.devDependencies[TPM_PKG_NAME], 'not in devDependencies');
 });
 check('doDependencyStep: DECLINE add-at-all (n) → skip, no npm, package.json untouched', () => {
   const r = runDepStep({ answers: 'n\n' });
@@ -538,11 +539,11 @@ check('doDependencyStep: DECLINE the command confirm (y / 2 / n) → clean abort
   assert.strictEqual(r.installCalls.length, 0, 'npm install never runs');
   assert.ok(/declined — stopping/.test(r.out));
 });
-check('doDependencyStep: --quiet → NO prompts, records as OPTIONAL (unchanged headless behavior)', () => {
+check('doDependencyStep: --quiet → NO prompts, records as DEV (headless default: dev bucket)', () => {
   const r = runDepStep({ quiet: true, answers: '' });
   assert.strictEqual(r.result.ok, true);
-  assert.deepStrictEqual(r.installCalls[0], ['install', 'file:../bundle', '--save-optional']);
-  assert.ok(r.pkg.optionalDependencies && r.pkg.optionalDependencies[TPM_PKG_NAME]);
+  assert.deepStrictEqual(r.installCalls[0], ['install', 'file:../bundle', '--save-dev']);
+  assert.ok(r.pkg.devDependencies && r.pkg.devDependencies[TPM_PKG_NAME]);
   assert.ok(!/Install .*via npm\?/.test(r.out), 'quiet mode asks nothing');
 });
 check('doDependencyStep: already declared+present → skip without prompting or running npm', () => {
@@ -650,6 +651,32 @@ check('marker-swap: a fresh install creates the `.claude/claude-tpm/` marker DIR
   assert.ok(fs.existsSync(markerDir), 'the `.claude/claude-tpm/` marker path exists after install');
   assert.ok(fs.statSync(markerDir).isDirectory(),
     'the marker is a DIRECTORY (the install footprint the project-root finder keys off)');
+});
+
+// ── version-scoped marketplace identity (the cross-version registry-collision fix) ──────────────────
+// The marketplace name MUST be version-scoped so two installed versions of claude-tpm don't fight over
+// one global "claude-tpm-market" singleton in ~/.claude/plugins/known_marketplaces.json (last-add-wins
+// → a 0.1.0 project resolving 0.2.0 skills). readBundleIdentity derives it from this bundle's own
+// .claude-plugin/marketplace.json; this locks that (a) it IS derived, not the bare legacy name, and
+// (b) the manifest name stays pinned to package.json's version — the drift a future release could
+// forget (bump the version, leave the marketplace name stale).
+check('version-scope: marketplace name is derived + pinned to this bundle version', () => {
+  const bundleRoot = inst.findBundleRoot(__dirname);
+  assert.ok(bundleRoot, 'the bundle root self-locates');
+  const version = JSON.parse(fs.readFileSync(path.join(bundleRoot, 'package.json'), 'utf8')).version;
+  const ident = inst.readBundleIdentity();
+  assert.strictEqual(ident.marketplace, `claude-tpm-market-${version}`,
+    'marketplace name = claude-tpm-market-<package.json version> (re-scope marketplace.json on a version bump)');
+  assert.strictEqual(inst.MARKETPLACE_NAME, ident.marketplace, 'the module constant uses the derived name');
+  assert.strictEqual(inst.PLUGIN_ID, `claude-tpm@claude-tpm-market-${version}`, 'the plugin id carries the scoped marketplace');
+  assert.notStrictEqual(inst.MARKETPLACE_NAME, 'claude-tpm-market',
+    'NOT the bare legacy singleton name that caused the cross-version collision');
+  // plugin.json version is stamped from the SAME source (Claude keys its cache path
+  // cache/<market>/<plugin>/<version> on it) — pin it too so a bump can't leave it stale.
+  const pluginJson = JSON.parse(fs.readFileSync(path.join(bundleRoot, '.claude-plugin', 'plugin.json'), 'utf8'));
+  assert.strictEqual(pluginJson.version, version, 'plugin.json version = package.json version (npm run stamp)');
+  // the installer's fail-loud stamp guard must PASS for the real (in-sync) bundle.
+  assert.ok(inst.manifestVersionStamp(bundleRoot).ok, 'the install-time version-stamp guard passes for the in-sync bundle');
 });
 
 cleanup();

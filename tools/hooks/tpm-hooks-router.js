@@ -38,6 +38,10 @@ const { spawnSync } = require('child_process');
 // short verb -> the hook script, relative to THIS file's dir. Targets live in their owning suite.
 const VERBS = {
   'gate-spawn': '../workflow/hooks/tpm-workflow-gate-spawn.js',
+  // Back-compat NO-OP: a mixed install (a live 0.1.0 hooks.json wiring this PostToolUse verb, answered
+  // by a 0.2.0 CLI) would otherwise error "unknown verb" on every read. The shim exits 0 and rewrites
+  // nothing. TEMPORARY — drop with the #27.1/#27.2 contamination cleanup. See the shim's header.
+  'expand-tpm-home-content': './tpm-hooks-expand-tpm-home-content-noop.js',
 };
 
 function help() {
@@ -48,6 +52,7 @@ Usage:
 
 Verbs:
   gate-spawn               block a tpm-workflow round spawn without a fresh kickoff  (PreToolUse: Agent|Task)
+  expand-tpm-home-content  back-compat NO-OP for mixed 0.1.0/0.2.0 installs — exits 0, rewrites nothing (temp)
 
   tpm hooks --help, -h
 

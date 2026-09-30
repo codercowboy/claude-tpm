@@ -11,15 +11,15 @@
  *        project identity is the user's call, not this tool's; if missing, print the `npm init -y`
  *        instruction and exit 1), and the `claude` CLI is on PATH.
  *     2. claude-tpm dependency — INTERACTIVE, consent-gated: ask whether to record the dep at all, then
- *        regular (`--save`) vs optional (`--save-optional`, the default), then confirm the exact npm
- *        command before running. Declining the first question skips the dep entirely (marketplace +
- *        plugin steps still run). Skipped as "already done" when the dep is already declared AND present
- *        in node_modules (unless --force). --quiet/-y never prompts: records it as optional (unchanged).
+ *        regular (`--save`) vs dev (`--save-dev`, the default — claude-tpm is dev-time tooling), then
+ *        confirm the exact npm command before running. Declining the first question skips the dep entirely
+ *        (marketplace + plugin steps still run). Skipped as "already done" when the dep is already declared
+ *        AND present in node_modules (unless --force). --quiet/-y never prompts: records it as a dev dep.
  *     3. marketplace — `claude plugin marketplace add ./node_modules/@codercowboy/claude-tpm
  *        --scope project` if not already registered.
- *     4. plugin install — `claude plugin install claude-tpm@claude-tpm-market --scope project`
+ *     4. plugin install — `claude plugin install <plugin>@<marketplace> --scope project`
  *        (installing usually also enables — see step 5).
- *     5. project enablement — `claude plugin enable claude-tpm@claude-tpm-market --scope project`,
+ *     5. project enablement — `claude plugin enable <plugin>@<marketplace> --scope project`,
  *        ONLY if the plugin is installed but currently disabled for this project (step 4 usually
  *        already leaves it enabled).
  *   Deliberately NOT handled here: writing env.TPM_HOME or hooks into any settings.json. The plugin
@@ -84,11 +84,53 @@ const readline = require('readline');
 const { spawnSync } = require('child_process');
 
 const TPM_PKG_NAME = '@codercowboy/claude-tpm';
-const MARKETPLACE_NAME = 'claude-tpm-market';
-const PLUGIN_NAME = 'claude-tpm';
+
+// The marketplace + plugin identity are READ from THIS bundle's own .claude-plugin/marketplace.json
+// (the installer and that manifest ship together in the same version folder, so they can never
+// disagree) rather than hardcoded. The marketplace NAME is version-scoped there
+// (e.g. "claude-tpm-market-0.2.0") — this is the load-bearing fix for the cross-version bug: Claude
+// Code keys marketplaces by NAME in ONE machine-global ~/.claude/plugins/known_marketplaces.json
+// record, so a bare "claude-tpm-market" shared by every version is a last-add-wins singleton. Two
+// projects on different versions then fight over one source path and resolve each other's skills
+// ("my 0.1.0 project is seeing 0.2.0 skills"). A version-scoped name makes each installed version an
+// independent registry citizen; the install-record + cache layers (installed_plugins.json,
+// cache/<market>/<plugin>/<version>) were already version-aware. Falls back to the historical bare
+// name if the manifest is unreadable, so a corrupt bundle degrades rather than crashes.
+function readBundleIdentity() {
+  const fallback = { marketplace: 'claude-tpm-market', plugin: 'claude-tpm' };
+  const bundleRoot = findBundleRoot(__dirname);
+  if (!bundleRoot) return fallback;
+  try {
+    const mp = JSON.parse(fs.readFileSync(path.join(bundleRoot, '.claude-plugin', 'marketplace.json'), 'utf8'));
+    const marketplace = (mp && typeof mp.name === 'string' && mp.name) ? mp.name : fallback.marketplace;
+    const plugin = (mp && Array.isArray(mp.plugins) && mp.plugins[0] && typeof mp.plugins[0].name === 'string' && mp.plugins[0].name)
+      ? mp.plugins[0].name : fallback.plugin;
+    return { marketplace, plugin };
+  } catch (_e) { return fallback; }
+}
+const _ident = readBundleIdentity();
+const MARKETPLACE_NAME = _ident.marketplace;
+const PLUGIN_NAME = _ident.plugin;
 const PLUGIN_ID = `${PLUGIN_NAME}@${MARKETPLACE_NAME}`;
 // Fixed regardless of --from — this is where `npm install` lands the dep in the TARGET's own tree.
 const MARKETPLACE_SOURCE = `./node_modules/${TPM_PKG_NAME}`;
+
+// Fail-loud version-stamp guard. The marketplace NAME must equal `claude-tpm-market-<package.json
+// version>` — that pin is what keeps two installed versions from colliding on one machine-global,
+// last-add-wins marketplace record. `npm version` re-stamps it automatically (tools/build/
+// stamp-manifests.js via the `version` lifecycle), but a HAND-EDITED version bump skips that hook and
+// would silently register a stale, wrong-version name. We REFUSE the install rather than self-heal:
+// this tool never mutates the vendored bundle inside node_modules. Returns { ok, version, expected,
+// actual }. Unreadable/absent version → ok:true (identity already fell back; don't add a 2nd failure
+// mode over a bundle we can't even read a version from).
+function manifestVersionStamp(bundleRoot) {
+  try {
+    const version = JSON.parse(fs.readFileSync(path.join(bundleRoot, 'package.json'), 'utf8')).version;
+    if (!version) return { ok: true };
+    const expected = `claude-tpm-market-${version}`;
+    return { ok: MARKETPLACE_NAME === expected, version, expected, actual: MARKETPLACE_NAME };
+  } catch (_e) { return { ok: true }; }
+}
 
 // ── operation-trace (--debug / TPM_DEBUG) + child-exit formatter ────────────────────────────────────
 // A `set -x`-style trace to STDOUT so an "exit null" run narrates what it did and what every child
@@ -534,12 +576,13 @@ async function doStep(opts, step) {
 // show-command-before-running pattern as doStep:
 //   1) add the dep at all? — a bare `n` SKIPS the dependency step entirely (marketplace + plugin steps
 //      still run; `npx tpm …` just won't resolve locally from this project — a legitimate choice).
-//   2) regular vs optional? — 1 → --save (dependencies); 2 or bare-enter → --save-optional
-//      (optionalDependencies). Default 2 preserves today's behavior + the "won't break the host's own
-//      `npm install` if the bundle is absent" safety.
+//   2) regular vs dev? — 1 → --save (dependencies); 2 or bare-enter → --save-dev (devDependencies).
+//      Default 2 (dev): claude-tpm is dev-time tooling, so it belongs in devDependencies — a production
+//      `npm install --omit=dev` / `npm ci --omit=dev` then skips it (it's never shipped to prod) while a
+//      normal dev `npm install` still materializes it. (0.1.0 recorded it as OPTIONAL; 0.2.0 moves to DEV.)
 //   3) confirm the exact command before running.
-// --quiet / -y (non-interactive) NEVER prompts: it records the dep as OPTIONAL, exactly as the old
-// unconditional `--save-optional` did (keeps all headless/automated installs + test harnesses working).
+// --quiet / -y (non-interactive) NEVER prompts: it records the dep as DEV (--save-dev), the new default —
+// keeps headless/automated installs + test harnesses working, just in the dev bucket instead of optional.
 async function doDependencyStep(opts, step) {
   const { already, describe, targetDir, fromSpec } = step;
   if (already && !opts.force) {
@@ -548,8 +591,8 @@ async function doDependencyStep(opts, step) {
   }
   process.stdout.write(`\n${describe}\n`);
 
-  let saveFlag = '--save-optional';
-  let bucket = 'optionalDependencies';
+  let saveFlag = '--save-dev';
+  let bucket = 'devDependencies';
   if (!opts.quiet) {
     const add = (await ask(`  Install ${TPM_PKG_NAME} into this project's package.json via npm? (y/n) `)).trim().toLowerCase();
     if (add !== 'y' && add !== 'yes') {
@@ -558,7 +601,7 @@ async function doDependencyStep(opts, step) {
       process.stdout.write('           resolve locally from this project — a legitimate choice.)\n');
       return { ok: true, skippedDep: true };
     }
-    const kind = (await ask('  Record it as a (1) regular dependency or (2) optional dependency? [default 2] ')).trim();
+    const kind = (await ask('  Record it as a (1) regular dependency or (2) dev dependency? [default 2] ')).trim();
     if (kind === '1') { saveFlag = '--save'; bucket = 'dependencies'; }
   }
 
@@ -704,6 +747,17 @@ async function runInstall(opts) {
   if (!claudeProbe.ok) {
     process.stderr.write('Step 1/5 — ✗ preflight failed\n');
     process.stderr.write('  error: ' + preflightMessage('claude', claudeProbe, 'install Claude Code first.') + '\n');
+    return 1;
+  }
+  const bundleRoot = findBundleRoot(__dirname);
+  const stampGuard = bundleRoot ? manifestVersionStamp(bundleRoot) : { ok: true };
+  if (!stampGuard.ok) {
+    process.stderr.write('Step 1/5 — ✗ preflight failed\n');
+    process.stderr.write(`  error: stale marketplace name — this bundle's package.json is ${stampGuard.version}, `);
+    process.stderr.write(`but the plugin manifest registers "${stampGuard.actual}" (expected "${stampGuard.expected}").\n`);
+    process.stderr.write('  The version was bumped without re-stamping the manifests. Fix it in the\n');
+    process.stderr.write('  claude-tpm source (`npm run stamp`), re-vendor, and retry — installing as-is would\n');
+    process.stderr.write('  register a wrong-version marketplace that collides with other installed versions.\n');
     return 1;
   }
   const pkg = pkgRead.value;
@@ -878,6 +932,7 @@ if (require.main === module) {
 module.exports = {
   main, runInstall, runCheck, parseArgs, doDependencyStep, closePrompter, findBundleRoot, defaultFromSpec,
   makeDbg, debugEnabled, formatChildExit, classifySpawn, spawnErrorReason, preflightMessage,
+  readBundleIdentity, manifestVersionStamp,
   readPackageJson, hasTpmDependency, nodeModulesHasTpm, claudeCliAvailable, commandAvailable,
   marketplaceRegistered, pluginState, parsePluginList,
   parseMarketplaceList, marketplaceSourceHealth, parsePluginInstallPath, pluginCacheHealth,
