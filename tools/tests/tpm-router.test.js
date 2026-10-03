@@ -168,7 +168,7 @@ function stubTree() {
   fs.copyFileSync(path.join(TOOLS, 'plugin', 'tpm-plugin-router.js'), path.join(root, 'tools', 'plugin', 'tpm-plugin-router.js'));
   const stub = (name) => fs.writeFileSync(path.join(root, 'tools', 'consumer', name),
     `let b='';process.stdin.on('data',d=>b+=d);process.stdin.on('end',()=>{console.log(JSON.stringify({script:${JSON.stringify(name)},argv:process.argv.slice(2),stdin:b}));process.exit(Number(process.env.STUB_EXIT||0));});`);
-  stub('tpm-consumer-install.js'); stub('tpm-consumer-uninstall.js');
+  stub('tpm-consumer-install.js'); stub('tpm-consumer-uninstall.js'); stub('tpm-consumer-doctor.js');
   return path.join(root, 'tools', 'plugin', 'tpm-plugin-router.js');
 }
 function viaStub(args, o) {
@@ -182,9 +182,9 @@ check('routing: install → consumer install script, uninstall → consumer unin
   const b = viaStub(['uninstall', '--system', '.']);
   assert.deepStrictEqual([b.j.script, b.j.argv], ['tpm-consumer-uninstall.js', ['--system', '.']]);
 });
-check('routing: doctor → the INSTALL script with `--check` appended after the user args (read-only)', () => {
-  const r = viaStub(['doctor', '../proj']);
-  assert.deepStrictEqual([r.j.script, r.j.argv], ['tpm-consumer-install.js', ['../proj', '--check']]);
+check('routing: doctor → its OWN script (tpm-consumer-doctor.js), args verbatim, nothing injected (`--check` stays a compat alias inside the doctor)', () => {
+  const r = viaStub(['doctor', '../proj', '--verbose']);
+  assert.deepStrictEqual([r.j.script, r.j.argv], ['tpm-consumer-doctor.js', ['../proj', '--verbose']]);
 });
 check('pass-through: stdin reaches the child (installer prompts) and its exit code propagates (0, 3)', () => {
   const ok = viaStub(['install', '.'], { input: 'y\nsecond line\n' });
@@ -203,9 +203,9 @@ check('end-to-end through `tpm plugin doctor <dir>` with a stub-only-PATH `claud
   const go = (args) => { const r = spawnSync('node', [TPM, ...args], { encoding: 'utf8', env }); return { status: r.status, out: (r.stdout || '') + (r.stderr || '') }; };
   const a = go(['plugin', 'doctor', good]);
   assert.strictEqual(a.status, 1, a.out);
-  assert.ok(/✓ package\.json/.test(a.out) && !/Step 1\/5/.test(a.out), 'ran the doctor, saw the dir: ' + a.out);
+  assert.ok(/✗ package\.json +claude-tpm is not in package\.json/.test(a.out) && !/Step 1\/5/.test(a.out), 'ran the doctor, saw the dir: ' + a.out);
   const b = go(['plugin', 'doctor', bare]);
-  assert.ok(/✗ package\.json/.test(b.out), 'a different dir arg gives a different answer: ' + b.out);
+  assert.ok(/✗ package\.json +not found/.test(b.out), 'a different dir arg gives a different answer: ' + b.out);
   assert.strictEqual(go(['doctor', good]).out, a.out, 'flat `tpm doctor` is identical');
 });
 

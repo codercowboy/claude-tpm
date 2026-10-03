@@ -22,7 +22,7 @@
  * USAGE
  *   tpm plugin install [dir] [options]     # → consumer/tpm-consumer-install.js
  *   tpm plugin uninstall [dir] [options]   # → consumer/tpm-consumer-uninstall.js
- *   tpm plugin doctor [dir]                # → consumer/tpm-consumer-install.js … --check (read-only)
+ *   tpm plugin doctor [dir]                # → consumer/tpm-consumer-doctor.js (read-only)
  *   tpm plugin --help | -h
  *   (In a plain project shell, outside a Claude Code session, run these as `npx tpm plugin …`.)
  */
@@ -36,7 +36,7 @@ const { spawnSync } = require('child_process');
 const VERBS = {
   install: { script: '../consumer/tpm-consumer-install.js', extra: [] },
   uninstall: { script: '../consumer/tpm-consumer-uninstall.js', extra: [] },
-  doctor: { script: '../consumer/tpm-consumer-install.js', extra: ['--check'] }, // read-only = `install --check`
+  doctor: { script: '../consumer/tpm-consumer-doctor.js', extra: [] }, // read-only; its own script (`--check` still accepted as a compat alias)
 };
 
 function help() {
@@ -48,7 +48,7 @@ Usage:
 Verbs:
   install [dir] [options]     set claude-tpm up in a project (marketplace + plugin + dependency)
   uninstall [dir] [options]   reverse it (asks: this project only, or the whole system)
-  doctor [dir]                read-only health check (= install --check)
+  doctor [dir]                read-only health check (--verbose for every row)
 
   tpm plugin --help, -h
 
@@ -72,7 +72,7 @@ function main(argv) {
     return 2;
   }
 
-  // Dumb forward: everything after the verb, plus any fixed trailing args the verb injects (doctor → --check).
+  // Dumb forward: everything after the verb, plus any fixed trailing args the verb injects (none today).
   const tool = path.join(__dirname, spec.script);
   const r = spawnSync('node', [tool, ...args.slice(1), ...spec.extra], { stdio: 'inherit' });
   if (r.error) {

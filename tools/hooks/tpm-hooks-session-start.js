@@ -16,10 +16,18 @@
  *   TPM_HOME         = realpath($CLAUDE_PLUGIN_ROOT)  (informational; skipped if already set)
  *   NOT PATH — Claude Code already puts the plugin's bin/ on PATH.
  *
+ * THE LIGHT HEALTH CHECK (installer-updates phase 03; design §9.1/§9.2, voice §7)
+ *   After the exports, the hook runs the LIGHT doctor: `observe(project, null, env, {probes:false})` — file-only, NO `claude`
+ *   spawn — and `V.hookMessage(state)` (tpm-consumer-voice.js). Healthy => NOTHING is printed (zero tokens on a normal
+ *   start). Unhealthy => at most 3 problems as ONE `[claude-tpm]` line addressed to Claude (stdout of a SessionStart hook
+ *   becomes context), which tells Claude to report them and NOT to repair anything. Fires on every `source` (startup /
+ *   resume / clear / compact). Gate (D-2): `hygiene.healthCheck.enabled` in .claude/claude-tpm/config.json, default ON;
+ *   `false` => silent. A folder with no package.json is not a project the installer manages => silent. There is no full doctor in a hook (D-1) and no `autoRunFullDoctor` key.
+ *
  * CONTRACT
- *   - FAIL-OPEN + SILENT: any problem -> exit 0, NOTHING on stdout (stdout of a SessionStart hook may
- *     become model context). A missing CLAUDE_ENV_FILE is a no-op; a missing CLAUDE_PROJECT_DIR /
- *     CLAUDE_PLUGIN_ROOT skips only that line.
+ *   - FAIL-OPEN: any problem -> exit 0. stdout stays EMPTY except for the one health line above (stdout of a SessionStart
+ *     hook may become model context). Each part (env exports, health check) is isolated: a throw in one never costs the
+ *     other. A missing CLAUDE_ENV_FILE is a no-op; a missing CLAUDE_PROJECT_DIR / CLAUDE_PLUGIN_ROOT skips only that line.
  *   - Values are single-quoted (embedded ' escaped as '\''), so spaces, $, backticks round-trip
  *     through `source`.
  *   - IDEMPOTENT: the hook fires on startup/compact/clear/resume and appends to the same file; a line
@@ -32,6 +40,7 @@
 'use strict';
 
 const fs = require('fs');
+const path = require('path');
 
 function shQuote(v) {
   return "'" + String(v).replace(/'/g, "'\\''") + "'";
@@ -68,12 +77,46 @@ function run(env) {
   fs.appendFileSync(file, prefix + missing.join('\n') + '\n');
 }
 
+// ── the light health check ────────────────────────────────────────────────────────────────────────────────
+
+/** `hygiene.healthCheck.enabled` from the project's config.json: default ON; only an explicit `false` turns it off. */
+function healthCheckEnabled(projectDir) {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(path.join(projectDir, '.claude', 'claude-tpm', 'config.json'), 'utf8'));
+    const hc = cfg && cfg.hygiene && cfg.hygiene.healthCheck;
+    return !(hc && hc.enabled === false);
+  } catch (_e) { return true; } // absent / unparseable config => the default (on)
+}
+
+/**
+ * The text the hook prints: '' when healthy, gated off, not in a project, or on ANY error (fail-open).
+ * `deps` (tests) = { observe, hookMessage } overrides.
+ */
+function healthMessage(env, deps) {
+  try {
+    const projectDir = env.CLAUDE_PROJECT_DIR || env.TPM_PROJECT_ROOT;
+    if (!nonEmpty(projectDir)) return '';
+    if (!healthCheckEnabled(projectDir)) return '';
+    const d = deps || {};
+    const observe = d.observe || require('../consumer/tpm-consumer-observe').observe;
+    const hookMessage = d.hookMessage || require('../consumer/tpm-consumer-voice').hookMessage;
+    const state = observe(projectDir, null, env, { probes: false });
+    // not a project `tpm install` could fix (no folder / no package.json: the installer refuses those) => nothing actionable to say
+    if (!state || !state.target || !state.target.exists || !state.target.pkg || !state.target.pkg.exists) return '';
+    return String(hookMessage(state) || '');
+  } catch (_e) { return ''; }
+}
+
 function main() {
   try { fs.readFileSync(0); } catch (_e) { /* drain stdin; ignore */ }
   try { run(process.env); } catch (_e) { /* fail-open */ }
+  try {
+    const msg = healthMessage(process.env);
+    if (msg) process.stdout.write(msg + '\n');
+  } catch (_e) { /* fail-open */ }
   process.exit(0);
 }
 
 if (require.main === module) main();
 
-module.exports = { shQuote, computeLines, run };
+module.exports = { shQuote, computeLines, run, healthMessage, healthCheckEnabled };

@@ -1,14 +1,23 @@
 #!/usr/bin/env node
 /**
- * test.js — unit test for tpm-consumer-install.js. Zero-dep (node `assert`), no `claude`/`npm`
- * spawned: every case drives the tool's exported PURE helpers directly, or (for the arg flag-guard's
- * process.exit path) spawns the tool as a child and asserts the exit code. Temp fixture dirs live under
- * os.tmpdir() and are cleaned up.
+ * test.js — the `tpm install` STATE RECONCILER (phase 02 of the installer-updates epic).
  *
- * Covers the fix-queue behaviors + the verifier's flagged risk areas:
- *   - parsePluginList (fix b) — the JSON→state mapping spun out of pluginState (THE PRIORITY)
- *   - parseArgs flag-guard (fix c) — --dir/--from reject a missing value or a "-"-leading value (exit 2)
- *   - hasTpmDependency, findBundleRoot (fix d), nodeModulesHasTpm (fix i), readPackageJson
+ * Covers design §13.2–13.6 against the shared observer + voice (imported, never copied):
+ *   §13.2  one scenario per row of the §7 matrix (24 rows): the diagnosis LABEL, the exact ORDERED plan (action ids
+ *          + rendered prose + `$` commands), the fake-CLI calls made under apply, the post-state, the exit code.
+ *   §13.3  consent: decline at `Proceed?` and at the menu → zero mutating calls, zero file writes, `Nothing was changed.`
+ *   §13.4  failure: fake CLI fails on action N → ✓ for 1..N-1, ✗ + stderr for N, `Stopped after N of M`, exit 1, and
+ *          the NEXT run plans exactly the remainder (resumable); a "ran but did not take effect" verify failure too.
+ *   §13.5  voice: every output of every run is checked against the never-print list by a STRICTER check than voice's
+ *          own (see strictNeverPrint) — closes phase-01 concern #2.
+ *   §13.6  probe count: a healthy run makes exactly 3 `claude` calls, AND memoization is genuinely guarded (a probe
+ *          called twice → ONE spawn; goes red if the memo is disabled) — closes phase-01 concern #1.
+ *   flags  §8: --plan --quiet --save --from --repoint --share --debug; --force / -y gone; unknown token → exit 2.
+ *
+ * Hermetic: the STATEFUL fake `claude` (tests/fake-claude-stateful.js) and a stateful fake `npm` (fake-npm-stateful.js)
+ * are first on PATH in a scratch world (HOME/CLAUDE_CONFIG_DIR in scratch); `assertHermetic` proves neither real binary
+ * is reachable. The pipeline runs IN-PROCESS (runInstall(opts, io) with scripted answers); a few cases spawn the CLI
+ * to prove the wiring and exit codes.
  *
  * Usage: node tools/consumer/tests/tpm-consumer-install/test.js   → exit 0 all pass, 1 otherwise.
  */
@@ -16,1217 +25,858 @@
 
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-
-const { mkScratch } = require('../../../tests/lib/scratch'); // shared: <bundle>/tmp/scratch/<run-slug>/
+const W = require('../lib-observe-world');
+const O = require('../../tpm-consumer-observe');
+const V = require('../../tpm-consumer-voice');
 
 const TOOL = path.resolve(__dirname, '..', '..', 'tpm-consumer-install.js');
 const inst = require(TOOL);
-const uninst = require(path.resolve(path.dirname(TOOL), 'tpm-consumer-uninstall.js'));
-const { PLUGIN_ID, TPM_PKG_NAME } = inst;
+const FAKE_NPM = path.resolve(__dirname, 'fake-npm-stateful.js');
 
+// Scratch lives under a long os.tmpdir() path; the voice shortens paths under $HOME to `~/…` (and wraps >100 cols), so
+// point THIS process's HOME at the scratch run dir: every fixture path then prints as `~/pj-xxxx/proj`, like a real
+// user's. (The fake-claude/npm worlds carry their own HOME in env; this only affects voice's tilde().)
+Object.assign(process.env, { HOME: path.dirname(W.mk('home-root')) }); // (a write to a scratch dir, never a read of the real home)
+
+const NAME = 'claude-tpm-market-0.2.0-dev';
+const ID = `claude-tpm@${NAME}`;
+const OLD_ID = 'claude-tpm@claude-tpm-market'; // 0.1.0's bare id
+const T = (p) => V.tilde(p);
+
+// ── tiny runner (async-aware; sequential) ─────────────────────────────────────────────────────────────
+const tests = [];
+function test(name, fn) { tests.push([name, fn]); }
 let pass = 0; let fail = 0;
-function check(name, fn) {
-  try { fn(); process.stdout.write(`  ✓ ${name}\n`); pass += 1; }
-  catch (e) { process.stdout.write(`  ✗ ${name}\n      ${e.message}\n`); fail += 1; }
+
+// ── fixtures ─────────────────────────────────────────────────────────────────────────────────────────
+function mkWorld(o) {
+  const w = W.world(o);
+  fs.copyFileSync(FAKE_NPM, path.join(w.work, 'npm')); fs.chmodSync(path.join(w.work, 'npm'), 0o755);
+  w.env.NPM_LOG = path.join(w.work, 'npm.jsonl');
+  if (!(o && o.noClaude)) W.assertHermetic(w);
+  w.npmCalls = () => { try { return fs.readFileSync(w.env.NPM_LOG, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((c) => c.argv[0] === 'install'); } catch (_e) { return []; } };
+  return w;
+}
+const row = (p, name) => ({ name: name || NAME, source: 'directory', path: p });
+const rec = (dir, installPath, o) => Object.assign({ id: ID, version: '0.0.0', scope: 'project', enabled: true, installPath, projectPath: dir }, o || {});
+const on = (...ids) => ({ enabledPlugins: Object.fromEntries(ids.map((i) => [i, true])) });
+const DEADDIR = () => path.join(W.mk('gone'), 'claude-tpm-folder'); // never created
+const isMut = (c) => (c.argv[1] === 'marketplace' && (c.argv[2] === 'add' || c.argv[2] === 'remove')) || ['install', 'enable', 'disable', 'uninstall'].indexOf(c.argv[1]) >= 0;
+
+/** Every file under dir → {rel: sha-ish (size+content)} so "zero file writes" can be asserted. */
+function snapshot(dir) {
+  const out = {};
+  (function walk(d, rel) {
+    fs.readdirSync(d).sort().forEach((n) => {
+      const p = path.join(d, n); const r = rel ? rel + '/' + n : n; const st = fs.lstatSync(p);
+      if (st.isSymbolicLink()) out[r] = 'link:' + fs.readlinkSync(p);
+      else if (st.isDirectory()) { out[r + '/'] = 'dir'; walk(p, r); } else out[r] = fs.readFileSync(p, 'utf8');
+    });
+  })(dir, '');
+  return out;
 }
 
-// Run `fn` while capturing process.stderr.write output; returns { ret, warned }.
-function captureStderr(fn) {
-  const orig = process.stderr.write;
-  let buf = '';
-  process.stderr.write = (chunk) => { buf += chunk; return true; };
-  try { const ret = fn(); return { ret, warned: buf }; }
-  finally { process.stderr.write = orig; }
+// ── never-print: the STRICT check (phase-01 concern #2) ───────────────────────────────────────────────
+// Voice's own findNeverPrint exempts ANY backticked span that starts with claude|npm|npx|tpm|node, so banned prose
+// inside such a span would hide. This stricter check exempts a backticked span only when EVERY token is in a closed
+// command vocabulary (or a path/spec/flag), `$ command` lines, the file name hooks/hooks.json, and — under a ✗ line —
+// the child's own stderr, which is shown verbatim by design (voice §5) and is not our prose.
+const CMD_TOKENS = new Set(['claude', 'npm', 'npx', 'tpm', 'node', 'plugin', 'marketplace', 'add', 'remove', 'list', 'install', 'enable', 'disable', 'uninstall', 'init', '--version', 'doctor', '-y', '.']);
+function isCommandSpan(span) {
+  const toks = span.trim().split(/\s+/);
+  if (['claude', 'npm', 'npx', 'tpm', 'node'].indexOf(toks[0]) < 0) return false;
+  return toks.every((t) => CMD_TOKENS.has(t) || /^--[a-z-]+$/.test(t) || /^(file:|\.{1,2}\/|\/|~)\S*$/.test(t));
 }
-
-// Fixtures live under <bundle>/tmp/scratch/<run-slug>/ (shared helper) — one isolated, git-ignored
-// folder per run, left in place for inspection. Nuke tmp/scratch/ wholesale when you want.
-function mkTmp() { return mkScratch('tpm-install-test'); }
-function cleanup() { /* no-op: per-run scratch persists for inspection; tmp/ is git-ignored */ }
-
-process.stdout.write('tpm-consumer-install.test.js\n');
-
-// ── parsePluginList (fix b) — JSON→state mapping ────────────────────────────────────────────────────
-check('parsePluginList: enabled:true entry (project scope) → {installed:true, enabled:true}', () => {
-  assert.deepStrictEqual(inst.parsePluginList([{ id: PLUGIN_ID, scope: 'project', enabled: true }]),
-    { installed: true, enabled: true });
-});
-check('parsePluginList: enabled:false entry → {installed:true, enabled:false}', () => {
-  assert.deepStrictEqual(inst.parsePluginList([{ id: PLUGIN_ID, scope: 'project', enabled: false }]),
-    { installed: true, enabled: false });
-});
-check('parsePluginList: no matching entry (different id) → not installed', () => {
-  assert.deepStrictEqual(inst.parsePluginList([{ id: 'other@market', enabled: true }]),
-    { installed: false, enabled: false });
-});
-check('parsePluginList: empty array → not installed', () => {
-  assert.deepStrictEqual(inst.parsePluginList([]), { installed: false, enabled: false });
-});
-check('parsePluginList: null (CLI unavailable / non-JSON) → not installed, no warn', () => {
-  const { ret, warned } = captureStderr(() => inst.parsePluginList(null));
-  assert.deepStrictEqual(ret, { installed: false, enabled: false });
-  assert.strictEqual(warned, '', 'null is the quiet CLI-unavailable path, not a schema-drift warn');
-});
-check('parsePluginList: non-array output → warn + fallback not-installed', () => {
-  const { ret, warned } = captureStderr(() => inst.parsePluginList({ not: 'an array' }));
-  assert.deepStrictEqual(ret, { installed: false, enabled: false });
-  assert.ok(/JSON array/i.test(warned), 'warns about non-array output');
-});
-check('parsePluginList: non-empty entries all missing `id` → warn + fallback not-installed', () => {
-  const { ret, warned } = captureStderr(() => inst.parsePluginList([{ enabled: true }, { foo: 1 }]));
-  assert.deepStrictEqual(ret, { installed: false, enabled: false });
-  assert.ok(/id/i.test(warned), 'warns about missing id field');
-});
-check('parsePluginList: matched entry missing boolean `enabled` → installed+enabled + warn', () => {
-  const { ret, warned } = captureStderr(() => inst.parsePluginList([{ id: PLUGIN_ID, scope: 'project' }]));
-  assert.deepStrictEqual(ret, { installed: true, enabled: true });
-  assert.ok(/enabled/i.test(warned), 'warns about missing boolean enabled');
-});
-check('parsePluginList: only a user-scoped entry → not installed (project-scoped lookup)', () => {
-  assert.deepStrictEqual(inst.parsePluginList([{ id: PLUGIN_ID, scope: 'user', enabled: true }]),
-    { installed: false, enabled: false });
-});
-check('parsePluginList: scope absent (undefined) → still matched', () => {
-  assert.deepStrictEqual(inst.parsePluginList([{ id: PLUGIN_ID, enabled: true }]),
-    { installed: true, enabled: true });
-});
-// VERIFIED live shape (claude 2.1.270) — a DISABLED project-scope entry carries every field and
-// `enabled: false` (this is the schema that closed the old KNOWN LIMITATION about the disabled shape).
-check('parsePluginList: full live disabled project-scope shape → {installed:true, enabled:false}', () => {
-  assert.deepStrictEqual(inst.parsePluginList([{
-    id: PLUGIN_ID, version: '0.1.0', scope: 'project', enabled: false,
-    installPath: '/Users/x/.claude/plugins/cache/claude-tpm-market/claude-tpm/0.1.0',
-    installedAt: '2026-09-14T20:11:54.268Z', lastUpdated: '2026-09-14T20:11:54.268Z',
-    projectPath: '/some/consumer',
-  }]), { installed: true, enabled: false });
-});
-// A manual `--scope local` install (as the session-015 version-skew rig used) reports scope:"local" —
-// NOT what install.js manages (it always uses --scope project), so it must NOT be matched.
-check('parsePluginList: a local-scope entry is NOT matched (install.js manages project scope only)', () => {
-  assert.deepStrictEqual(inst.parsePluginList([{ id: PLUGIN_ID, scope: 'local', enabled: false }]),
-    { installed: false, enabled: false });
-});
-
-// ── parseMarketplaceList — the "marketplace registered but points at the wrong place" shape ────────────
-// VERIFIED live shape (claude 2.1.272): array of { name, source, path?, repo?, installLocation }.
-// marketplaceSourceHealth (the reader) then fs.existsSync()-checks a directory source's `path`; the
-// registered-but-source-gone case (dead-source) is the failure this guards. Pure mapping tested here.
-const MK = inst.MARKETPLACE_NAME;
-check('parseMarketplaceList: directory-source entry → {registered, source:"directory", path}', () => {
-  assert.deepStrictEqual(
-    inst.parseMarketplaceList([{ name: MK, source: 'directory', path: '/some/dir', installLocation: '/some/dir' }]),
-    { registered: true, source: 'directory', path: '/some/dir' });
-});
-check('parseMarketplaceList: github-source entry → registered, no local path', () => {
-  assert.deepStrictEqual(
-    inst.parseMarketplaceList([{ name: MK, source: 'github', repo: 'owner/repo', installLocation: '/cache' }]),
-    { registered: true, source: 'github', path: null });
-});
-check('parseMarketplaceList: our market absent (only others) → not registered', () => {
-  assert.deepStrictEqual(
-    inst.parseMarketplaceList([{ name: 'claude-plugins-official', source: 'github', repo: 'a/b' }]),
-    { registered: false, source: null, path: null });
-});
-check('parseMarketplaceList: null / non-array → not registered', () => {
-  assert.deepStrictEqual(inst.parseMarketplaceList(null), { registered: false, source: null, path: null });
-  assert.deepStrictEqual(inst.parseMarketplaceList({ nope: 1 }), { registered: false, source: null, path: null });
-});
-
-// ── parsePluginInstallPath — the "plugin version registered but it's not there" (cache-miss) shape ─────
-// The installed RECORD carries installPath (its cache dir); pluginCacheHealth (the reader) fs.existsSync()-
-// checks it — a record whose cache dir is gone is the cache-miss failure. Pure extraction tested here.
-check('parsePluginInstallPath: our project-scope entry → its installPath', () => {
-  assert.strictEqual(
-    inst.parsePluginInstallPath([{ id: PLUGIN_ID, scope: 'project', installPath: '/cache/x/0.1.0' }]),
-    '/cache/x/0.1.0');
-});
-check('parsePluginInstallPath: entry present but no installPath field → null', () => {
-  assert.strictEqual(inst.parsePluginInstallPath([{ id: PLUGIN_ID, scope: 'project' }]), null);
-});
-check('parsePluginInstallPath: a local-scope entry is NOT matched → null', () => {
-  assert.strictEqual(inst.parsePluginInstallPath([{ id: PLUGIN_ID, scope: 'local', installPath: '/c' }]), null);
-});
-check('parsePluginInstallPath: no matching id / null → null', () => {
-  assert.strictEqual(inst.parsePluginInstallPath([{ id: 'other@m', installPath: '/c' }]), null);
-  assert.strictEqual(inst.parsePluginInstallPath(null), null);
-});
-
-// ── parseArgs flag-guard (fix c) ────────────────────────────────────────────────────────────────────
-// Happy paths run in-process (no exit). Reject paths call process.exit(2), so exercise them via a child.
-function runTool(args) {
-  const r = spawnSync('node', [TOOL, ...args], { encoding: 'utf8' });
-  return { status: r.status, out: (r.stdout || '') + (r.stderr || '') };
-}
-check('parseArgs: positional dir', () => {
-  assert.strictEqual(inst.parseArgs(['../proj']).dir, '../proj');
-});
-check('parseArgs: --dir + --from flags parse', () => {
-  const a = inst.parseArgs(['--dir', '../p', '--from', 'file:../claude-tpm']);
-  assert.strictEqual(a.dir, '../p');
-  assert.strictEqual(a.from, 'file:../claude-tpm');
-});
-check('parseArgs: no args → dir defaults to cwd', () => {
-  assert.strictEqual(inst.parseArgs([]).dir, process.cwd());
-});
-check('flag-guard: `--from` with no value → exit 2', () => {
-  assert.strictEqual(runTool(['--from']).status, 2);
-});
-check('flag-guard: `--from -x` (value starts with `-`) → exit 2', () => {
-  assert.strictEqual(runTool(['--from', '-x']).status, 2);
-});
-check('flag-guard: `--dir` with no value → exit 2', () => {
-  assert.strictEqual(runTool(['--dir']).status, 2);
-});
-check('flag-guard: `--dir --from ...` (--dir swallows a flag) → exit 2', () => {
-  assert.strictEqual(runTool(['--dir', '--from', 'file:x']).status, 2);
-});
-
-// ── --debug operation-trace flag + formatChildExit (the instrumentation rows) ─────────────────────────
-check('parseArgs: --debug sets opts.debug (default false, order-independent)', () => {
-  assert.strictEqual(inst.parseArgs(['--debug']).debug, true);
-  assert.strictEqual(inst.parseArgs([]).debug, false);
-  assert.strictEqual(inst.parseArgs(['../proj', '--debug', '--quiet']).debug, true);
-});
-check('debugEnabled: true from opts.debug OR a non-empty TPM_DEBUG env', () => {
-  assert.strictEqual(inst.debugEnabled({ debug: true }), true);
-  const saved = process.env.TPM_DEBUG;
-  delete process.env.TPM_DEBUG;
-  assert.strictEqual(inst.debugEnabled({ debug: false }), false);
-  process.env.TPM_DEBUG = '1';
-  assert.strictEqual(inst.debugEnabled({ debug: false }), true);
-  if (saved === undefined) delete process.env.TPM_DEBUG; else process.env.TPM_DEBUG = saved;
-});
-check('formatChildExit: status 0 → "ok"', () => {
-  assert.strictEqual(inst.formatChildExit({ status: 0, signal: null }), 'ok');
-});
-check('formatChildExit: status>0 → "exited N"', () => {
-  assert.strictEqual(inst.formatChildExit({ status: 3, signal: null }), 'exited 3');
-  assert.strictEqual(inst.formatChildExit({ status: 127, signal: null }), 'exited 127');
-});
-check('formatChildExit: status null names the killing signal (the exit-null case)', () => {
-  assert.strictEqual(inst.formatChildExit({ status: null, signal: 'SIGTTIN' }),
-    'exited null (killed by signal SIGTTIN)');
-});
-check('formatChildExit: status null with no signal → "…unknown"', () => {
-  assert.strictEqual(inst.formatChildExit({ status: null, signal: null }),
-    'exited null (killed by signal unknown)');
-});
-check('makeDbg: disabled → no-op; enabled → one [tpm-debug]-prefixed stdout line', () => {
-  assert.strictEqual(typeof inst.makeDbg(false), 'function');
-  const orig = process.stdout.write; let buf = '';
-  process.stdout.write = (chunk) => { buf += chunk; return true; };
-  try { inst.makeDbg(false)('hidden'); inst.makeDbg(true)('→ spawn:', 'claude', 'x'); }
-  finally { process.stdout.write = orig; }
-  assert.ok(!/hidden/.test(buf), 'disabled dbg writes nothing');
-  assert.ok(/^\[tpm-debug\] → spawn: claude x\n$/.test(buf), 'enabled dbg writes one prefixed line');
-});
-
-// ── classifySpawn / EACCES-blind-spot fix (the honest-availability primitive) ─────────────────────────
-// The bug: a non-runnable `claude` on PATH (a directory or non-exec file shadowing the real bin) makes
-// spawnSync return EACCES, not ENOENT — the old ENOENT-only checks called it AVAILABLE and preflight
-// wrongly passed. These feed fake spawn result shapes to the pure helpers so the misdetection is caught
-// deterministically, without depending on the ambient `claude` being runnable or not.
-check('classifySpawn: clean run (status 0) → ok + ran, no errorCode', () => {
-  assert.deepStrictEqual(inst.classifySpawn({ status: 0, signal: null }),
-    { ok: true, ran: true, status: 0, signal: null, errorCode: null });
-});
-check('classifySpawn: ENOENT (absent bin) → not ok, not ran, errorCode ENOENT', () => {
-  const c = inst.classifySpawn({ error: { code: 'ENOENT' }, status: null });
-  assert.strictEqual(c.ok, false); assert.strictEqual(c.ran, false); assert.strictEqual(c.errorCode, 'ENOENT');
-});
-check('classifySpawn: EACCES (dir/non-exec shadow on PATH) → not ok, not ran, errorCode EACCES (the blind spot)', () => {
-  const c = inst.classifySpawn({ error: { code: 'EACCES' }, status: null });
-  assert.strictEqual(c.ok, false); assert.strictEqual(c.ran, false); assert.strictEqual(c.errorCode, 'EACCES');
-});
-check('classifySpawn: ran but exited non-zero → not ok, ran true, no errorCode', () => {
-  const c = inst.classifySpawn({ status: 3, signal: null });
-  assert.strictEqual(c.ok, false); assert.strictEqual(c.ran, true);
-  assert.strictEqual(c.errorCode, null); assert.strictEqual(c.status, 3);
-});
-check('classifySpawn: signal-killed (status null, no error) → ran true, status null, no errorCode', () => {
-  const c = inst.classifySpawn({ status: null, signal: 'SIGTTIN' });
-  assert.strictEqual(c.ran, true); assert.strictEqual(c.status, null);
-  assert.strictEqual(c.signal, 'SIGTTIN'); assert.strictEqual(c.errorCode, null);
-});
-check('formatChildExit: a spawn error → "could not run (CODE: reason)", NOT a signal branch', () => {
-  assert.strictEqual(inst.formatChildExit({ error: { code: 'EACCES' } }), 'could not run (EACCES: permission denied)');
-  assert.strictEqual(inst.formatChildExit({ error: { code: 'ENOENT' } }), 'could not run (ENOENT: not found on PATH)');
-  // a runChild-shaped result (carries errorCode, not error) renders identically
-  assert.strictEqual(inst.formatChildExit({ errorCode: 'EACCES', status: null, signal: null }),
-    'could not run (EACCES: permission denied)');
-});
-check('preflightMessage: ENOENT → "not found on PATH" + install hint', () => {
-  const m = inst.preflightMessage('claude', inst.classifySpawn({ error: { code: 'ENOENT' } }), 'install Claude Code first.');
-  assert.ok(/not found on PATH/.test(m));
-  assert.ok(/install Claude Code first\./.test(m));
-});
-check('preflightMessage: EACCES → "found but not executable" + host-vs-VM hint', () => {
-  const m = inst.preflightMessage('claude', inst.classifySpawn({ error: { code: 'EACCES' } }), 'install Claude Code first.');
-  assert.ok(/not executable \(EACCES\)/.test(m));
-  assert.ok(/THIS host/.test(m));
-  assert.ok(/VM/.test(m));
-});
-check('spawnErrorReason: known errno mapped, unknown → generic', () => {
-  assert.strictEqual(inst.spawnErrorReason('ENOENT'), 'not found on PATH');
-  assert.strictEqual(inst.spawnErrorReason('EACCES'), 'permission denied');
-  assert.strictEqual(inst.spawnErrorReason('EWHATEVER'), 'spawn error');
-});
-
-// ── hasTpmDependency ────────────────────────────────────────────────────────────────────────────────
-check('hasTpmDependency: dependencies bucket → true', () => {
-  assert.strictEqual(inst.hasTpmDependency({ dependencies: { [TPM_PKG_NAME]: '1.0.0' } }), true);
-});
-check('hasTpmDependency: devDependencies bucket → true', () => {
-  assert.strictEqual(inst.hasTpmDependency({ devDependencies: { [TPM_PKG_NAME]: 'file:x' } }), true);
-});
-check('hasTpmDependency: optionalDependencies bucket → true', () => {
-  assert.strictEqual(inst.hasTpmDependency({ optionalDependencies: { [TPM_PKG_NAME]: 'file:x' } }), true);
-});
-check('hasTpmDependency: only in peerDependencies (not a scanned bucket) → false', () => {
-  assert.strictEqual(inst.hasTpmDependency({ peerDependencies: { [TPM_PKG_NAME]: 'x' } }), false);
-});
-check('hasTpmDependency: no dep → false', () => {
-  assert.strictEqual(inst.hasTpmDependency({ dependencies: { lodash: '^4' } }), false);
-});
-check('hasTpmDependency: null pkg → false', () => {
-  assert.strictEqual(inst.hasTpmDependency(null), false);
-});
-
-// ── findBundleRoot / neutral sentinel (fix d) ───────────────────────────────────────────────────────
-function writePkg(dir, obj) { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(obj)); }
-check('findBundleRoot: walks up to the dir whose package.json name is @codercowboy/claude-tpm', () => {
-  const root = mkTmp();
-  writePkg(root, { name: TPM_PKG_NAME });
-  const leaf = path.join(root, 'a', 'b');
-  fs.mkdirSync(leaf, { recursive: true });
-  assert.strictEqual(inst.findBundleRoot(leaf), root);
-});
-check('findBundleRoot: skips a package.json with a mismatched name and keeps walking up', () => {
-  const root = mkTmp();
-  writePkg(root, { name: TPM_PKG_NAME });
-  const mid = path.join(root, 'mid');
-  writePkg(mid, { name: 'some-other-package' }); // decoy — must be skipped, not matched
-  const leaf = path.join(mid, 'leaf');
-  fs.mkdirSync(leaf, { recursive: true });
-  assert.strictEqual(inst.findBundleRoot(leaf), root);
-});
-check('findBundleRoot: skips an invalid-JSON package.json (unreadable marker) and keeps walking', () => {
-  const root = mkTmp();
-  writePkg(root, { name: TPM_PKG_NAME });
-  const mid = path.join(root, 'mid');
-  fs.mkdirSync(mid, { recursive: true });
-  fs.writeFileSync(path.join(mid, 'package.json'), '{ not valid json');
-  assert.strictEqual(inst.findBundleRoot(mid), root);
-});
-
-// ── nodeModulesHasTpm (fix i idempotency) ───────────────────────────────────────────────────────────
-check('nodeModulesHasTpm: true when node_modules/<pkg>/package.json exists', () => {
-  const dir = mkTmp();
-  const pkgDir = path.join(dir, 'node_modules', TPM_PKG_NAME);
-  writePkg(pkgDir, { name: TPM_PKG_NAME });
-  assert.strictEqual(inst.nodeModulesHasTpm(dir), true);
-});
-check('nodeModulesHasTpm: false when absent', () => {
-  const dir = mkTmp();
-  assert.strictEqual(inst.nodeModulesHasTpm(dir), false);
-});
-check('nodeModulesHasTpm: false for a dangling symlink (target missing → not present)', () => {
-  const dir = mkTmp();
-  const scopeDir = path.join(dir, 'node_modules', '@codercowboy');
-  fs.mkdirSync(scopeDir, { recursive: true });
-  fs.symlinkSync(path.join(dir, 'does-not-exist'), path.join(scopeDir, 'claude-tpm'));
-  assert.strictEqual(inst.nodeModulesHasTpm(dir), false);
-});
-
-// ── readPackageJson ─────────────────────────────────────────────────────────────────────────────────
-check('readPackageJson: exists + valid → {exists:true, value, error:null}', () => {
-  const dir = mkTmp();
-  writePkg(dir, { name: 'consumer', version: '1.2.3' });
-  const r = inst.readPackageJson(dir);
-  assert.strictEqual(r.exists, true);
-  assert.strictEqual(r.error, null);
-  assert.strictEqual(r.value.version, '1.2.3');
-});
-check('readPackageJson: exists + invalid JSON → {exists:true, value:null, error:<string>}', () => {
-  const dir = mkTmp();
-  fs.writeFileSync(path.join(dir, 'package.json'), '{ broken');
-  const r = inst.readPackageJson(dir);
-  assert.strictEqual(r.exists, true);
-  assert.strictEqual(r.value, null);
-  assert.ok(typeof r.error === 'string' && r.error.length > 0, 'carries a parse error message');
-});
-check('readPackageJson: absent → {exists:false, value:null, error:null}', () => {
-  const r = inst.readPackageJson(mkTmp());
-  assert.deepStrictEqual(r, { exists: false, value: null, error: null });
-});
-
-// ── parseHooksManifest (2a: hooks-delivery health, pure) ─────────────────────────────────────────────
-// After #1126 gate-spawn is the SOLE auto-wired hook (the %TPM_HOME% resolution hooks were retired), so
-// the real delivered manifest carries only a PreToolUse gate-spawn entry.
-const REAL_MANIFEST = {
-  hooks: {
-    PreToolUse: [
-      { matcher: 'Agent|Task', hooks: [{ type: 'command', command: 'npx tpm hooks gate-spawn' }] },
-    ],
-  },
-};
-const NODE_FORM = {
-  hooks: {
-    SessionStart: [{ hooks: [{ type: 'command', command: 'node "${CLAUDE_PLUGIN_ROOT}/tools/tpm.js" hooks session-start' }] }],
-    PreToolUse: [{ matcher: 'Agent|Task', hooks: [{ type: 'command', command: 'node "${CLAUDE_PLUGIN_ROOT}/tools/tpm.js" hooks gate-spawn' }] }],
-  },
-};
-check('parseHooksManifest: node "${CLAUDE_PLUGIN_ROOT}" form → gate-spawn AND session-start detected', () => {
-  assert.deepStrictEqual(inst.parseHooksManifest(NODE_FORM), { gateSpawn: true, sessionStart: true });
-});
-check('parseHooksManifest: the shipped hooks/hooks.json → both detected', () => {
-  const real = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', '..', '..', '..', 'hooks', 'hooks.json'), 'utf8'));
-  assert.deepStrictEqual(inst.parseHooksManifest(real), { gateSpawn: true, sessionStart: true });
-});
-check('parseHooksManifest: session-start under the wrong event (PreToolUse) is NOT detected as sessionStart', () => {
-  const wrong = { hooks: { PreToolUse: [{ hooks: [{ command: 'tpm hooks session-start' }] }] } };
-  assert.deepStrictEqual(inst.parseHooksManifest(wrong), { gateSpawn: false, sessionStart: false });
-});
-check('parseHooksManifest: SessionStart alone → sessionStart true, gateSpawn false', () => {
-  const only = { hooks: { SessionStart: [{ hooks: [{ command: 'tpm hooks session-start' }] }] } };
-  assert.deepStrictEqual(inst.parseHooksManifest(only), { gateSpawn: false, sessionStart: true });
-});
-check('parseHooksManifest: the real hooks.json → gate-spawn detected', () => {
-  assert.deepStrictEqual(inst.parseHooksManifest(REAL_MANIFEST), { gateSpawn: true, sessionStart: false });
-});
-check('parseHooksManifest: matches by substring so a `node …` command form still detects', () => {
-  const legacy = { hooks: { PreToolUse: [
-    { hooks: [{ command: 'node x/tools/workflow/hooks/tpm-workflow-gate-spawn.js' }] },
-  ] } };
-  // command lacks "hooks gate-spawn" wording → NOT matched (we key on the routed `hooks <name>` form)
-  assert.strictEqual(inst.parseHooksManifest(legacy).gateSpawn, false);
-  const routed = { hooks: { PreToolUse: [{ hooks: [{ command: 'tpm hooks gate-spawn' }] }] } };
-  assert.strictEqual(inst.parseHooksManifest(routed).gateSpawn, true);
-});
-check('parseHooksManifest: gate-spawn present in PreToolUse → detected', () => {
-  const partial = { hooks: { PreToolUse: [{ hooks: [{ command: 'npx tpm hooks gate-spawn' }] }] } };
-  assert.deepStrictEqual(inst.parseHooksManifest(partial), { gateSpawn: true, sessionStart: false });
-});
-check('parseHooksManifest: the retired %TPM_HOME% content hook is NOT detected (no such field)', () => {
-  // The content hook was retired in #1126 — a stray one must not resurrect any field or affect gate-spawn.
-  const stray = { hooks: { PostToolUse: [{ hooks: [{ command: 'npx tpm hooks expand-tpm-home-content' }] }] } };
-  assert.deepStrictEqual(inst.parseHooksManifest(stray), { gateSpawn: false, sessionStart: false });
-});
-check('parseHooksManifest: garbage/empty input → gate-spawn false, no throw', () => {
-  assert.deepStrictEqual(inst.parseHooksManifest(null), { gateSpawn: false, sessionStart: false });
-  assert.deepStrictEqual(inst.parseHooksManifest({}), { gateSpawn: false, sessionStart: false });
-  assert.deepStrictEqual(inst.parseHooksManifest({ hooks: { PreToolUse: 'nope' } }), { gateSpawn: false, sessionStart: false });
-});
-
-// ── bundleHooksHealth (2a: disk read from the target's node_modules) ─────────────────────────────────
-function writeBundleHooks(dir, manifestOrRaw) {
-  const hooksDir = path.join(dir, 'node_modules', TPM_PKG_NAME, 'hooks');
-  fs.mkdirSync(hooksDir, { recursive: true });
-  fs.writeFileSync(path.join(hooksDir, 'hooks.json'),
-    typeof manifestOrRaw === 'string' ? manifestOrRaw : JSON.stringify(manifestOrRaw));
-}
-check('bundleHooksHealth: absent manifest → present:false (degrades to skip)', () => {
-  assert.deepStrictEqual(inst.bundleHooksHealth(mkTmp()),
-    { present: false, error: null, gateSpawn: false, sessionStart: false });
-});
-check('bundleHooksHealth: real delivered manifest → present + gate-spawn', () => {
-  const dir = mkTmp();
-  writeBundleHooks(dir, REAL_MANIFEST);
-  assert.deepStrictEqual(inst.bundleHooksHealth(dir),
-    { present: true, error: null, gateSpawn: true, sessionStart: false });
-});
-check('bundleHooksHealth: malformed manifest JSON → present:true + error, hooks false', () => {
-  const dir = mkTmp();
-  writeBundleHooks(dir, '{ not json');
-  const r = inst.bundleHooksHealth(dir);
-  assert.strictEqual(r.present, true);
-  assert.ok(typeof r.error === 'string' && r.error.length > 0);
-  assert.strictEqual(r.gateSpawn, false);
-  assert.strictEqual(r.sessionStart, false, 'the parse-error early return carries the full shape incl. sessionStart');
-});
-
-// ── configJsonValidity (2b: consumer override config parse-validity) ─────────────────────────────────
-function writeConsumerConfig(dir, raw) {
-  const cdir = path.join(dir, '.claude', 'claude-tpm');
-  fs.mkdirSync(cdir, { recursive: true });
-  fs.writeFileSync(path.join(cdir, 'config.json'), raw);
-}
-check('configJsonValidity: absent → present:false, valid:true (defaults are fine)', () => {
-  assert.deepStrictEqual(inst.configJsonValidity(mkTmp()), { present: false, valid: true, error: null });
-});
-check('configJsonValidity: present + valid JSON → present:true, valid:true', () => {
-  const dir = mkTmp();
-  writeConsumerConfig(dir, '{"session":{"enabled":true}}');
-  assert.deepStrictEqual(inst.configJsonValidity(dir), { present: true, valid: true, error: null });
-});
-check('configJsonValidity: present + malformed → present:true, valid:false + error', () => {
-  const dir = mkTmp();
-  writeConsumerConfig(dir, '{ broken');
-  const r = inst.configJsonValidity(dir);
-  assert.strictEqual(r.present, true);
-  assert.strictEqual(r.valid, false);
-  assert.ok(typeof r.error === 'string' && r.error.length > 0);
-});
-
-// ── doDependencyStep — the NEW interactive, consent-gated dependency recorder (branch logic) ──────────
-// Driven as a CHILD PROCESS so the REAL piped stdin + shared prompter path is exercised, with a FAKE
-// `npm` first on PATH (it records its argv + simulates the install) so no real npm/registry is touched.
-const FAKE_NPM = `#!/usr/bin/env node
-'use strict';
-const fs=require('fs'),path=require('path');
-const a=process.argv.slice(2);
-try{fs.appendFileSync(process.env.NPM_LOG,JSON.stringify(a)+'\\n')}catch(e){}
-if(a[0]==='--version'){process.stdout.write('9.9.9\\n');process.exit(0)}
-if(a[0]==='install'){
-  const flag=a[a.length-1];
-  const bucket=flag==='--save'?'dependencies':(flag==='--save-optional'?'optionalDependencies':(flag==='--save-dev'?'devDependencies':'dependencies'));
-  const pj=path.join(process.cwd(),'package.json');
-  const pkg=JSON.parse(fs.readFileSync(pj,'utf8'));
-  pkg[bucket]=pkg[bucket]||{}; pkg[bucket][process.env.FAKE_PKG]=a[1];
-  fs.writeFileSync(pj,JSON.stringify(pkg,null,2));
-  const nm=path.join(process.cwd(),'node_modules',process.env.FAKE_PKG);
-  fs.mkdirSync(nm,{recursive:true});
-  fs.writeFileSync(path.join(nm,'package.json'),JSON.stringify({name:process.env.FAKE_PKG}));
-  process.exit(0);
-}
-process.exit(0);
-`;
-const DEP_DRIVER = `'use strict';
-const inst=require(process.env.DEP_TOOL);
-(async()=>{
-  const r=await inst.doDependencyStep(
-    {quiet:process.env.DEP_QUIET==='1',force:process.env.DEP_FORCE==='1'},
-    {already:process.env.DEP_ALREADY==='1',describe:'Step 2/5 — add the claude-tpm dependency',targetDir:process.env.DEP_DIR,fromSpec:process.env.DEP_SPEC});
-  process.stdout.write('\\n<<RESULT>>'+JSON.stringify(r));
-  inst.closePrompter();
-  process.exit(0);
-})().catch(e=>{process.stderr.write('DRIVER-ERR:'+(e&&e.stack||e));process.exit(3)});
-`;
-function runDepStep({ answers, quiet, force, already }) {
-  const work = mkTmp();
-  const binDir = path.join(work, 'bin'); fs.mkdirSync(binDir, { recursive: true });
-  const npmShim = path.join(binDir, 'npm'); fs.writeFileSync(npmShim, FAKE_NPM); fs.chmodSync(npmShim, 0o755);
-  const driver = path.join(work, 'driver.js'); fs.writeFileSync(driver, DEP_DRIVER);
-  const consumer = path.join(work, 'consumer'); fs.mkdirSync(consumer, { recursive: true });
-  fs.writeFileSync(path.join(consumer, 'package.json'), JSON.stringify({ name: 'c', version: '1.0.0' }, null, 2));
-  const npmLog = path.join(work, 'npm.log');
-  const env = Object.assign({}, process.env, {
-    PATH: binDir + path.delimiter + process.env.PATH,
-    NPM_LOG: npmLog, FAKE_PKG: TPM_PKG_NAME,
-    DEP_TOOL: TOOL, DEP_DIR: consumer, DEP_SPEC: 'file:../bundle',
-    DEP_QUIET: quiet ? '1' : '0', DEP_FORCE: force ? '1' : '0', DEP_ALREADY: already ? '1' : '0',
+function strictNeverPrint(text) {
+  const out = []; let inChildBlock = false;
+  String(text).split('\n').forEach((line) => {
+    if (/^\s*\$ /.test(line)) { inChildBlock = false; return; }
+    if (/^\s*✗ /.test(line)) inChildBlock = true;
+    else if (inChildBlock && /^ {20,}\S/.test(line)) return; // the child's verbatim stderr
+    else inChildBlock = false;
+    const scrubbed = line.replace(/hooks\/hooks\.json/g, '').replace(/`([^`]*)`/g, (m, span) => (isCommandSpan(span) ? '' : m));
+    V.NEVER_PRINT.forEach(([word, re]) => { if (re.test(scrubbed)) out.push({ word, line: line.trim() }); });
   });
-  const r = spawnSync('node', [driver], { encoding: 'utf8', env, input: answers || '', timeout: 15000 });
-  const out = (r.stdout || '') + (r.stderr || '');
-  const m = (r.stdout || '').match(/<<RESULT>>([\s\S]*)$/);
-  const result = m ? JSON.parse(m[1].trim()) : null;
-  const installCalls = fs.existsSync(npmLog)
-    ? fs.readFileSync(npmLog, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse).filter((c) => c[0] === 'install') : [];
-  const pkg = JSON.parse(fs.readFileSync(path.join(consumer, 'package.json'), 'utf8'));
-  return { status: r.status, out, result, installCalls, pkg };
+  return out;
 }
+const OFFENCES = [];
+/** Re-join lines the voice wrapped at 100 columns (continuations are indented deeper than their line). */
+const flatErr = (t) => String(t).replace(/\n {4,}(?=\S)/g, ' '); // refusals have no `$` lines: join every indented continuation
+const flat = (t) => String(t).replace(/\n {2,}(?=[^\s$✓✗⚠·(\d])/g, ' ');
 
-check('doDependencyStep: interactive DEV (y / enter / y) → --save-dev, dep in devDependencies', () => {
-  const r = runDepStep({ answers: 'y\n\ny\n' });
-  assert.strictEqual(r.result.ok, true);
-  assert.deepStrictEqual(r.installCalls[0], ['install', 'file:../bundle', '--save-dev']);
-  assert.ok(r.pkg.devDependencies && r.pkg.devDependencies[TPM_PKG_NAME], 'dep in devDependencies');
-  assert.ok(!r.pkg.dependencies || !r.pkg.dependencies[TPM_PKG_NAME], 'not in dependencies');
-  assert.ok(!r.pkg.optionalDependencies || !r.pkg.optionalDependencies[TPM_PKG_NAME], 'not in optionalDependencies (0.2.0 default moved from optional → dev)');
-  assert.ok(/Install .*into this project's package.json via npm\? \(y\/n\)/.test(r.out), 'asks the add-at-all question');
-  assert.ok(/\(1\) regular dependency or \(2\) dev dependency\? \[default 2\]/.test(r.out), 'asks regular vs dev');
-  assert.ok(/About to run: npm install .* --save-dev\. Proceed\? \(y\/n\)/.test(r.out), 'confirms the exact command');
-});
-check('doDependencyStep: interactive REGULAR (y / 1 / y) → --save, dep in dependencies', () => {
-  const r = runDepStep({ answers: 'y\n1\ny\n' });
-  assert.strictEqual(r.result.ok, true);
-  assert.deepStrictEqual(r.installCalls[0], ['install', 'file:../bundle', '--save']);
-  assert.ok(r.pkg.dependencies && r.pkg.dependencies[TPM_PKG_NAME], 'dep in dependencies');
-  assert.ok(!r.pkg.devDependencies || !r.pkg.devDependencies[TPM_PKG_NAME], 'not in devDependencies');
-});
-check('doDependencyStep: DECLINE add-at-all (n) → skip, no npm, package.json untouched', () => {
-  const r = runDepStep({ answers: 'n\n' });
-  assert.strictEqual(r.result.ok, true);
-  assert.strictEqual(r.result.skippedDep, true);
-  assert.strictEqual(r.installCalls.length, 0, 'npm install never runs');
-  assert.ok(!r.pkg.dependencies && !r.pkg.optionalDependencies, 'no dependency buckets added');
-  assert.ok(/skipped — NOT recording/.test(r.out));
-});
-check('doDependencyStep: DECLINE the command confirm (y / 2 / n) → clean abort, nothing installed', () => {
-  const r = runDepStep({ answers: 'y\n2\nn\n' });
-  assert.strictEqual(r.result.ok, false);
-  assert.strictEqual(r.result.declined, true);
-  assert.strictEqual(r.installCalls.length, 0, 'npm install never runs');
-  assert.ok(/declined — stopping/.test(r.out));
-});
-check('doDependencyStep: --quiet → NO prompts, records as DEV (headless default: dev bucket)', () => {
-  const r = runDepStep({ quiet: true, answers: '' });
-  assert.strictEqual(r.result.ok, true);
-  assert.deepStrictEqual(r.installCalls[0], ['install', 'file:../bundle', '--save-dev']);
-  assert.ok(r.pkg.devDependencies && r.pkg.devDependencies[TPM_PKG_NAME]);
-  assert.ok(!/Install .*via npm\?/.test(r.out), 'quiet mode asks nothing');
-});
-check('doDependencyStep: already declared+present → skip without prompting or running npm', () => {
-  const r = runDepStep({ already: true, answers: '' });
-  assert.strictEqual(r.result.ok, true);
-  assert.strictEqual(r.result.skipped, true);
-  assert.strictEqual(r.installCalls.length, 0);
-  assert.ok(/already done, skipped/.test(r.out));
-});
-
-// ── runInstall idempotency regression (marketplace already registered / plugin already installed) ─────
-// Driven as a child process with a FAKE `claude` first on PATH (canned `--json` output); the mutating
-// verbs are no-ops. Guards the "exited null / crash when already present" failure the coordinator flagged.
-const TPM_BUNDLE_ROOT = inst.findBundleRoot(__dirname);
-const CLAUDE_SHIM = `#!/usr/bin/env node
-'use strict';
-var scn={};try{scn=JSON.parse(process.env.TPM_FAKE||'{}')}catch(e){}
-var a=process.argv.slice(2);
-function emit(x){process.stdout.write(JSON.stringify(x));process.exit(0)}
-if(a[0]==='--version'){process.stdout.write('9.9.9\\n');process.exit(0)}
-if(a[0]==='plugin'&&a[1]==='marketplace'&&a[2]==='list'){emit(scn.marketplaceList||[])}
-if(a[0]==='plugin'&&a[1]==='list'){emit(scn.pluginList||[])}
-process.exit(0);
-`;
-function makeInstalledConsumer() {
-  const dir = mkTmp();
-  fs.writeFileSync(path.join(dir, 'package.json'),
-    JSON.stringify({ name: 'fixture', version: '1.0.0', optionalDependencies: { [TPM_PKG_NAME]: 'file:../x' } }, null, 2));
-  const scope = path.join(dir, 'node_modules', '@codercowboy');
-  fs.mkdirSync(scope, { recursive: true });
-  fs.symlinkSync(TPM_BUNDLE_ROOT, path.join(scope, 'claude-tpm'));
-  return dir;
-}
-function runInstallWithFakeClaude(dir, args, scenario) {
-  const work = mkTmp();
-  const shim = path.join(work, 'claude'); fs.writeFileSync(shim, CLAUDE_SHIM); fs.chmodSync(shim, 0o755);
-  const env = Object.assign({}, process.env, {
-    PATH: work + path.delimiter + process.env.PATH, TPM_FAKE: JSON.stringify(scenario || {}),
-  });
-  const r = spawnSync('node', [TOOL, dir].concat(args || []), { encoding: 'utf8', env, timeout: 20000 });
-  return { status: r.status, out: (r.stdout || '') + (r.stderr || '') };
-}
-check('runInstall idempotent: marketplace registered + plugin installed+enabled → all steps skip, doctor clean, exit 0', () => {
-  const dir = makeInstalledConsumer();
-  const r = runInstallWithFakeClaude(dir, ['--quiet'], {
-    marketplaceList: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: TPM_BUNDLE_ROOT }],
-    pluginList: [{ id: PLUGIN_ID, scope: 'project', enabled: true, installPath: TPM_BUNDLE_ROOT }],
-  });
-  assert.strictEqual(r.status, 0, 'clean idempotent re-install exits 0');
-  assert.ok(!/exited null/.test(r.out), 'never prints "exited null"');
-  assert.ok(/Step 3\/5 · Register the marketplace — already done, skipped/.test(r.out), 'marketplace register skips');
-  assert.ok(/Step 4\/5 · Install the plugin — already done, skipped/.test(r.out), 'plugin install skips');
-  assert.ok(/doctor clean/.test(r.out));
-});
-check('runInstall: marketplace already registered but plugin NOT installed → register skips, install runs, exits with an integer code (no crash/null)', () => {
-  const dir = makeInstalledConsumer();
-  const r = runInstallWithFakeClaude(dir, ['--quiet'], {
-    marketplaceList: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: TPM_BUNDLE_ROOT }],
-    pluginList: [],
-  });
-  assert.strictEqual(typeof r.status, 'number', 'exits with a real integer code, never null');
-  assert.ok(!/exited null/.test(r.out), 'never prints "exited null"');
-  assert.ok(/Step 3\/5 · Register the marketplace — already done, skipped/.test(r.out), 'marketplace register skips cleanly');
-});
-
-// ── #1132.C: the installer seeds a default config.json (idempotent, never clobbers) ─────────────────
-check('#1132.C: ensureConsumerConfig writes .claude/claude-tpm/config.json with both store-dir keys', () => {
-  const dir = mkTmp();
-  const r = inst.ensureConsumerConfig(dir);
-  assert.strictEqual(r.wrote, true, 'a fresh consumer gets a seeded config');
-  assert.strictEqual(r.reason, 'created');
-  const p = path.join(dir, '.claude', 'claude-tpm', 'config.json');
-  assert.ok(fs.existsSync(p), 'config.json exists at .claude/claude-tpm/');
-  const body = JSON.parse(fs.readFileSync(p, 'utf8'));
-  assert.strictEqual(body.tasks.tasksDir, '.claude/claude-tpm/tasks', 'tasks.tasksDir default');
-  assert.strictEqual(body.session.notes.sessionsDir, '.claude/claude-tpm/sessions', 'session.notes.sessionsDir default');
-});
-
-check('#1132.C: re-install is idempotent — an existing user config is NEVER clobbered', () => {
-  const dir = mkTmp();
-  const cdir = path.join(dir, '.claude', 'claude-tpm');
-  fs.mkdirSync(cdir, { recursive: true });
-  fs.writeFileSync(path.join(cdir, 'config.json'), JSON.stringify({ version: 1, tasks: { tasksDir: 'USER-EDIT' } }, null, 2));
-  const r = inst.ensureConsumerConfig(dir);
-  assert.strictEqual(r.wrote, false, 'does not overwrite');
-  assert.strictEqual(r.reason, 'exists');
-  const body = JSON.parse(fs.readFileSync(path.join(cdir, 'config.json'), 'utf8'));
-  assert.strictEqual(body.tasks.tasksDir, 'USER-EDIT', 'the user value is preserved verbatim');
-});
-
-check('#1132.C: seedConfigDefaults mirrors the resolvers\' project-local defaults', () => {
-  const seed = inst.seedConfigDefaults();
-  assert.strictEqual(seed.tasks.tasksDir, '.claude/claude-tpm/tasks');
-  assert.strictEqual(seed.session.notes.sessionsDir, '.claude/claude-tpm/sessions');
-});
-
-// ── marker-swap: the installer→marker contract — a fresh install produces the `.claude/claude-tpm/`
-// DIRECTORY that the task/session dir-resolvers now detect as the project-root marker. This locks the
-// contract: if ensureConsumerConfig's mkdir were removed, the writeFileSync would ENOENT and this throws.
-check('marker-swap: a fresh install creates the `.claude/claude-tpm/` marker DIRECTORY (detectable by the resolvers)', () => {
-  const dir = mkTmp();
-  const r = inst.ensureConsumerConfig(dir);
-  assert.strictEqual(r.wrote, true, 'a fresh consumer is seeded');
-  const markerDir = path.join(dir, '.claude', 'claude-tpm');
-  assert.ok(fs.existsSync(markerDir), 'the `.claude/claude-tpm/` marker path exists after install');
-  assert.ok(fs.statSync(markerDir).isDirectory(),
-    'the marker is a DIRECTORY (the install footprint the project-root finder keys off)');
-});
-
-// ── version-scoped marketplace identity (the cross-version registry-collision fix) ──────────────────
-// The marketplace name MUST be version-scoped so two installed versions of claude-tpm don't fight over
-// one global "claude-tpm-market" singleton in ~/.claude/plugins/known_marketplaces.json (last-add-wins
-// → a 0.1.0 project resolving 0.2.0 skills). readBundleIdentity derives it from this bundle's own
-// .claude-plugin/marketplace.json; this locks that (a) it IS derived, not the bare legacy name, and
-// (b) the manifest name stays pinned to package.json's version — the drift a future release could
-// forget (bump the version, leave the marketplace name stale).
-check('version-scope: marketplace name is derived + pinned to this bundle version', () => {
-  const bundleRoot = inst.findBundleRoot(__dirname);
-  assert.ok(bundleRoot, 'the bundle root self-locates');
-  const version = JSON.parse(fs.readFileSync(path.join(bundleRoot, 'package.json'), 'utf8')).version;
-  const ident = inst.readBundleIdentity();
-  assert.strictEqual(ident.marketplace, `claude-tpm-market-${version}`,
-    'marketplace name = claude-tpm-market-<package.json version> (re-scope marketplace.json on a version bump)');
-  assert.strictEqual(inst.MARKETPLACE_NAME, ident.marketplace, 'the module constant uses the derived name');
-  assert.strictEqual(inst.PLUGIN_ID, `claude-tpm@claude-tpm-market-${version}`, 'the plugin id carries the scoped marketplace');
-  assert.notStrictEqual(inst.MARKETPLACE_NAME, 'claude-tpm-market',
-    'NOT the bare legacy singleton name that caused the cross-version collision');
-  // plugin.json version is stamped from the SAME source (Claude keys its cache path
-  // cache/<market>/<plugin>/<version> on it) — pin it too so a bump can't leave it stale.
-  const pluginJson = JSON.parse(fs.readFileSync(path.join(bundleRoot, '.claude-plugin', 'plugin.json'), 'utf8'));
-  assert.strictEqual(pluginJson.version, version, 'plugin.json version = package.json version (npm run stamp)');
-  // the installer's fail-loud stamp guard must PASS for the real (in-sync) bundle.
-  assert.ok(inst.manifestVersionStamp(bundleRoot).ok, 'the install-time version-stamp guard passes for the in-sync bundle');
-});
-
-// ══ 5.1 — installer registration rules (D2 / D2a row table / D3) ═════════════════════════════════════
-// Driven against a STATEFUL fake `claude` (tests/fake-claude-stateful.js) first on PATH: it keeps a fake
-// registry in a temp JSON file, logs every call (argv + cwd), models `marketplace remove` wiping install
-// records (probe #11a), and writes a project's settings.json like the real CLI. The real `claude` is never
-// reached. node_modules/@codercowboy/claude-tpm in each fixture is a SYMLINK to this bundle, as in the wild.
-const FAKE_STATEFUL = path.resolve(__dirname, '..', 'fake-claude-stateful.js');
-const REAL_BUNDLE = fs.realpathSync(TPM_BUNDLE_ROOT);
-function runInstallStateful(dir, args, o) {
+// ── running the pipeline in-process ───────────────────────────────────────────────────────────────────
+/** f = {dir, w, self}. o = {answers[], tty, env}. → {code, out, err, text, asked, calls(), mut[], npm[]} for THIS run only. */
+async function run(f, argv, o) {
   o = o || {};
-  const work = mkTmp();
-  const shim = path.join(work, 'claude'); fs.copyFileSync(FAKE_STATEFUL, shim); fs.chmodSync(shim, 0o755);
-  // Guard (fb2): a fake `npm` first on PATH too (records argv; `install` is a no-op — the fixtures already carry the
-  // dependency + node_modules link). Without it `--force` ran a REAL `npm install file:…` in the fixture project.
-  fs.writeFileSync(path.join(work, 'npm'), '#!/bin/sh\n[ "$1" = "--version" ] && echo 9.9.9\necho "$@" >> "' + path.join(work, 'npm-calls.log') + '"\nexit 0\n', { mode: 0o755 });
-  const statePath = path.join(work, 'state.json'); const logPath = path.join(work, 'calls.jsonl');
-  fs.writeFileSync(statePath, JSON.stringify({ marketplaces: o.marketplaces || [], records: o.records || [] }));
-  const env = Object.assign({}, process.env, { PATH: work + path.delimiter + process.env.PATH,
-    FAKE_CLAUDE_STATE: statePath, FAKE_CLAUDE_LOG: logPath });
-  const r = spawnSync('node', [o.entry || TOOL, dir].concat(args || []), { encoding: 'utf8', env, input: o.input || '', timeout: 30000 });
-  const calls = fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : [];
-  const settingsP = path.join(dir, '.claude', 'settings.json');
-  return { status: r.status, out: (r.stdout || '') + (r.stderr || ''), err: r.stderr || '', calls,
-    state: JSON.parse(fs.readFileSync(statePath, 'utf8')),
-    settings: fs.existsSync(settingsP) ? JSON.parse(fs.readFileSync(settingsP, 'utf8')) : null };
-}
-const isMut = (c) => (c.argv[1] === 'marketplace' && (c.argv[2] === 'add' || c.argv[2] === 'remove')) ||
-  (c.argv[0] === 'plugin' && ['install', 'enable', 'disable', 'uninstall'].indexOf(c.argv[1]) >= 0);
-const mutCalls = (r) => r.calls.filter(isMut).map((c) => c.argv.join(' '));
-const marketCalls = (r) => r.calls.filter((c) => c.argv[1] === 'marketplace' && (c.argv[2] === 'add' || c.argv[2] === 'remove'));
-function decoyBundle() { // a live folder, NOT this bundle, that carries a marketplace manifest of the same name
-  const d = path.join(mkTmp(), 'other-central-copy');
-  fs.mkdirSync(path.join(d, '.claude-plugin'), { recursive: true });
-  fs.writeFileSync(path.join(d, '.claude-plugin', 'marketplace.json'), JSON.stringify({ name: inst.MARKETPLACE_NAME, plugins: [{ name: inst.PLUGIN_NAME }] }));
-  return d;
+  const opts = inst.parseArgs([f.dir].concat(argv));
+  let out = ''; let err = ''; const asked = []; const answers = (o.answers || []).slice();
+  const c0 = f.w.calls().length; const n0 = f.w.npmCalls().length;
+  const io = {
+    out: (s) => { out += s; }, err: (s) => { err += s; },
+    ask: async (p) => { asked.push(p); const a = answers.length ? answers.shift() : ''; out += p + a + '\n'; return a; },
+    env: Object.assign({}, f.w.env, o.env || {}), stdinIsTTY: o.tty !== false, self: f.self,
+  };
+  const code = await inst.runInstall(opts, io);
+  const calls = f.w.calls().slice(c0);
+  const res = { code, out, err, text: out + err, asked, calls: calls.map((c) => c.argv.join(' ')),
+    mut: calls.filter(isMut).map((c) => c.argv.join(' ')), npm: f.w.npmCalls().slice(n0).map((c) => c.argv.join(' ')) };
+  const bad = strictNeverPrint(res.text);
+  if (bad.length) OFFENCES.push({ argv, bad });
+  return res;
 }
 
-check('5.1: MARKETPLACE_SOURCE is the realpath of the self-located bundle root (not ./node_modules/…)', () => {
-  assert.strictEqual(inst.MARKETPLACE_SOURCE, REAL_BUNDLE);
-  assert.ok(path.isAbsolute(inst.MARKETPLACE_SOURCE) && !/node_modules/.test(inst.MARKETPLACE_SOURCE));
-});
+/** Replace real paths with stable tokens (also their ~ form and quoted form) so expectations are readable. */
+function norm(str, map) {
+  let s = String(str);
+  Object.keys(map).sort((a, b) => map[b].length - map[a].length).forEach((tok) => {
+    const real = map[tok];
+    [`'${real}'`, real, `'${T(real)}'`, T(real)].forEach((v) => { s = s.split(v).join(tok); });
+  });
+  return s.replace(/file:\S+/g, 'file:<REL>');
+}
 
-check('5.1 row "not registered": invoked THROUGH a symlinked node_modules → add gets the REAL folder at user scope; plugin install is project scope with cwd=target; settings = only enabledPlugins', () => {
-  const dir = makeInstalledConsumer();
-  const viaLink = path.join(dir, 'node_modules', '@codercowboy', 'claude-tpm', 'tools', 'consumer', 'tpm-consumer-install.js');
-  const r = runInstallStateful(dir, ['--quiet'], { entry: viaLink });
-  assert.strictEqual(r.status, 0, r.out);
-  const adds = marketCalls(r).filter((c) => c.argv[2] === 'add');
-  assert.strictEqual(adds.length, 1);
-  assert.deepStrictEqual(adds[0].argv, ['plugin', 'marketplace', 'add', REAL_BUNDLE], 'add argument is the REAL folder, no --scope project');
-  assert.ok(!r.calls.some((c) => c.argv.join(' ').indexOf('--scope project') >= 0 && c.argv[1] === 'marketplace'), 'no project-scope marketplace call');
-  assert.strictEqual(marketCalls(r).filter((c) => c.argv[2] === 'remove').length, 0);
-  const inst1 = r.calls.find((c) => c.argv[1] === 'install');
-  assert.deepStrictEqual(inst1.argv, ['plugin', 'install', PLUGIN_ID, '--scope', 'project', '-y']);
-  assert.strictEqual(fs.realpathSync(inst1.cwd), fs.realpathSync(dir), 'install runs with cwd = the target');
-  assert.strictEqual(r.state.marketplaces[0].path, REAL_BUNDLE, 'the registry row holds the real folder');
-  assert.deepStrictEqual(Object.keys(r.settings), ['enabledPlugins'], 'project settings hold ONLY enabledPlugins');
-  assert.strictEqual(r.settings.enabledPlugins[PLUGIN_ID], true);
-  assert.ok(/doctor clean/.test(r.out), r.out);
-});
-
-check('5.1 row "same folder": registered at the real folder → row left alone (NO marketplace add/remove), only per-project steps run', () => {
-  const dir = makeInstalledConsumer();
-  const r = runInstallStateful(dir, ['--quiet'], { marketplaces: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: REAL_BUNDLE }] });
-  assert.strictEqual(r.status, 0, r.out);
-  assert.strictEqual(marketCalls(r).length, 0, 'no marketplace add/remove recorded: ' + JSON.stringify(marketCalls(r)));
-  assert.ok(r.calls.some((c) => c.argv[1] === 'install'), 'the per-project install still runs');
-  assert.ok(/Register the marketplace — already done, skipped/.test(r.out));
-});
-
-check('5.1 row "same folder" via a SYMLINK-stored path: healthy-but-symlinked, row NOT re-stored, no add/remove', () => {
-  const dir = makeInstalledConsumer();
-  const link = path.join(mkTmp(), 'stored-as-symlink'); fs.symlinkSync(REAL_BUNDLE, link);
-  const r = runInstallStateful(dir, ['--quiet'], { marketplaces: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: link }] });
-  assert.strictEqual(r.status, 0, r.out);
-  assert.strictEqual(marketCalls(r).length, 0, 'symlink-stored row is not touched');
-  assert.strictEqual(r.state.marketplaces[0].path, link, 'stored path unchanged');
-  assert.ok(/symlink/.test(r.out) && /healthy but fragile/.test(r.out), 'reported as healthy-but-symlinked');
-});
-
-check('5.1 row "folder gone": re-points (remove THEN add real folder); message says moved/deleted and warns about install records — not "cache"', () => {
-  const dir = makeInstalledConsumer();
-  const gone = path.join(mkTmp(), 'was-here-once');
-  const r = runInstallStateful(dir, ['--quiet'], { marketplaces: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: gone }] });
-  assert.strictEqual(r.status, 0, r.out);
-  assert.deepStrictEqual(marketCalls(r).map((c) => c.argv.slice(2).join(' ')),
-    ['remove ' + inst.MARKETPLACE_NAME, 'add ' + REAL_BUNDLE]);
-  assert.ok(/no longer exists/.test(r.out) && /moved or deleted/.test(r.out), r.out);
-  assert.ok(/deletes EVERY project's install record/.test(r.out));
-  const deadMsg = r.out.slice(r.out.indexOf('is registered, but its folder'), r.out.indexOf('Step 3a/5 · Re-point'));
-  assert.ok(deadMsg.length > 40 && !/cache/i.test(deadMsg), 'the re-point message does not blame "cache": ' + deadMsg);
-  assert.strictEqual(r.state.marketplaces[0].path, REAL_BUNDLE);
-});
-
-check('5.1 row "alive, elsewhere" + --quiet (no flag): exits 1, NOTHING mutated, message names both folders + blast radius + the flag', () => {
-  const dir = makeInstalledConsumer(); const decoy = decoyBundle();
-  const r = runInstallStateful(dir, ['--quiet'], { marketplaces: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: decoy }] });
-  assert.strictEqual(r.status, 1, r.out);
-  assert.deepStrictEqual(mutCalls(r), [], 'no mutating claude call at all');
-  assert.strictEqual(r.state.marketplaces[0].path, decoy, 'registry untouched');
-  assert.ok(r.err.indexOf(decoy) >= 0 && r.err.indexOf(REAL_BUNDLE) >= 0, 'names both folders');
-  assert.ok(/EVERY project/.test(r.err) && /install record/.test(r.err) && /re-adding/.test(r.err));
-  assert.ok(/--repoint/.test(r.err));
-});
-
-check('5.1 row "alive, elsewhere" + --quiet --repoint: re-points (remove then add real folder), exit 0', () => {
-  const dir = makeInstalledConsumer(); const decoy = decoyBundle();
-  const r = runInstallStateful(dir, ['--quiet', '--repoint'], { marketplaces: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: decoy }] });
-  assert.strictEqual(r.status, 0, r.out);
-  assert.deepStrictEqual(marketCalls(r).map((c) => c.argv.slice(2).join(' ')),
-    ['remove ' + inst.MARKETPLACE_NAME, 'add ' + REAL_BUNDLE]);
-  assert.strictEqual(r.state.marketplaces[0].path, REAL_BUNDLE);
-});
-
-check('5.1 row "alive, elsewhere" interactive NO: asks (naming both folders), declines, exit 1, nothing mutated', () => {
-  const dir = makeInstalledConsumer(); const decoy = decoyBundle();
-  const r = runInstallStateful(dir, [], { input: 'n\n', marketplaces: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: decoy }] });
-  assert.strictEqual(r.status, 1, r.out);
-  assert.deepStrictEqual(mutCalls(r), []);
-  assert.ok(/Re-point the marketplace/.test(r.out) && r.out.indexOf(decoy) >= 0 && r.out.indexOf(REAL_BUNDLE) >= 0 && /EVERY project/.test(r.out));
-  assert.ok(/declined/.test(r.out));
-  assert.strictEqual(r.state.marketplaces[0].path, decoy);
-});
-
-check('5.1 row "alive, elsewhere" interactive YES: re-points (remove then add), the rest of the install completes, exit 0', () => {
-  const dir = makeInstalledConsumer(); const decoy = decoyBundle();
-  const r = runInstallStateful(dir, [], { input: 'y\ny\ny\ny\ny\n', marketplaces: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: decoy }] });
-  assert.strictEqual(r.status, 0, r.out);
-  assert.deepStrictEqual(marketCalls(r).map((c) => c.argv.slice(2).join(' ')),
-    ['remove ' + inst.MARKETPLACE_NAME, 'add ' + REAL_BUNDLE]);
-  assert.strictEqual(r.state.marketplaces[0].path, REAL_BUNDLE);
-});
-
-// ── cleanup (13-fb1): numbering, interactive --repoint prompt count, copy-pasteable displayed commands ─────
-check('re-point step and register step have DISTINCT titles (3a / 3b), not two "Step 3/5"', () => {
-  const dir = makeInstalledConsumer();
-  const r = runInstallStateful(dir, ['--quiet'], { marketplaces: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: path.join(mkTmp(), 'gone') }] });
-  assert.strictEqual(r.status, 0, r.out);
-  assert.ok(/Step 3a\/5 · Re-point the marketplace/.test(r.out), r.out);
-  assert.ok(/Step 3b\/5 · Register the marketplace/.test(r.out), r.out);
-  assert.strictEqual((r.out.match(/Step 3\/5/g) || []).length, 0, 'no bare "Step 3/5" when a re-point ran');
-});
-check('interactive --repoint (no --quiet): ONE confirmation covers remove + add + install + enable — zero per-command "Run this?" prompts; the y/N answer path asks exactly one question', () => {
-  const decoy = decoyBundle();
-  const rows = [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: decoy }];
-  // --repoint IS the confirmation: no input supplied at all, and no step may stop to ask.
-  const a = runInstallStateful(makeInstalledConsumer(), ['--repoint'], { input: '', marketplaces: rows });
-  assert.strictEqual(a.status, 0, a.out);
-  assert.strictEqual((a.out.match(/Run this\? \[y\/N\]/g) || []).length, 0, 'no per-command prompt under --repoint: ' + a.out);
-  assert.deepStrictEqual(a.calls.filter(isMut).map((c) => c.argv.slice(0, 3).join(' ')).filter((x) => /marketplace/.test(x)).length, 2);
-  assert.ok(a.calls.some((c) => c.argv[1] === 'install'), 'the install ran under the same single confirmation');
-  // Without --repoint, interactive: the single "Re-point…?" question is the only [y/N] prompt; answering y once drives everything.
-  const b = runInstallStateful(makeInstalledConsumer(), [], { input: 'y\n', marketplaces: rows });
-  assert.strictEqual(b.status, 0, b.out);
-  assert.strictEqual((b.out.match(/\[y\/N\]/g) || []).length, 1, 'exactly one confirmation prompt: ' + b.out);
-  assert.strictEqual(b.state.marketplaces[0].path, REAL_BUNDLE);
-});
-check('displayed commands are copy-pasteable: shellQuote / displayCommand quote spaces + quotes, leave plain args bare', () => {
-  assert.strictEqual(inst.shellQuote('plain-arg_1.0/x@y'), 'plain-arg_1.0/x@y');
-  assert.strictEqual(inst.shellQuote('/a b/c'), "'/a b/c'");
-  assert.strictEqual(inst.shellQuote("it's"), "'it'\\''s'");
-  assert.strictEqual(inst.displayCommand('claude', ['plugin', 'marketplace', 'add', '/a b/c']), "claude plugin marketplace add '/a b/c'");
-  assert.strictEqual(uninst.displayCommand('claude', ['plugin', 'marketplace', 'add', '/a b/c']), "claude plugin marketplace add '/a b/c'");
-});
-check('the registered-bundle path with a SPACE is shown quoted in the "$ claude plugin marketplace add" line, while the spawn argv carries it raw', () => {
-  const parent = mkTmp(); const spaced = path.join(parent, 'dir with space', 'claude-tpm');
-  fs.mkdirSync(path.dirname(spaced), { recursive: true });
-  // Copy the installer + its lib/ + manifests into a spaced folder so its self-located MARKETPLACE_SOURCE contains a space.
-  fs.mkdirSync(path.join(spaced, '.claude-plugin'), { recursive: true });
-  const bundle = path.resolve(__dirname, '..', '..', '..', '..');
-  for (const f of ['package.json']) fs.copyFileSync(path.join(bundle, f), path.join(spaced, f));
-  for (const f of fs.readdirSync(path.join(bundle, '.claude-plugin'))) fs.copyFileSync(path.join(bundle, '.claude-plugin', f), path.join(spaced, '.claude-plugin', f));
-  for (const sub of [['tools', 'consumer'], ['tools', 'lib']]) {
-    fs.mkdirSync(path.join(spaced, ...sub), { recursive: true });
-    for (const f of fs.readdirSync(path.join(bundle, ...sub))) {
-      const src = path.join(bundle, ...sub, f);
-      if (fs.statSync(src).isFile()) fs.copyFileSync(src, path.join(spaced, ...sub, f));
-    }
+/** Parse the printed plan: numbered items (prose + `$` commands) and the extra lines (fine/Not touched/⚠). */
+function parsePlan(text) {
+  const items = []; const extras = []; let cur = null; let started = false; let last = null;
+  for (const l of text.split('\n')) {
+    if (/^I will:/.test(l)) { started = true; continue; }
+    if (!started) continue;
+    if (/^Proceed\?/.test(l) || l.trim() === '') break;
+    let m;
+    if ((m = /^ {2}(\d+)\. (.*)$/.exec(l))) { cur = { n: Number(m[1]), prose: m[2], cmds: [] }; items.push(cur); last = cur; continue; }
+    if (/^\s*\$ /.test(l) && cur) { cur.cmds.push(l.trim().slice(2)); continue; }
+    if (/^ {2}\(|^ {2}Not touched:|^ {2}⚠/.test(l)) { cur = null; last = { extra: l.trim() }; extras.push(last); continue; }
+    if (last && last.extra !== undefined) last.extra += ' ' + l.trim(); else if (cur) cur.prose += ' ' + l.trim();
   }
-  const dir = makeInstalledConsumer();
-  const real = fs.realpathSync(spaced);
-  const r = runInstallStateful(dir, ['--quiet'], { entry: path.join(spaced, 'tools', 'consumer', 'tpm-consumer-install.js') });
-  assert.ok(r.out.indexOf("$ claude plugin marketplace add '" + real + "'") >= 0, 'displayed command is shell-quoted: ' + r.out);
-  const add = marketCalls(r).filter((c) => c.argv[2] === 'add');
-  assert.strictEqual(add.length, 1, JSON.stringify(r.calls));
-  assert.deepStrictEqual(add[0].argv, ['plugin', 'marketplace', 'add', real], 'the real argv holds the raw path (no quotes)');
-});
-
-// ══ 5.6 — output UX (presentation only; the claude/npm calls are asserted unchanged elsewhere) ══════════
-const NO_OLD_TRIPLE = (out) => !/^\s+(command|edits|does):/m.test(out);
-// Longest sentence (in words) among the explanatory prose lines — command lines ("$ …"), registry/path lines and
-// the doctor rows are excluded (paths with spaces would inflate the count).
-function longestSentenceWords(out) {
-  let max = 0;
-  for (const line of out.split('\n')) {
-    if (/^\s*(\$ |registered:|this installer:|Summary|\s*[✓⚠✗·] .*(\/|\\))/.test(line) || /^\s+(fix:|-|\d\.|\d\))/.test(line) || /[\/\\]\S+[\/\\]/.test(line)) continue;
-    for (const sent of line.split(/[.;:](?:\s|$)/)) max = Math.max(max, sent.trim().split(/\s+/).filter(Boolean).length);
-  }
-  return max;
+  return { items, extras: extras.map((e) => e.extra) };
 }
-check('5.6 fresh install: one header per step ("Step N/5 · Title"), command + ONE sentence, no command:/edits:/does: triple, no stale step-2 text', () => {
-  const dir = makeInstalledConsumer(); // package.json + dep present; marketplace absent, plugin absent
-  const r = runInstallStateful(dir, ['--quiet']);
-  assert.strictEqual(r.status, 0, r.out);
-  for (const h of ['Step 1/5 · Preflight', 'Step 2/5 · Add the claude-tpm dependency', 'Step 3/5 · Register the marketplace', 'Step 4/5 · Install the plugin'])
-    assert.ok(r.out.split('\n').some((l) => l.indexOf(h) === 0 || l.indexOf('✓ ' + h) === 0), 'header line: ' + h + '\n' + r.out);
-  assert.ok(NO_OLD_TRIPLE(r.out), r.out);
-  assert.ok(/^\s+\$ claude plugin marketplace add /m.test(r.out), 'the command is always shown');
-  assert.ok(!/symlink\/copy that step 3/.test(r.out) && !/creates the node_modules/.test(r.out), 'stale step-2 wording is gone');
-  assert.ok(longestSentenceWords(r.out) <= 25, 'longest sentence ' + longestSentenceWords(r.out) + ' words:\n' + r.out);
-});
-check('5.6 step 2 (real npm path, fake npm): the explanation says it records + installs, never mentions the marketplace symlink', () => {
-  const r = runDepStep({ already: false, answers: 'y\n2\ny\n' });
-  assert.ok(/Records .* in devDependencies of .*package\.json and installs it into node_modules/.test(r.out), r.out);
-  assert.ok(!/symlink|marketplace/i.test(r.out.split('\n').filter((l) => /^\s+(Records|\$)/.test(l)).join('\n')), r.out);
-});
-check('5.6 re-install (everything already done): every skipped step is ONE line, no command blocks', () => {
-  const dir = makeInstalledConsumer(); fs.mkdirSync(path.join(dir, '.claude', 'claude-tpm'), { recursive: true });
-  const rec = [{ id: PLUGIN_ID, scope: 'project', enabled: true, installPath: REAL_BUNDLE, projectPath: dir }];
-  const r = runInstallStateful(dir, ['--quiet'], { marketplaces: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: REAL_BUNDLE }], records: rec });
-  assert.strictEqual(r.status, 0, r.out);
-  const skipped = r.out.split('\n').filter((l) => /^✓ Step \d\/5 · .* — already done, skipped\.$/.test(l));
-  assert.strictEqual(skipped.length, 4, 'steps 2-5 each one line: ' + r.out);
-  assert.ok(!/^\s+\$ /m.test(r.out), 'no command block when nothing runs: ' + r.out);
-  assert.deepStrictEqual(mutCalls(r), [], 'nothing mutated');
-});
-check('5.6 interactive re-point asks ONCE: one "y" covers remove + add + the plugin install that follows (no "Run this?" after it); same argv as before', () => {
-  const dir = makeInstalledConsumer(); const decoy = decoyBundle();
-  const r = runInstallStateful(dir, [], { input: 'y\n', marketplaces: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: decoy }] });
-  assert.strictEqual(r.status, 0, r.out);
-  assert.strictEqual((r.out.match(/\[y\/N\]/g) || []).length, 1, 'exactly one y/N prompt: ' + r.out);
-  assert.ok(!/Run this\?/.test(r.out), r.out);
-  assert.deepStrictEqual(r.calls.filter(isMut).map((c) => c.argv),
-    [['plugin', 'marketplace', 'remove', inst.MARKETPLACE_NAME], ['plugin', 'marketplace', 'add', REAL_BUNDLE], ['plugin', 'install', PLUGIN_ID, '--scope', 'project']],
-    'interactive re-point: the install has no -y (only --quiet adds it)');
-  assert.strictEqual(r.state.marketplaces[0].path, REAL_BUNDLE);
-});
-check('5.6 non-guarded paths still ask per step: dead-folder re-point interactive with a single "y" stops at the second prompt (meaning of the prompts unchanged)', () => {
-  const dir = makeInstalledConsumer(); const gone = path.join(mkTmp(), 'was-here-once');
-  const r = runInstallStateful(dir, [], { input: 'y\n', marketplaces: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: gone }] });
-  assert.strictEqual(r.status, 1, r.out);
-  assert.ok(/declined — stopping/.test(r.out), r.out);
-});
-check('5.6 alive-elsewhere under --quiet: refusal message is plain, names both folders, and says how to proceed (exit 1, nothing mutated)', () => {
-  const dir = makeInstalledConsumer(); const decoy = decoyBundle();
-  const r = runInstallStateful(dir, ['--quiet'], { marketplaces: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: decoy }] });
-  assert.strictEqual(r.status, 1, r.out);
-  assert.ok(/Not re-pointing without your say-so\. Re-run with --repoint/.test(r.err), r.err);
-  assert.deepStrictEqual(mutCalls(r), []);
-  assert.ok(NO_OLD_TRIPLE(r.out), r.out);
-});
-check('5.6 doctor via install --check: one line per row, summary line, fix: only under ⚠/✗, labels neutral', () => {
-  const dir = makeInstalledConsumer(); const decoy = decoyBundle();
-  fs.mkdirSync(path.join(dir, '.claude', 'claude-tpm'), { recursive: true });
-  const rec = [{ id: PLUGIN_ID, scope: 'project', enabled: true, installPath: decoy, projectPath: dir }];
-  const a = runInstallStateful(dir, ['--check'], { marketplaces: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: decoy }], records: rec });
-  assert.ok(/^\s+⚠ marketplace source\s+points at /m.test(a.out), a.out);
-  assert.ok(/Summary: \d+ ok · 1 warning · 0 problems/.test(a.out), a.out);
-  assert.ok(!/source resolves to this bundle/.test(a.out), 'label never states the passing condition: ' + a.out);
-  const lines = a.out.split('\n');
-  lines.forEach((l, i) => { if (/^\s+[⚠✗] /.test(l)) assert.ok(/^\s+fix: \S/.test(lines[i + 1] || ''), l); });
-});
 
-check('5.1 parseArgs: --repoint sets opts.repoint (default false)', () => {
-  assert.strictEqual(inst.parseArgs(['--repoint']).repoint, true);
-  assert.strictEqual(inst.parseArgs([]).repoint, false);
-});
+// ── prose catalogue (pinned literals; they must equal what the voice prints) ───────────────────────────
+const P = {
+  dep: 'Add claude-tpm to package.json as a dev dependency, so `npx tpm` works in this project',
+  depUp: (old) => `Point package.json at claude-tpm 0.2.0-dev instead of ${old} (replaces the node_modules copy)`,
+  depDangling: 'Point package.json at this folder (the old link is dangling)',
+  register: (S) => `Register ${T(S)} with Claude Code, once for this machine`,
+  registerOwn: "Register this project's copy of claude-tpm with Claude Code, once for this machine",
+  repoint: (S) => `Re-point claude-tpm 0.2.0-dev at this folder (register ${T(S)} instead).`,
+  install: 'Turn the plugin on for this project (writes one line to .claude/settings.json)',
+  installAgain: 'Turn the plugin on for this project again',
+  installRestore: "Restore Claude Code's note that the plugin is installed here",
+  installUp: 'Turn the 0.2.0-dev plugin on for this project',
+  enable: 'Turn the plugin on for this project (it is installed but switched off)',
+  disable: (old) => `Turn the ${old} plugin off for this project — with both on, Claude Code would keep using ${old}`,
+  seed: 'Write .claude/claude-tpm/config.json with the default task and session folders',
+};
 
-check('5.1 classifyMarketplaceRow: absent / same / same+symlinked / dead / elsewhere / non-directory source', () => {
-  const real = REAL_BUNDLE; const mk = (p, src) => ({ registered: true, source: src === undefined ? 'directory' : src, path: p });
-  assert.strictEqual(inst.classifyMarketplaceRow({ registered: false }, real).state, 'absent');
-  assert.strictEqual(inst.classifyMarketplaceRow(mk(real), real).state, 'same');
-  const link = path.join(mkTmp(), 'lnk'); fs.symlinkSync(real, link);
-  const viaLink = inst.classifyMarketplaceRow(mk(link), real);
-  assert.strictEqual(viaLink.state, 'same'); assert.strictEqual(viaLink.symlinked, true);
-  assert.strictEqual(inst.classifyMarketplaceRow(mk(path.join(mkTmp(), 'nope')), real).state, 'dead');
-  assert.strictEqual(inst.classifyMarketplaceRow(mk(decoyBundle()), real).state, 'elsewhere');
-  assert.strictEqual(inst.classifyMarketplaceRow(mk(null, 'github'), real).state, 'elsewhere');
-});
+/**
+ * One scenario path. f=build(); asserts the label + ids on a pre-run observe, then (1) a `--plan` run — exit 0, the
+ * exact numbered prose, NO mutating calls, no prompt after the menu; (2) the real run with `argv`/`answers` — the
+ * mutating fake-CLI calls (normalized), exit code, post-state via `post(f, r)`.
+ */
+async function scenarioPath(spec) {
+  const f = spec.build();
+  const R = (x) => (typeof x === 'function' ? x(f) : x);
+  const st = O.observe(f.dir, f.self, f.w.env);
+  const choice = spec.choice || null;
+  const dx = inst.diagnose(st, {});
+  assert.strictEqual(dx.label, spec.label, `diagnosis label: ${dx.label} !== ${spec.label}`);
+  const pl = inst.plan(st, { choice, quiet: !!spec.quiet, save: false });
+  assert.deepStrictEqual(pl.actions.map((a) => a.id), spec.ids, 'ordered action ids');
+  const map = Object.assign({ '<DIR>': f.dir }, f.tokens || {});
 
-// ── install records accept our scopes: THIS target's project-scope record (projectPath-matched) ────────
-check('5.1 parsePluginList(list, target): matches the project-scope record whose projectPath resolves to the target', () => {
-  const target = mkTmp(); const other = mkTmp();
-  const list = [{ id: PLUGIN_ID, scope: 'project', enabled: true, projectPath: other },
-    { id: PLUGIN_ID, scope: 'project', enabled: false, projectPath: target }];
-  assert.deepStrictEqual(inst.parsePluginList(list, target), { installed: true, enabled: false }, 'picks THIS project\'s record, not the other project\'s');
-});
-check('5.1 parsePluginList(list, target): only ANOTHER project\'s record → not installed here', () => {
-  assert.deepStrictEqual(inst.parsePluginList([{ id: PLUGIN_ID, scope: 'project', enabled: true, projectPath: mkTmp() }], mkTmp()),
-    { installed: false, enabled: false });
-});
-check('5.1 parsePluginList(list, target): projectPath through a symlink resolves to the target; record without projectPath still matches', () => {
-  const target = mkTmp(); const link = path.join(mkTmp(), 'tlink'); fs.symlinkSync(target, link);
-  assert.strictEqual(inst.parsePluginList([{ id: PLUGIN_ID, scope: 'project', enabled: true, projectPath: link }], target).installed, true);
-  assert.strictEqual(inst.parsePluginList([{ id: PLUGIN_ID, scope: 'project', enabled: true }], target).installed, true);
-});
-check('5.1 parsePluginInstallPath(list, target): this target\'s record only', () => {
-  const target = mkTmp(); const other = mkTmp();
-  const list = [{ id: PLUGIN_ID, scope: 'project', installPath: '/a', projectPath: other },
-    { id: PLUGIN_ID, scope: 'project', installPath: '/b', projectPath: target }];
-  assert.strictEqual(inst.parsePluginInstallPath(list, target), '/b');
-  assert.strictEqual(inst.parsePluginInstallPath([list[0]], target), null);
-  assert.strictEqual(inst.parsePluginInstallPath(list), '/a', 'no target given → first project-scope record (back-compat)');
-});
+  // (1) --plan: pre-answered through flags where a menu would appear → no prompt at all
+  const pf = spec.planFlags || [];
+  const p1 = await run(f, ['--plan'].concat(pf));
+  assert.strictEqual(p1.code, 0, '--plan exits 0: ' + p1.text);
+  assert.deepStrictEqual(p1.mut, [], '--plan makes no mutating call');
+  assert.deepStrictEqual(p1.npm, [], '--plan runs no npm install');
+  assert.ok(p1.asked.length === 0, '--plan with a pre-answer never prompts: ' + JSON.stringify(p1.asked));
+  const parsed = parsePlan(p1.out);
+  const prose = R(spec.prose);
+  assert.deepStrictEqual(parsed.items.map((i, k) => i.prose.slice(0, prose[k].length)), prose, 'rendered prose (pinned)');
+  assert.strictEqual(parsed.items.length, spec.ids.length);
+  if (spec.cmds) assert.deepStrictEqual(parsed.items.map((i) => i.cmds.map((c) => norm(c, map))), R(spec.cmds), '$ command lines');
+  (spec.extras || []).forEach((rx) => assert.ok(parsed.extras.some((e) => rx.test(e)), `plan extra ${rx} in ${JSON.stringify(parsed.extras)}`));
+  (spec.planHas || []).forEach((rx) => assert.ok(rx.test(p1.out) || rx.test(flat(p1.out)), `--plan output has ${rx}\n${p1.out}`));
+  assert.ok(!/Proceed\?/.test(p1.out), '--plan stops before the consent prompt');
+  if (spec.planOnly) return { f, r: p1 };
 
-// ── doctor (--check) consistent with the new rules ─────────────────────────────────────────────────────
-check('5.1 --check on a correctly installed fake world: all rows PASS, exit 0 (resolved-path source row)', () => {
-  const dir = makeInstalledConsumer();
-  fs.mkdirSync(path.join(dir, '.claude', 'claude-tpm'), { recursive: true }); // R9: an enabled plugin needs the project marker
-  const r = runInstallStateful(dir, ['--check'], {
-    marketplaces: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: REAL_BUNDLE }],
-    records: [{ id: PLUGIN_ID, scope: 'project', enabled: true, installPath: REAL_BUNDLE, projectPath: dir }] });
-  assert.strictEqual(r.status, 0, r.out);
-  assert.ok(!/^\s+✗ /m.test(r.out), r.out);
-  assert.ok(/✓ marketplace source\s+this bundle's folder/.test(r.out));
-  assert.ok(!/^\s+⚠ /m.test(r.out), 'a correct world has no warning either: ' + r.out);
-});
-check('5.1/R9 --check: a row resolving to a different live folder is a WARN naming both (exit 0); a dead folder FAILS saying moved or deleted', () => {
-  const dir = makeInstalledConsumer(); const decoy = decoyBundle();
-  fs.mkdirSync(path.join(dir, '.claude', 'claude-tpm'), { recursive: true }); // R9: an enabled plugin needs the project marker
-  const rec = [{ id: PLUGIN_ID, scope: 'project', enabled: true, installPath: decoy, projectPath: dir }];
-  const a = runInstallStateful(dir, ['--check'], { marketplaces: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: decoy }], records: rec });
-  assert.strictEqual(a.status, 0, a.out);
-  assert.ok(/⚠ marketplace source/.test(a.out) && !/^\s+✗ /m.test(a.out), a.out);
-  assert.ok(a.out.indexOf(decoy) >= 0 && a.out.indexOf(REAL_BUNDLE) >= 0 && /runs that folder/.test(a.out), a.out);
-  const gone = path.join(mkTmp(), 'gone');
-  const b = runInstallStateful(dir, ['--check'], { marketplaces: [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: gone }], records: [] });
-  assert.strictEqual(b.status, 1);
-  assert.ok(/✗ marketplace source/.test(b.out) && /moved or deleted/.test(b.out), b.out);
-});
-check('5.1 --help describes the new rules and --repoint', () => {
-  const r = spawnSync('node', [TOOL, '--help'], { encoding: 'utf8' });
-  assert.strictEqual(r.status, 0);
-  assert.ok(/--repoint/.test(r.stdout) && /user scope/i.test(r.stdout) && /REALPATH/.test(r.stdout));
-  assert.ok(!/marketplace add \.\/node_modules/.test(r.stdout), 'no stale ./node_modules source in the help');
-});
-
-// ══ 5.2 — "real copy in ANOTHER project's node_modules" (D2a) ════════════════════════════════════════════
-// World = two fake projects: the TARGET (a consumer, node_modules → symlink to this bundle) and OTHER (owns a
-// REAL, non-symlink copy at OTHER/node_modules/@codercowboy/claude-tpm that the registry row points at).
-function otherProjectWithCopy(kind) { // 'identical' (full copy of this bundle) | 'differs' (full copy + edits) | 'small' (tiny stub)
-  const other = mkTmp();
-  const copy = path.join(other, 'node_modules', '@codercowboy', 'claude-tpm');
-  fs.mkdirSync(path.dirname(copy), { recursive: true });
-  if (kind === 'small') {
-    fs.mkdirSync(path.join(copy, '.claude-plugin'), { recursive: true });
-    fs.writeFileSync(path.join(copy, '.claude-plugin', 'marketplace.json'), JSON.stringify({ name: inst.MARKETPLACE_NAME, plugins: [{ name: inst.PLUGIN_NAME }] }));
-    fs.writeFileSync(path.join(copy, 'a.txt'), 'x');
-  } else {
-    // Manual walk (fs.cpSync refuses to copy a folder into its own subtree — the scratch dir lives under the bundle).
-    const skip = new Set(['tmp', 'node_modules', '.git', '.DS_Store']);
-    (function cp(from, to) {
-      fs.mkdirSync(to, { recursive: true });
-      for (const n of fs.readdirSync(from)) {
-        if (skip.has(n)) continue;
-        const f = path.join(from, n); const t = path.join(to, n); const st = fs.lstatSync(f);
-        if (st.isSymbolicLink()) fs.symlinkSync(fs.readlinkSync(f), t);
-        else if (st.isDirectory()) cp(f, t);
-        else if (st.isFile()) fs.copyFileSync(f, t);
-      }
-    })(REAL_BUNDLE, copy);
-    if (kind === 'differs') { fs.appendFileSync(path.join(copy, 'package.json'), '\n'); fs.writeFileSync(path.join(copy, 'EXTRA.txt'), 'x'); }
-  }
-  return { other, copy: fs.realpathSync(copy) };
+  // (2) the real run
+  const r = await run(f, spec.argv, { answers: spec.answers });
+  assert.strictEqual(r.code, spec.exit === undefined ? 0 : spec.exit, `exit code (out:\n${r.text})`);
+  assert.deepStrictEqual(r.mut.map((m) => norm(m, map)), R(spec.mut), 'mutating claude calls, in order');
+  assert.strictEqual(r.npm.length, spec.npm === undefined ? (spec.ids.indexOf('dep') >= 0 ? 1 : 0) : spec.npm, 'npm install calls');
+  if (spec.npmArgs) assert.deepStrictEqual(r.npm.map((c) => norm(c, map)), R(spec.npmArgs));
+  (spec.has || []).forEach((rx) => assert.ok(rx.test(r.text) || rx.test(flat(r.text)), `output has ${rx}\n${r.text}`));
+  (spec.hasNot || []).forEach((rx) => assert.ok(!rx.test(r.text) && !rx.test(flat(r.text)), `output must not have ${rx}\n${r.text}`));
+  if (spec.post) await spec.post(f, r, map);
+  return { f, r };
 }
-const rcRow = (copy) => [{ name: inst.MARKETPLACE_NAME, source: 'directory', path: copy }];
-const noMut = (r) => assert.deepStrictEqual(mutCalls(r), [], 'no mutating claude call: ' + JSON.stringify(mutCalls(r)));
 
-check('5.2 pure: realCopyInfo detects a folder inside node_modules (names the owning project); null otherwise', () => {
-  const i = inst.realCopyInfo('/x/projA/node_modules/@codercowboy/claude-tpm');
-  assert.strictEqual(i.projectDir, '/x/projA'); assert.strictEqual(i.folder, '/x/projA/node_modules/@codercowboy/claude-tpm');
-  assert.strictEqual(inst.realCopyInfo('/x/shared/claude-tpm'), null);
-  assert.strictEqual(inst.realCopyInfo(null), null);
-});
-check('5.2 pure: hashTree skips .DS_Store / tmp / node_modules / .git at any depth; compareCopies: identical, differs (counts changed + one-sided files), unreadable → unknown (no throw)', () => {
-  const mk = (junk) => { const d = mkTmp(); fs.mkdirSync(path.join(d, 'sub'), { recursive: true });
-    fs.writeFileSync(path.join(d, 'a'), '1'); fs.writeFileSync(path.join(d, 'sub', 'b'), '2');
-    for (const j of ['tmp', 'node_modules', '.git']) { fs.mkdirSync(path.join(d, j)); fs.writeFileSync(path.join(d, j, 'f'), junk); fs.mkdirSync(path.join(d, 'sub', j)); fs.writeFileSync(path.join(d, 'sub', j, 'f'), junk); }
-    fs.writeFileSync(path.join(d, '.DS_Store'), junk); fs.writeFileSync(path.join(d, 'sub', '.DS_Store'), junk); return d; };
-  const a = mk('A'); const b = mk('B');
-  assert.deepStrictEqual(Object.keys(inst.hashTree(a)), ['a', 'sub/b']);
-  const same = inst.compareCopies(a, b);
-  assert.strictEqual(same.verdict, 'identical'); assert.strictEqual(same.text, 'same version, identical files');
-  fs.writeFileSync(path.join(b, 'a'), 'changed'); fs.writeFileSync(path.join(b, 'new.txt'), 'n');
-  const diff = inst.compareCopies(a, b);
-  assert.strictEqual(diff.verdict, 'differs'); assert.strictEqual(diff.count, 2);
-  assert.strictEqual(diff.text, 'same version, files differ (2 files)');
-  const unk = inst.compareCopies(a, path.join(mkTmp(), 'does-not-exist'));
-  assert.strictEqual(unk.verdict, 'unknown'); assert.ok(/couldn't compare/.test(unk.text));
-});
+/** The tree is converged: observed fresh, diagnose says healthy*, and a re-run changes nothing and exits 0. */
+async function converged(f, expectLabel) {
+  const st = O.observe(f.dir, f.self, f.w.env);
+  const dx = inst.diagnose(st, {});
+  assert.strictEqual(dx.label, expectLabel || 'healthy', 'post-state label');
+  const again = await run(f, ['--quiet']);
+  assert.strictEqual(again.code, 0, again.text);
+  assert.deepStrictEqual(again.mut, [], 'a converged project is left alone');
+  assert.ok(/nothing to\s+do/.test(again.out), again.out);
+  return st;
+}
 
-check('5.2 detect + names it plainly + --quiet (no --force): exit 1, NOTHING mutated, message has the two required sentences, the verdict, all 3 options and the --force hint', () => {
-  const dir = makeInstalledConsumer(); const w = otherProjectWithCopy('small');
-  const r = runInstallStateful(dir, ['--quiet'], { marketplaces: rcRow(w.copy) });
-  assert.strictEqual(r.status, 1, r.out);
-  noMut(r);
-  assert.strictEqual(r.state.marketplaces[0].path, w.copy, 'registry untouched');
-  assert.ok(r.err.indexOf('claude-tpm is already installed on this machine from ' + w.copy) >= 0, r.err);
-  assert.ok(/If you keep it, this project will run that copy, not its own/.test(r.err), r.err);
-  assert.ok(/same version, files differ \(\d+ files?\)/.test(r.err), r.err);
-  assert.ok(/1\) Recommended/.test(r.err) && /2\) Uninstall/.test(r.err) && /3\) Proceed anyway/.test(r.err) && /docs\/INSTALL\.md/.test(r.err));
-  assert.ok(/--force/.test(r.err));
-  assert.ok(!/Re-point the marketplace/.test(r.out), 'not the generic elsewhere prompt');
-});
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+// §13.2 — the 24 scenario rows
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+const Q = ['--quiet'];
+const CFG = '.claude/claude-tpm/config.json';
+const ok = (st) => { assert.ok(st.dep.declared); assert.strictEqual(st.reg.state, 'same'); assert.ok(st.en.record.present && st.en.record.enabled); assert.deepStrictEqual(st.en.otherIds, []); assert.strictEqual(st.marker.config, 'valid'); };
 
-check('5.2 --quiet --force: proceeds sharing the existing copy — row NOT re-pointed (no marketplace add/remove), install completes, doctor shows a WARN row, exit 0', () => {
-  const dir = makeInstalledConsumer(); const w = otherProjectWithCopy('small');
-  const r = runInstallStateful(dir, ['--quiet', '--force'], { marketplaces: rcRow(w.copy) });
-  assert.strictEqual(r.status, 0, r.out);
-  assert.strictEqual(marketCalls(r).length, 0, 'no marketplace add/remove: ' + JSON.stringify(marketCalls(r)));
-  assert.strictEqual(r.state.marketplaces[0].path, w.copy, 'row still points at the other copy');
-  assert.ok(r.calls.some((c) => c.argv[1] === 'install'), 'per-project install still ran');
-  assert.ok(/proceeding, sharing that copy/.test(r.out));
-  assert.ok(/⚠ real copy in another project/.test(r.out), r.out);
-  assert.ok(!/^\s+✗ /m.test(r.out), r.out);
-  assert.ok(/⚠ marketplace source/.test(r.out), 'R9: alive-elsewhere source row is a WARN: ' + r.out);
-});
+function bFresh() { const S = W.standalone(); const dir = W.project({ pkg: null }); const w = mkWorld(); return { S, dir, w, self: S, tokens: { '<S>': S } }; }
 
-check('5.2 interactive, IDENTICAL copies, option 3 + "y": reports "same version, identical files", proceeds sharing, no marketplace add/remove, exit 0', () => {
-  const dir = makeInstalledConsumer(); const w = otherProjectWithCopy('identical');
-  const r = runInstallStateful(dir, [], { input: '3\ny\ny\ny\ny\ny\n', marketplaces: rcRow(w.copy) });
-  assert.strictEqual(r.status, 0, r.out);
-  assert.ok(/same version, identical files/.test(r.out), r.out);
-  assert.strictEqual(marketCalls(r).length, 0);
-  assert.strictEqual(r.state.marketplaces[0].path, w.copy);
-  assert.ok(!/type exactly/.test(r.out), 'no stronger confirmation for identical copies');
-});
 
-check('5.2 interactive, IDENTICAL copies, option 3 + "n": declined → exit 1, nothing mutated', () => {
-  const dir = makeInstalledConsumer(); const w = otherProjectWithCopy('identical');
-  const r = runInstallStateful(dir, [], { input: '3\nn\n', marketplaces: rcRow(w.copy) });
-  assert.strictEqual(r.status, 1, r.out); noMut(r);
-});
+function bFreshReg() { const f = bFresh(); f.w = mkWorld({ marketplaces: [row(f.S)] }); return f; }
+function bVend(regRowFn) {
+  const dir = W.project({}); const C = W.nm(dir, null); const E = regRowFn ? W.standalone() : null;
+  const w = mkWorld(regRowFn ? { marketplaces: [row(E)] } : undefined);
+  return { dir, w, self: C, C, E, tokens: { '<C>': C, '<E>': E || '<none>' } };
+}
+function bGood(o) { // everything at target (S linked, registered, turned on, set up) unless overridden
+  o = o || {};
+  const S = W.standalone(); const OTHER = o.other;
+  const settings = o.settings !== undefined ? o.settings : on(ID);
+  const dir = W.project({ marker: o.marker === undefined ? 'config-valid' : o.marker, settings });
+  if (o.link !== false) W.nm(dir, o.link || S);
+  const regPath = o.regPath ? o.regPath(S) : S;
+  const records = o.records ? o.records(dir, S) : [rec(dir, S)];
+  const w = mkWorld({ marketplaces: o.noReg ? [] : [row(regPath)], records });
+  return { S, dir, w, self: S, tokens: { '<S>': S, '<DEAD>': o.dead || '<none>' }, OTHER };
+}
+function bUp(oldVer, oldName, oldId) {
+  const S = W.standalone(); const Old = W.standalone({ version: oldVer, name: oldName });
+  const dir = W.project({ settings: { enabledPlugins: { [oldId]: true }, extraKnownMarketplaces: { [oldName]: { source: { source: 'directory', path: Old } } } } });
+  W.nm(dir, Old);
+  const w = mkWorld({ marketplaces: [row(S)], records: [rec(dir, Old, { id: oldId })] });
+  return { S, Old, dir, w, self: S, tokens: { '<S>': S, '<OLD>': Old } };
+}
+function bDead() {
+  const S = W.standalone(); const DEAD = DEADDIR();
+  const dir = W.project({ marker: 'config-valid', settings: on(ID) });
+  W.nm(dir, path.join(W.mk('nolink'), 'nope')); // a dangling link
+  const w = mkWorld({ marketplaces: [row(DEAD)], records: [rec(dir, DEAD)] });
+  return { S, dir, w, self: S, tokens: { '<S>': S, '<DEAD>': DEAD } };
+}
+function bElse(kind) {
+  const S = W.standalone(); const tokens = { '<S>': S }; let regRow; let dir;
+  if (kind === 'standalone') { const E = W.standalone(); regRow = row(E); dir = W.project({ pkg: null }); tokens['<E>'] = E; }
+  else if (kind === 'other-project-copy') { const projB = W.project({}); const E = W.nm(projB, null); regRow = row(E); dir = W.project({ pkg: null }); tokens['<E>'] = E; tokens['<PROJB>'] = projB; }
+  else if (kind === 'this-project-copy') { dir = W.project({}); const E = W.nm(dir, null); regRow = row(E); tokens['<E>'] = E; }
+  else { regRow = { name: NAME, source: 'github', repo: 'codercowboy/claude-tpm' }; dir = W.project({ pkg: null }); }
+  return { S, dir, w: mkWorld({ marketplaces: [regRow] }), self: S, tokens };
+}
 
-check('5.2 interactive, DIFFERING copies, option 3: a plain "y" is NOT enough (needs the typed phrase) → exit 1, nothing mutated; the phrase → proceeds, exit 0, no add/remove', () => {
-  const dir = makeInstalledConsumer(); const w = otherProjectWithCopy('differs');
-  const a = runInstallStateful(dir, [], { input: '3\ny\ny\ny\n', marketplaces: rcRow(w.copy) });
-  assert.strictEqual(a.status, 1, a.out); noMut(a);
-  assert.ok(/same version, files differ \(2 files\)/.test(a.out), a.out);
-  assert.ok(/type exactly "share different copy"/.test(a.out) && /not confirmed/.test(a.out));
-  const dir2 = makeInstalledConsumer();
-  const b = runInstallStateful(dir2, [], { input: '3\nshare different copy\ny\ny\ny\ny\n', marketplaces: rcRow(w.copy) });
-  assert.strictEqual(b.status, 0, b.out);
-  assert.strictEqual(marketCalls(b).length, 0);
-  assert.strictEqual(b.state.marketplaces[0].path, w.copy);
-});
+const INSTALL_Q = `plugin install ${ID} --scope project -y`;
+const NPM_DEV = 'install file:<REL> --save-dev --no-fund --no-audit';
 
-check('5.2 interactive option 1: stops (exit 1), changes nothing, prints the shared-folder next command (--repoint) + the README pointer', () => {
-  const dir = makeInstalledConsumer(); const w = otherProjectWithCopy('small');
-  const r = runInstallStateful(dir, [], { input: '1\n', marketplaces: rcRow(w.copy) });
-  assert.strictEqual(r.status, 1, r.out); noMut(r);
-  assert.ok(/Nothing was changed/.test(r.out) && /one shared folder/.test(r.out) && /docs\/INSTALL\.md/.test(r.out));
-  assert.ok(/tools[\\/]tpm\.js" install ".*" --repoint/.test(r.out), r.out);
+// 1 ─ nothing anywhere
+test('row 1 · L, nothing anywhere → not-installed · register, dep, plugin-install, config-seed (§4.5/§6 order)', async () => {
+  const { f } = await scenarioPath({
+    build: bFresh, label: 'not-installed', ids: ['register', 'dep', 'plugin-install', 'config-seed'], argv: Q, planFlags: Q,
+    prose: (f) => [P.register(f.S), P.dep, P.install, P.seed],
+    cmds: [['claude plugin marketplace add <S>'], ['npm ' + NPM_DEV], [`claude ${INSTALL_Q}`], []],
+    extras: [/recorded as a dev dependency; pass --save for a regular one/],
+    mut: ['plugin marketplace add <S>', INSTALL_Q], npmArgs: [NPM_DEV],
+    has: [/^claude-tpm 0\.2\.0-dev → /m, /Checking .* claude-tpm is not installed here\./, /✓ package\.json +node_modules\/@codercowboy\/claude-tpm links to /, /✓ registered /, /✓ turned on /, /✓ config\.json +written/, /✓ claude-tpm 0\.2\.0-dev is installed in .* — \d+ checks ok\./, /Next: open `claude` in /],
+    hasNot: [/Proceed\?/, /Nothing was changed/],
+    post: async (f) => {
+      ok(O.observe(f.dir, f.self, f.w.env));
+      assert.strictEqual(fs.realpathSync(path.join(f.dir, 'node_modules/@codercowboy/claude-tpm')), f.S);
+      assert.ok(JSON.parse(fs.readFileSync(path.join(f.dir, CFG), 'utf8')).tasks);
+      assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(f.dir, '.claude/settings.json'), 'utf8')).extraKnownMarketplaces, undefined, 'U2: the installer never writes extraKnownMarketplaces');
+      await converged(f);
+    },
+  });
+  void f;
 });
 
-check('5.2 interactive option 2: stops (exit 1), changes nothing, prints `cd <other project> && npx tpm uninstall --system` then the re-run command, and says that project loses tpm', () => {
-  const dir = makeInstalledConsumer(); const w = otherProjectWithCopy('small');
-  const r = runInstallStateful(dir, [], { input: '2\n', marketplaces: rcRow(w.copy) });
-  assert.strictEqual(r.status, 1, r.out); noMut(r);
-  assert.ok(r.out.indexOf('cd "' + fs.realpathSync(w.other) + '" && npx tpm uninstall --system') >= 0, r.out);
-  assert.ok(/npx tpm install "/.test(r.out) && /loses claude-tpm/i.test(r.out), r.out);
+// 2 ─ already registered, nothing in the project
+test('row 2 · L, reg same, nothing in project → not-installed · dep, plugin-install, config-seed (+ already registered)', async () => {
+  await scenarioPath({
+    build: bFreshReg, label: 'not-installed', ids: ['dep', 'plugin-install', 'config-seed'], argv: Q, planFlags: Q,
+    prose: [P.dep, P.install, P.seed],
+    extras: [/already registered — nothing to do there/],
+    mut: [INSTALL_Q],
+    post: async (f) => { ok(O.observe(f.dir, f.self, f.w.env)); await converged(f); },
+  });
 });
 
-check('5.2 interactive: no / unrecognised choice stops safely (exit 1, nothing mutated)', () => {
-  const dir = makeInstalledConsumer(); const w = otherProjectWithCopy('small');
-  const r = runInstallStateful(dir, [], { input: 'banana\n', marketplaces: rcRow(w.copy) });
-  assert.strictEqual(r.status, 1, r.out); noMut(r);
+// 3 ─ vendored (own copy), nothing yet
+test('row 3 · V, own copy, nothing yet → not-installed · register(own copy), plugin-install, config-seed + fragility ⚠; NO npm (closes w2:15)', async () => {
+  await scenarioPath({
+    build: () => bVend(false), label: 'not-installed', ids: ['register', 'plugin-install', 'config-seed'], argv: Q, planFlags: Q,
+    prose: [P.registerOwn, P.install, P.seed],
+    cmds: [['claude plugin marketplace add <C>'], [`claude ${INSTALL_Q}`], []],
+    extras: [/⚠ Registering a folder inside node_modules works.*rm -rf node_modules/],
+    mut: ['plugin marketplace add <C>', INSTALL_Q], npm: 0,
+    has: [/from this project's own copy in node_modules\)/],
+    post: async (f) => { ok(O.observe(f.dir, f.self, f.w.env)); assert.deepStrictEqual(f.w.npmCalls(), [], 'no dep action in vendored mode'); await converged(f); },
+  });
 });
 
-check('5.2 unreadable other copy: degrades to "couldn\'t compare" (never crashes); treated as differing (typed phrase required)', () => {
-  if (typeof process.getuid === 'function' && process.getuid() === 0) return; // root ignores chmod
-  const dir = makeInstalledConsumer(); const w = otherProjectWithCopy('small');
-  const locked = path.join(w.copy, 'locked'); fs.mkdirSync(locked); fs.writeFileSync(path.join(locked, 'f'), 'x'); fs.chmodSync(locked, 0o000);
+// 4 ─ healthy; the probe-count test (§13.6) lives here
+test('row 4 · L, all at target → healthy · two lines, exit 0, no change, ≤3 claude calls (exactly 3)', async () => {
+  const f = bGood(); const snap = snapshot(f.dir);
+  const dx = inst.diagnose(O.observe(f.dir, f.self, f.w.env), {});
+  assert.strictEqual(dx.label, 'healthy');
+  const c0 = f.w.claudeCalls().length;
+  const r = await run(f, Q);
+  assert.strictEqual(r.code, 0, r.text);
+  assert.deepStrictEqual(r.mut, []); assert.deepStrictEqual(r.npm, []);
+  assert.deepStrictEqual(snapshot(f.dir), snap, 'a healthy run writes nothing');
+  assert.deepStrictEqual(r.calls, ['--version', 'plugin marketplace list --json', 'plugin list --json'], 'a healthy run makes exactly the 3 claude calls: ' + r.calls.join(' | '));
+  assert.ok(r.calls.length <= 3);
+  void c0;
+  const lines = r.out.split('\n').filter((l) => l.length && !/^\s/.test(l)); // (a >100-col line wraps with an indented continuation)
+  assert.strictEqual(lines.length, 2, 'header + one line: ' + r.out);
+  assert.ok(/^✓ claude-tpm 0\.2\.0-dev is already installed in .* and healthy — \d+ checks ok, nothing to\s+do\.$/.test(flat(r.out).split('\n').filter(Boolean)[1]), r.out);
+});
+
+// 5 ─ registered through a link
+test('row 5 · L, target met, reg same-via-link → healthy-with-warnings · ⚠ + fix, exit 0, nothing planned', async () => {
+  const f = bGood({ regPath: (S) => { const L = path.join(W.mk('lnk'), 'reg-link'); fs.symlinkSync(S, L); return L; } });
+  const st = O.observe(f.dir, f.self, f.w.env);
+  assert.strictEqual(st.reg.state, 'same-via-link');
+  assert.strictEqual(inst.diagnose(st, {}).label, 'healthy-with-warnings');
+  const r = await run(f, Q);
+  assert.strictEqual(r.code, 0, r.text);
+  assert.deepStrictEqual(r.mut, []);
+  assert.ok(/^✓ claude-tpm 0\.2\.0-dev is already installed in .* 1 warning; nothing to do\.$/m.test(flat(r.out)), r.out);
+  assert.ok(/⚠ registered +registered through a link/.test(r.out), r.out);
+  assert.ok(/fix: register the real folder: `tpm install \. --repoint`/.test(r.out), r.out);
+});
+
+// 6, 7 ─ upgrades
+test('row 6 · L, 0.1.0 project → upgrade · dep, plugin-install, disable-old, config-seed + Not touched (exit 0, was exit 1)', async () => {
+  await scenarioPath({
+    build: () => bUp('0.1.0', 'claude-tpm-market', OLD_ID), label: 'upgrade', ids: ['dep', 'plugin-install', 'disable-old', 'config-seed'], argv: Q, planFlags: Q,
+    prose: [P.depUp('0.1.0'), P.installUp, P.disable('0.1.0'), P.seed],
+    cmds: [['npm ' + NPM_DEV], [`claude ${INSTALL_Q}`], [`claude plugin disable ${OLD_ID} --scope project`], []],
+    extras: [/already registered — nothing to do there/, /Not touched: the 0\.1\.0 folder, its registration and other projects that use it\./],
+    mut: [INSTALL_Q, `plugin disable ${OLD_ID} --scope project`],
+    has: [/Checking .* claude-tpm 0\.1\.0 is installed here\. This is an upgrade to 0\.2\.0-dev\./, /⚠ points at claude-tpm 0\.1\.0/, /✗ not turned on for /, /✓ turned off +0\.1\.0 for /, /\(upgraded from 0\.1\.0\)/, /Next: start a new `claude` session in /],
+    post: async (f) => {
+      ok(O.observe(f.dir, f.self, f.w.env));
+      const s = JSON.parse(fs.readFileSync(path.join(f.dir, '.claude/settings.json'), 'utf8'));
+      assert.strictEqual(s.enabledPlugins[OLD_ID], false); assert.strictEqual(s.enabledPlugins[ID], true);
+      assert.ok(s.extraKnownMarketplaces && s.extraKnownMarketplaces['claude-tpm-market'], 'O1: extraKnownMarketplaces left alone');
+      await converged(f);
+    },
+  });
+});
+test('row 7 · L, 0.2.0 project (…-market-0.2.0 id) → upgrade, same shape as row 6', async () => {
+  const OLD7 = 'claude-tpm@claude-tpm-market-0.2.0';
+  await scenarioPath({
+    build: () => bUp('0.2.0', 'claude-tpm-market-0.2.0', OLD7), label: 'upgrade', ids: ['dep', 'plugin-install', 'disable-old', 'config-seed'], argv: Q, planFlags: Q,
+    prose: [P.depUp('0.2.0'), P.installUp, P.disable('0.2.0'), P.seed],
+    mut: [INSTALL_Q, `plugin disable ${OLD7} --scope project`],
+    has: [/claude-tpm 0\.2\.0 is installed here\. This is an upgrade to 0\.2\.0-dev\./, /Not touched: the 0\.2\.0 folder/],
+    post: async (f) => { ok(O.observe(f.dir, f.self, f.w.env)); await converged(f); },
+  });
+});
+
+// 8 ─ dead registration
+test('row 8 · L, reg dead + dep dangling + record → broken · repoint, dep, plugin-install — ONE confirmation', async () => {
+  await scenarioPath({
+    build: bDead, label: 'broken', ids: ['repoint', 'dep', 'plugin-install'], argv: [], answers: ['y'], planFlags: Q,
+    prose: (f) => [P.repoint(f.S), P.depDangling, P.installAgain],
+    cmds: [[`claude plugin marketplace remove ${NAME}`, 'claude plugin marketplace add <S>'], ['npm ' + NPM_DEV], [`claude ${INSTALL_Q}`]],
+    mut: [`plugin marketplace remove ${NAME}`, 'plugin marketplace add <S>', `plugin install ${ID} --scope project`],
+    has: [/Checking .* claude-tpm 0\.2\.0-dev is installed here but broken\./, /✗ registered from .*, and that folder is gone \(moved or deleted\)/,
+      /Other projects on 0\.2\.0-dev start working again as soon as this runs/, /Proceed\? \[y\/N\] y/, /✓ re-pointed /],
+    post: async (f, r) => { ok(O.observe(f.dir, f.self, f.w.env)); assert.deepStrictEqual(r.asked, [V.CONFIRM_PROMPT], 'asked exactly once'); await converged(f); },
+  });
+});
+
+// 9–12, 19 ─ registered elsewhere (the decision phase), all four faces
+const USE_NOTE = /Not touched: the existing registration and the other projects that use it\./;
+test('row 9 · L, reg elsewhere (standalone) → menu · use: dep→that folder / re-point: repoint, dep→self', async () => {
+  await scenarioPath({
+    build: () => bElse('standalone'), label: 'registered-elsewhere', choice: 'use', ids: ['dep', 'plugin-install', 'config-seed'], argv: [], answers: ['1', 'y'], planFlags: ['--share'],
+    prose: [P.dep, P.install, P.seed], extras: [USE_NOTE],
+    mut: [`plugin install ${ID} --scope project`],
+    has: [/Choose \[1\/2\/3\]: 1/, /\(a standalone folder\)/, /comparing the two copies …/, /Compared with this folder: same version, identical files\./, /1\. use +.* links to and runs that folder/, /Proceed\? \[y\/N\] y/],
+    post: async (f, r) => {
+      const st = O.observe(f.dir, f.self, f.w.env);
+      assert.strictEqual(st.dep.linksTo, f.tokens['<E>'], 'N3: use → the dependency links to the folder in use');
+      assert.strictEqual(st.reg.state, 'elsewhere'); assert.ok(st.en.record.present && st.en.record.enabled);
+      assert.deepStrictEqual(r.asked, [V.MENU_PROMPT, V.CONFIRM_PROMPT]);
+      await converged(f, 'healthy-with-warnings');
+    },
+  });
+  await scenarioPath({
+    build: () => bElse('standalone'), label: 'registered-elsewhere', choice: 'repoint', ids: ['repoint', 'dep', 'plugin-install', 'config-seed'], argv: Q.concat('--repoint'), planFlags: ['--repoint'],
+    prose: (f) => [P.repoint(f.S), P.dep, P.install, P.seed],
+    mut: [`plugin marketplace remove ${NAME}`, 'plugin marketplace add <S>', INSTALL_Q],
+    post: async (f) => { ok(O.observe(f.dir, f.self, f.w.env)); assert.strictEqual(O.observe(f.dir, f.self, f.w.env).dep.linksTo, f.S); await converged(f); },
+  });
+});
+test('row 10 · L, reg elsewhere (another project\'s copy) → menu · use: dep→self.root + two-trees ⚠ / re-point', async () => {
+  await scenarioPath({
+    build: () => bElse('other-project-copy'), label: 'registered-elsewhere', choice: 'use', ids: ['dep', 'plugin-install', 'config-seed'], argv: Q.concat('--share'), planFlags: ['--share'],
+    prose: [P.dep, P.install, P.seed],
+    extras: [/⚠ .* will run the copy in /, USE_NOTE],
+    mut: [INSTALL_Q],
+    has: [/\(a copy inside another project\)/],
+    post: async (f) => {
+      const st = O.observe(f.dir, f.self, f.w.env);
+      assert.strictEqual(st.dep.linksTo, f.S, 'N3: never link into another project\'s node_modules');
+      assert.ok(!/node_modules/.test(f.w.npmCalls().map((c) => c.argv.join(' ')).join(' ')), 'no file: spec inside a node_modules');
+      assert.strictEqual(st.reg.where, 'other-project-copy');
+    },
+  });
+  await scenarioPath({
+    build: () => bElse('other-project-copy'), label: 'registered-elsewhere', choice: 'repoint', ids: ['repoint', 'dep', 'plugin-install', 'config-seed'], argv: Q.concat('--repoint'), planFlags: ['--repoint'],
+    prose: (f) => [P.repoint(f.S), P.dep, P.install, P.seed],
+    mut: [`plugin marketplace remove ${NAME}`, 'plugin marketplace add <S>', INSTALL_Q],
+    post: async (f) => { ok(O.observe(f.dir, f.self, f.w.env)); await converged(f); },
+  });
+});
+test('row 11 · L, reg points at THIS project\'s own copy → menu (own-copy wording) · use: no dep / re-point: repoint, dep…', async () => {
+  await scenarioPath({
+    build: () => bElse('this-project-copy'), label: 'registered-elsewhere', choice: 'use', ids: ['plugin-install', 'config-seed'], argv: [], answers: ['1', 'y'], planFlags: ['--share'],
+    prose: [P.install, P.seed], npm: 0,
+    mut: [`plugin install ${ID} --scope project`],
+    has: [/\(this project's own copy\)/, /1\. use +.* keeps running its own copy; this folder is unused\./],
+    post: async (f) => { assert.strictEqual(O.observe(f.dir, f.self, f.w.env).dep.onDisk, 'copy', 'the own copy stays'); },
+  });
+  await scenarioPath({
+    build: () => bElse('this-project-copy'), label: 'registered-elsewhere', choice: 'repoint', ids: ['repoint', 'dep', 'plugin-install', 'config-seed'], argv: Q.concat('--repoint'), planFlags: ['--repoint'],
+    prose: (f) => [P.repoint(f.S), P.dep, P.install, P.seed],
+    mut: [`plugin marketplace remove ${NAME}`, 'plugin marketplace add <S>', INSTALL_Q],
+    post: async (f) => { const st = O.observe(f.dir, f.self, f.w.env); ok(st); assert.strictEqual(st.dep.onDisk, 'link'); assert.strictEqual(st.dep.linksTo, f.S); await converged(f); },
+  });
+});
+test('row 12 · L, reg github → menu (github wording, no compare line) · use: dep, plugin-install… / re-point', async () => {
+  await scenarioPath({
+    build: () => bElse('github'), label: 'registered-elsewhere', choice: 'use', ids: ['dep', 'plugin-install', 'config-seed'], argv: Q.concat('--share'), planFlags: ['--share'],
+    prose: [P.dep, P.install, P.seed], planOnly: true,
+  });
+  await scenarioPath({
+    build: () => bElse('github'), label: 'registered-elsewhere', choice: 'repoint', ids: ['repoint', 'dep', 'plugin-install', 'config-seed'], argv: Q.concat('--repoint'), planFlags: ['--repoint'],
+    prose: (f) => [P.repoint(f.S), P.dep, P.install, P.seed],
+    mut: [`plugin marketplace remove ${NAME}`, 'plugin marketplace add <S>', INSTALL_Q],
+    post: async (f) => { ok(O.observe(f.dir, f.self, f.w.env)); await converged(f); },
+  });
+});
+test('menu faces · all four reg.where faces + quit paths: second line, wording, compare line only for local folders', async () => {
+  const faces = { standalone: /\(a standalone folder\)/, 'other-project-copy': /\(a copy inside another project\)/, 'this-project-copy': /\(this project's own copy\)/, github: /github:codercowboy\/claude-tpm {3}\(not a local folder\)/ };
+  for (const kind of Object.keys(faces)) {
+    const f = bElse(kind);
+    const r = await run(f, [], { answers: ['3'] });
+    assert.strictEqual(r.code, 1, r.text);
+    const fo = flat(r.out);
+    assert.ok(faces[kind].test(fo), kind + '\n' + r.out);
+    assert.ok(/Checking .* claude-tpm 0\.2\.0-dev is already registered on this machine, from a different folder:/.test(fo), r.out);
+    assert.strictEqual(/comparing the two copies/.test(fo), kind !== 'github', 'compare line only for a local folder: ' + kind);
+    assert.strictEqual(/Compared with this folder:/.test(fo), kind !== 'github');
+    assert.ok(/3\. quit +Nothing was changed\./.test(fo) && /Choose \[1\/2\/3\]: 3/.test(fo), r.out);
+    assert.deepStrictEqual(r.asked, [V.MENU_PROMPT]);
+    assert.deepStrictEqual(r.mut, []);
+  }
+  // differing copies: the compare line says how many files differ
+  const f = bElse('other-project-copy'); fs.writeFileSync(path.join(f.tokens['<E>'], 'EXTRA.txt'), 'x');
+  const r = await run(f, [], { answers: [''] });
+  assert.ok(/Compared with this folder: same version, 1 file differs\./.test(flat(r.out)), r.out);
+});
+test('row 19 · V, reg points at a standalone folder → menu · use: nothing for dep / re-point: register own copy + fragility ⚠', async () => {
+  await scenarioPath({
+    build: () => bVend(true), label: 'registered-elsewhere', choice: 'use', ids: ['plugin-install', 'config-seed'], argv: Q.concat('--share'), planFlags: ['--share'],
+    prose: [P.install, P.seed], npm: 0, mut: [INSTALL_Q],
+    post: async (f) => { assert.strictEqual(O.observe(f.dir, f.self, f.w.env).dep.onDisk, 'copy'); },
+  });
+  await scenarioPath({
+    build: () => bVend(true), label: 'registered-elsewhere', choice: 'repoint', ids: ['repoint', 'plugin-install', 'config-seed'], argv: Q.concat('--repoint'), planFlags: ['--repoint'],
+    prose: (f) => [P.repoint(f.C), P.install, P.seed], npm: 0,
+    extras: [/⚠ Registering a folder inside node_modules works/],
+    mut: [`plugin marketplace remove ${NAME}`, 'plugin marketplace add <C>', INSTALL_Q],
+    post: async (f) => { ok(O.observe(f.dir, f.self, f.w.env)); await converged(f); },
+  });
+});
+
+// 13–18 ─ partial / broken shapes
+test('row 13 · L, record present but disabled → partial · plugin-enable', async () => {
+  await scenarioPath({
+    build: () => bGood({ settings: { enabledPlugins: { [ID]: false } }, records: (dir, S) => [rec(dir, S, { enabled: false })] }),
+    label: 'partial', ids: ['plugin-enable'], argv: Q, planFlags: Q,
+    prose: [P.enable], cmds: [[`claude plugin enable ${ID} --scope project`]], extras: [/already registered — nothing to do there/],
+    mut: [`plugin enable ${ID} --scope project`], npm: 0,
+    has: [/Checking .* claude-tpm 0\.2\.0-dev is partly installed here\./, /✗ installed but switched off for /],
+    post: async (f) => { ok(O.observe(f.dir, f.self, f.w.env)); await converged(f); },
+  });
+});
+test('row 14 · L, no record, enabledHere, reg live → partial · plugin-install ("restore the note")', async () => {
+  await scenarioPath({
+    build: () => bGood({ records: () => [] }), label: 'partial', ids: ['plugin-install'], argv: Q, planFlags: Q,
+    prose: [P.installRestore], mut: [INSTALL_Q], npm: 0,
+    has: [/⚠ turned on for .*, but Claude Code has lost its note that the plugin is installed here/],
+    post: async (f) => { ok(O.observe(f.dir, f.self, f.w.env)); await converged(f); },
+  });
+});
+test('row 15 · L, no record, enabledHere, reg dead → broken · repoint, plugin-install (S11: "still loads" is false)', async () => {
+  const DEAD = DEADDIR();
+  await scenarioPath({
+    build: () => bGood({ records: () => [], regPath: () => DEAD, dead: DEAD }), label: 'broken', ids: ['repoint', 'plugin-install'], argv: Q, planFlags: Q,
+    prose: (f) => [P.repoint(f.S), P.installRestore],
+    mut: [`plugin marketplace remove ${NAME}`, 'plugin marketplace add <S>', INSTALL_Q], npm: 0,
+    post: async (f) => { ok(O.observe(f.dir, f.self, f.w.env)); await converged(f); },
+  });
+});
+test('row 16 · L, enabled, marker missing → broken · config-seed only', async () => {
+  await scenarioPath({
+    build: () => bGood({ marker: false }), label: 'broken', ids: ['config-seed'], argv: Q, planFlags: Q,
+    prose: [P.seed], cmds: [[]], mut: [], npm: 0,
+    has: [/✗ .claude\/claude-tpm\/ is missing — the task and session tools refuse to run without it/],
+    post: async (f) => { assert.ok(fs.existsSync(path.join(f.dir, CFG))); ok(O.observe(f.dir, f.self, f.w.env)); await converged(f); },
+  });
+});
+test('row 17 · L, marker.config invalid → broken (✗ finding, never overwritten) · other actions still run, closing ✗ names the file, exit 1', async () => {
+  const BAD = '{"version":';
+  await scenarioPath({
+    build: () => bGood({ marker: 'config-bad', records: () => [], settings: {} }), label: 'broken', ids: ['plugin-install'], argv: Q, planFlags: Q,
+    prose: [P.install], mut: [INSTALL_Q], npm: 0, exit: 1,
+    has: [/✗ project folder +\.claude\/claude-tpm\/config\.json is not valid JSON/, /fix: fix or delete \.claude\/claude-tpm\/config\.json/, /✗ The steps ran, but 1 check still fails \(see ✗ above\)\./],
+    hasNot: [/Next:/],
+    post: async (f) => { assert.strictEqual(fs.readFileSync(path.join(f.dir, CFG), 'utf8'), BAD, 'a user\'s file is never overwritten'); },
+  });
+  // nothing else to do: no plan, the ✗ is explained, exit 1, nothing changed
+  const f = bGood({ marker: 'config-bad' }); const snap = snapshot(f.dir);
+  const r = await run(f, Q);
+  assert.strictEqual(r.code, 1, r.text);
+  assert.deepStrictEqual(r.mut, []); assert.deepStrictEqual(snapshot(f.dir), snap);
+  assert.ok(/✗ project folder +\.claude\/claude-tpm\/config\.json is not valid JSON/.test(r.out) && /Nothing was changed\./.test(r.out), r.out);
+  assert.ok(!/I will:/.test(r.out) && !/healthy/.test(r.out), r.out);
+});
+test('row 18 · L, two claude-tpm ids on (by hand) → upgrade-shaped · disable-old for the extra', async () => {
+  const OTHER = 'claude-tpm@claude-tpm-market-0.2.1';
+  await scenarioPath({
+    build: () => bGood({ settings: on(ID, OTHER), records: (dir, S) => [rec(dir, S), rec(dir, S, { id: OTHER })] }),
+    label: 'upgrade', ids: ['disable-old'], argv: Q, planFlags: Q,
+    prose: [P.disable('0.2.1')], mut: [`plugin disable ${OTHER} --scope project`], npm: 0,
+    extras: [/Not touched: the 0\.2\.1 folder/], has: [/This is an upgrade to 0\.2\.0-dev\./, /\(upgraded from 0\.2\.1\)/],
+    post: async (f) => { ok(O.observe(f.dir, f.self, f.w.env)); await converged(f); },
+  });
+});
+
+// 20–24 ─ refusals, --plan, decline
+test('row 20 · any, self.shape other-project-copy → REFUSED (exit 1, Nothing was changed, nothing written)', async () => {
+  const projB = W.project({}); const C2 = W.nm(projB, null);
+  const f = { dir: W.project({ pkg: null }), w: mkWorld(), self: C2 }; const snap = snapshot(f.dir);
+  const r = await run(f, Q);
+  assert.strictEqual(r.code, 1);
+  assert.ok(/^error: not installing — this claude-tpm is .*'s copy \(/m.test(flatErr(r.err)) && /Run the install from a standalone folder/.test(flatErr(r.err)) && /Nothing was changed\./.test(r.err), r.err);
+  assert.strictEqual(r.out, ''); assert.deepStrictEqual(r.mut, []); assert.deepStrictEqual(r.npm, []); assert.deepStrictEqual(snapshot(f.dir), snap);
+});
+test('row 21 · any, stamp guard fails → REFUSED (blames claude-tpm, not the project)', async () => {
+  const S = W.standalone({ name: 'claude-tpm-market-9.9.9' });
+  const f = { dir: W.project({ pkg: null }), w: mkWorld(), self: S };
+  const r = await run(f, Q);
+  assert.strictEqual(r.code, 1);
+  assert.ok(/error: not installing — this claude-tpm folder is mislabelled .* a packaging problem in claude-tpm, not in your project\./.test(flat(r.err)) && /Nothing was changed\./.test(r.err), r.err);
+  assert.deepStrictEqual(r.mut, []);
+});
+test('row 22 · any, non-TTY without --quiet → REFUSED with the --quiet hint; --plan and --quiet still run', async () => {
+  const f = bFresh();
+  const r = await run(f, [], { tty: false });
+  assert.strictEqual(r.code, 1);
+  assert.ok(/error: not installing — stdin is not a terminal — pass `--quiet` to accept the plan without prompts\./.test(r.err) && /Nothing was changed\./.test(r.err), r.err);
+  assert.deepStrictEqual(r.mut, []); assert.deepStrictEqual(r.npm, []);
+  const p = await run(f, ['--plan'], { tty: false });
+  assert.strictEqual(p.code, 0, p.text); assert.ok(/I will:/.test(p.out));
+  const q = await run(f, Q, { tty: false });
+  assert.strictEqual(q.code, 0, q.text);
+});
+test('row 23 · any, --plan → diagnosis + plan, exit 0, nothing changed, no prompt', async () => {
+  const f = bFresh(); const snap = snapshot(f.dir);
+  const r = await run(f, ['--plan']);
+  assert.strictEqual(r.code, 0); assert.deepStrictEqual(r.asked, []);
+  assert.ok(/Checking .* claude-tpm is not installed here\./.test(r.out) && /I will:/.test(r.out), r.out);
+  assert.ok(!/Proceed\?/.test(r.out) && !/✓ /.test(r.out), r.out);
+  assert.deepStrictEqual(r.mut, []); assert.deepStrictEqual(r.npm, []); assert.deepStrictEqual(snapshot(f.dir), snap);
+  assert.deepStrictEqual(r.calls, ['--version', 'plugin marketplace list --json', 'plugin list --json'], '--plan observes once and does nothing else');
+});
+test('row 24 · any, Proceed? → n → "Nothing was changed.", exit 1, zero mutations, zero writes (#1142 A regression)', async () => {
+  for (const ans of ['n', '', 'no', 'maybe', 'yep']) {
+    const f = bFresh(); const snap = snapshot(f.dir);
+    const r = await run(f, [], { answers: [ans] });
+    assert.strictEqual(r.code, 1, `answer ${JSON.stringify(ans)}: ${r.text}`);
+    assert.ok(/^ {2}Nothing was changed\.$/m.test(r.out), r.out);
+    assert.deepStrictEqual(r.mut, []); assert.deepStrictEqual(r.npm, []);
+    assert.deepStrictEqual(snapshot(f.dir), snap, 'zero file writes: the dependency is NOT written before consent');
+    assert.deepStrictEqual(r.asked, [V.CONFIRM_PROMPT]);
+    assert.ok(!/✓ /.test(r.out));
+  }
+  const f = bFresh(); // y / yes / Y / YES all consent (case-insensitive)
+  const r = await run(f, [], { answers: ['YES'] });
+  assert.strictEqual(r.code, 0, r.text);
+  assert.ok(r.mut.indexOf(`plugin install ${ID} --scope project`) >= 0, 'interactive run does not pass -y: ' + r.mut.join('|'));
+});
+
+test('diagnose · precedence (§4.3): registered-elsewhere beats upgrade; upgrade beats broken; not-installed beats dead; all 7 labels exist', () => {
+  assert.deepStrictEqual(inst.LABELS, ['registered-elsewhere', 'not-installed', 'upgrade', 'broken', 'partial', 'healthy', 'healthy-with-warnings']);
+  // an upgrade-shaped project whose registration is ALSO elsewhere → the menu label wins
+  const u = bUp('0.1.0', 'claude-tpm-market', OLD_ID); const E = W.standalone();
+  const uw = mkWorld({ marketplaces: [row(E)], records: [rec(u.dir, u.Old, { id: OLD_ID })] });
+  assert.strictEqual(inst.diagnose(O.observe(u.dir, u.self, uw.env), {}).label, 'registered-elsewhere');
+  // upgrade + broken (dead registration for our name AND the 0.1.0 id on): the sentence says upgrade, the ✗ findings list the breakage
+  const b = bUp('0.1.0', 'claude-tpm-market', OLD_ID); const DEAD = DEADDIR();
+  const bw = mkWorld({ marketplaces: [row(DEAD)], records: [rec(b.dir, b.Old, { id: OLD_ID })] });
+  const dx = inst.diagnose(O.observe(b.dir, b.self, bw.env), {});
+  assert.strictEqual(dx.label, 'upgrade'); assert.ok(dx.findings.some((x) => x.mark === 'fail' && /gone/.test(x.text)), JSON.stringify(dx.findings));
+  // a dead registration with NOTHING of ours in the project is still just "not installed" (the plan carries the re-point)
+  const n = W.project({ pkg: null }); const nw = mkWorld({ marketplaces: [row(DEADDIR())] }); const S = W.standalone();
+  const nd = inst.diagnose(O.observe(n, S, nw.env), {});
+  assert.strictEqual(nd.label, 'not-installed'); assert.deepStrictEqual(nd.actions.map((a) => a.id), ['repoint', 'dep', 'plugin-install', 'config-seed']);
+  assert.deepStrictEqual(nd.findings, [], 'not-installed prints no findings');
+});
+test('diagnose · registered elsewhere but already set up to use it → healthy-with-warnings (the menu is not re-asked every run)', async () => {
+  const f = bElse('standalone');
+  const r1 = await run(f, Q.concat('--share')); assert.strictEqual(r1.code, 0, r1.text);
+  const r2 = await run(f, [], { answers: [] });
+  assert.strictEqual(r2.code, 0, r2.text); assert.deepStrictEqual(r2.asked, [], 'no menu, no prompt'); assert.deepStrictEqual(r2.mut, []);
+  assert.ok(/⚠ registered +registered from /.test(flat(r2.out)) && /--repoint/.test(r2.out), r2.out);
+});
+test('refusal · a would-be menu with no terminal and no pre-answer (`--plan` piped) is a refusal, never "" read as quit', async () => {
+  const f = bElse('standalone'); const snap = snapshot(f.dir);
+  const r = await run(f, ['--plan'], { tty: false });
+  assert.strictEqual(r.code, 1); assert.ok(/Re-run with --share to use that copy, or --repoint/.test(r.err), r.err);
+  assert.deepStrictEqual(r.asked, []); assert.deepStrictEqual(snapshot(f.dir), snap);
+  const ok2 = await run(f, ['--plan', '--share'], { tty: false });
+  assert.strictEqual(ok2.code, 0, ok2.text);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+// §13.3 consent at the menu
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+test('consent · declining at the menu (3 / Enter / junk) = zero mutations, zero writes, Nothing was changed.', async () => {
+  for (const ans of ['3', '', 'x', 'quit']) {
+    const f = bElse('other-project-copy'); const snap = snapshot(f.dir);
+    const r = await run(f, [], { answers: [ans] });
+    assert.strictEqual(r.code, 1);
+    assert.deepStrictEqual(r.asked, [V.MENU_PROMPT], 'no Proceed? after a quit');
+    assert.ok(/^ {2}Nothing was changed\.$/m.test(r.out));
+    assert.deepStrictEqual(r.mut, []); assert.deepStrictEqual(r.npm, []); assert.deepStrictEqual(snapshot(f.dir), snap);
+  }
+});
+test('consent · the menu chooses, the prompt consents: use then n → nothing changed', async () => {
+  const f = bElse('standalone'); const snap = snapshot(f.dir);
+  const r = await run(f, [], { answers: ['1', 'n'] });
+  assert.strictEqual(r.code, 1); assert.deepStrictEqual(r.asked, [V.MENU_PROMPT, V.CONFIRM_PROMPT]);
+  assert.deepStrictEqual(r.mut, []); assert.deepStrictEqual(r.npm, []); assert.deepStrictEqual(snapshot(f.dir), snap);
+  assert.ok(/Nothing was changed\./.test(r.out));
+});
+test('consent · --quiet with a would-be menu and no pre-answer → refusal on stderr (verdict first), exit 1, nothing changed', async () => {
+  const f = bElse('other-project-copy'); const snap = snapshot(f.dir);
+  const r = await run(f, Q);
+  assert.strictEqual(r.code, 1);
+  assert.ok(/^error: not installing — claude-tpm 0\.2\.0-dev is already registered from .*node_modules\/@codercowboy\/claude-tpm\.$/m.test(flatErr(r.err)), r.err);
+  assert.ok(/Re-run with --share to use that copy, or --repoint to register this folder instead\./.test(r.err) && /Nothing was changed\./.test(r.err));
+  assert.deepStrictEqual(r.mut, []); assert.deepStrictEqual(snapshot(f.dir), snap);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+// §13.4 failure + resumability
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+async function remainderIs(f, ids, prose) {
+  const p = await run(f, ['--plan', '--quiet']);
+  assert.strictEqual(p.code, 0, p.text);
+  const parsed = parsePlan(p.out);
+  assert.deepStrictEqual(parsed.items.map((i, k) => i.prose.slice(0, prose[k].length)), prose, 'the next run plans exactly the remainder: ' + ids.join(','));
+  assert.strictEqual(parsed.items.length, ids.length);
+}
+test('failure · fail on action 2 of 4 (npm) → ✓ 1, ✗ 2 with npm stderr verbatim, Stopped after 1 of 4, exit 1; re-run plans the remainder and finishes', async () => {
+  const f = bFresh();
+  const r = await run(f, Q, { env: { FAKE_NPM_FAIL: '1' } });
+  assert.strictEqual(r.code, 1);
+  assert.ok(/✓ registered +/.test(r.out), r.out);
+  assert.ok(/✗ package\.json +`npm install file:[^`]*` exited 1:\n {24}npm ERR! forced failure from the fake npm/.test(r.out), r.out);
+  assert.ok(/^ {2}Stopped after 1 of 4\. Re-running `tpm install \.` picks up where this left off\.$/m.test(r.out), r.out);
+  assert.ok(!/✓ package\.json/.test(r.out) && !/✓ turned on/.test(r.out) && !/✓ config\.json/.test(r.out) && !/is installed in/.test(flat(r.out)));
+  assert.deepStrictEqual(r.mut, ['plugin marketplace add ' + f.S], 'only the registration had run');
+  await remainderIs(f, ['dep', 'plugin-install', 'config-seed'], [P.dep, P.install, P.seed]);
+  const r2 = await run(f, Q);
+  assert.strictEqual(r2.code, 0, r2.text);
+  assert.deepStrictEqual(r2.mut.filter((m) => /marketplace/.test(m)), [], 'the finished registration is not repeated');
+  ok(O.observe(f.dir, f.self, f.w.env));
+  await converged(f);
+});
+test('failure · fail on action 1 (marketplace add) → Stopped after 0 of 4, claude stderr verbatim, nothing else ran', async () => {
+  const f = bFresh();
+  const r = await run(f, Q, { env: { FAKE_CLAUDE_FAIL: 'plugin marketplace add' } });
+  assert.strictEqual(r.code, 1);
+  assert.ok(/✗ registered +`claude plugin marketplace` exited 1:\n {24}fake claude: forced failure/.test(r.out), r.out);
+  assert.ok(/Stopped after 0 of 4\./.test(r.out) && !/✓ /.test(r.out));
+  assert.deepStrictEqual(r.npm, []);
+  await remainderIs(f, ['register', 'dep', 'plugin-install', 'config-seed'], [P.register(f.S), P.dep, P.install, P.seed]);
+});
+test('failure · fail on action 3 (plugin install) → Stopped after 2 of 4; re-run plans [plugin-install, config-seed]', async () => {
+  const f = bFresh();
+  const r = await run(f, Q, { env: { FAKE_CLAUDE_FAIL: 'plugin install' } });
+  assert.strictEqual(r.code, 1);
+  assert.ok(/✓ registered/.test(r.out) && /✓ package\.json/.test(r.out) && /✗ turned on +`claude plugin install` exited 1:/.test(r.out) && /Stopped after 2 of 4\./.test(r.out), r.out);
+  await remainderIs(f, ['plugin-install', 'config-seed'], [P.install, P.seed]);
+  assert.strictEqual(O.observe(f.dir, f.self, f.w.env).reg.state, 'same');
+});
+test('failure · a command that exits 0 but changes nothing FAILS its verify (replaces --force)', async () => {
+  const f = bFresh();
+  const r = await run(f, Q, { env: { FAKE_NPM_NOOP: '1' } });
+  assert.strictEqual(r.code, 1);
+  assert.ok(/✗ package\.json/.test(r.out) && /did not take effect/.test(flat(r.out)) && /Stopped after 1 of 4\./.test(r.out), r.out);
+});
+test('failure · Claude Code that will not report its state → refusal, nothing changed (no guessing a plan)', async () => {
+  const f = bFresh();
+  const r = await run(f, Q, { env: { FAKE_CLAUDE_FAIL: 'plugin list' } });
+  assert.strictEqual(r.code, 1);
+  assert.ok(/^error: not installing — Claude Code is installed but did not report what it has set up/m.test(r.err) && /Nothing was changed\./.test(r.err), r.err);
+  assert.deepStrictEqual(r.mut, []); assert.deepStrictEqual(r.npm, []);
+});
+test('refusals · claude missing → tool-missing; target is the claude-tpm folder itself → "not a project"', async () => {
+  const f = bFresh(); f.w = mkWorld({ noClaude: true });
+  const r = await run(f, Q);
+  assert.strictEqual(r.code, 1);
+  assert.ok(/error: not installing — `claude` not found on PATH — install Claude Code first\./.test(r.err), r.err);
+  const g = bFresh(); g.dir = g.S;
+  const r2 = await run(g, Q);
+  assert.strictEqual(r2.code, 1);
+  assert.ok(/error: not installing — this is the claude-tpm folder, not a project\./.test(r2.err), r2.err);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+// §13.6 probe count + GENUINE memoization (closes phase-01 concern #1)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+test('memoization · a probe called twice → ONE spawn (red if the memo is disabled)', () => {
+  const f = bGood(); const counts = {};
+  const exec = (bin, argv, cwd, env) => { const k = [bin].concat(argv).join(' '); counts[k] = (counts[k] || 0) + 1; return spawnSync(bin, argv, { encoding: 'utf8', cwd, env }); };
+  const st = O.observe(f.dir, f.self, f.w.env, { exec });
+  const probes = st._ctx.probes;
+  assert.strictEqual(counts['claude plugin list --json'], 1, 'observe itself spawns plugin list once');
+  probes.pluginList(); probes.pluginList(); probes.marketplaceList(); probes.marketplaceList(); probes.claudeVersion(); probes.claudeVersion();
+  assert.strictEqual(counts['claude plugin list --json'], 1, 'plugin list called 3× in all → ONE spawn');
+  assert.strictEqual(counts['claude plugin marketplace list --json'], 1, 'marketplace list called 3× in all → ONE spawn');
+  assert.strictEqual(counts['claude --version'], 1, 'claude --version called 3× in all → ONE spawn');
+  probes.pluginList(true);
+  assert.strictEqual(counts['claude plugin list --json'], 2, 'fresh:true is the ONLY way to re-run (that is what verify uses)');
+  assert.strictEqual(st.probes.count, 3, 'the State records 3 claude spawns for the observe');
+});
+test('probe count · verify re-probes ONLY the layer an action touched (N6)', () => {
+  const f = bGood(); const log = [];
+  const exec = (bin, argv, cwd, env) => { log.push([bin].concat(argv).join(' ')); return spawnSync(bin, argv, { encoding: 'utf8', cwd, env }); };
+  const st = O.observe(f.dir, f.self, f.w.env, { exec });
+  const n0 = log.length;
+  O.reobserveLayer(st, 'dep'); O.reobserveLayer(st, 'marker');
+  assert.strictEqual(log.length, n0, 'dep / marker verify = filesystem only, zero spawns');
+  O.reobserveLayer(st, 'registration');
+  assert.deepStrictEqual(log.slice(n0), ['claude plugin marketplace list --json']);
+  O.reobserveLayer(st, 'enablement');
+  assert.deepStrictEqual(log.slice(n0 + 1), ['claude plugin list --json']);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+// §8 flags
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+function cli(args, w, input) {
+  const env = w ? w.env : process.env;
+  return spawnSync(process.execPath, [TOOL].concat(args), { encoding: 'utf8', env, input: input === undefined ? '' : input, timeout: 120000 });
+}
+test('flags · parseArgs: every §8 flag, positional + --dir, defaults', () => {
+  const a = inst.parseArgs(['../p', '--plan', '--quiet', '--save', '--from', 'file:../x', '--repoint', '--debug', '--verbose', '--check']);
+  assert.deepStrictEqual([a.dir, a.plan, a.quiet, a.save, a.from, a.repoint, a.share, a.debug, a.verbose, a.check], ['../p', true, true, true, 'file:../x', true, false, true, true, true]);
+  assert.strictEqual(inst.parseArgs(['--share']).share, true);
+  assert.strictEqual(inst.parseArgs(['--dir', '../q']).dir, '../q');
+  const d = inst.parseArgs([]);
+  assert.deepStrictEqual([d.dir, d.plan, d.quiet, d.save, d.repoint, d.share, d.check, d.help], [process.cwd(), false, false, false, false, false, false, false]);
+  assert.strictEqual(inst.parseArgs(['-h']).help, true); assert.strictEqual(inst.parseArgs(['--help']).help, true);
+});
+test('flags · --force, -y, unknown tokens, missing values, --repoint+--share → exit 2 (nothing runs)', () => {
+  for (const args of [['--force'], ['-y'], ['--bogus'], ['--from'], ['--from', '-x'], ['--dir'], ['--repoint', '--share'], ['a', 'b']]) {
+    const r = cli(args);
+    assert.strictEqual(r.status, 2, JSON.stringify(args) + ' → ' + r.status + ' ' + r.stdout + r.stderr);
+  }
+  assert.ok(/Unknown argument: --force/.test(cli(['--force']).stderr));
+});
+test('flags · --help prints the voice help (no --force, no -y), exit 0', () => {
+  const r = cli(['--help']);
+  assert.strictEqual(r.status, 0); assert.strictEqual(r.stdout, V.help());
+  assert.ok(!/--force/.test(r.stdout) && !/\s-y\b/.test(r.stdout) && /--plan/.test(r.stdout) && /--share/.test(r.stdout));
+});
+test('flags · the CLI end to end: `--plan` prints the plan and exits 0 (real installer folder, fake claude/npm); `--debug` traces spawns on stdout', () => {
+  const w = mkWorld(); const dir = W.project({ pkg: null }); const snap = snapshot(dir);
+  const r = cli([dir, '--plan'], w);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.ok(/I will:/.test(r.stdout) && !/Proceed\?/.test(r.stdout), r.stdout);
+  assert.deepStrictEqual(snapshot(dir), snap);
+  const d = cli([dir, '--plan', '--debug'], w);
+  assert.ok(/\[tpm-debug\] → spawn: claude --version/.test(d.stdout) && /\[tpm-debug\] diagnose: not-installed/.test(d.stdout), d.stdout);
+  const t = cli([dir], w); // no --quiet, stdin not a TTY (spawnSync pipe) → refused
+  assert.strictEqual(t.status, 1); assert.ok(/stdin is not a terminal/.test(t.stderr), t.stderr);
+});
+test('flags · the CLI end to end: a real `--quiet` install from the actual installer folder (fake claude/npm) converges', () => {
+  const w = mkWorld(); const dir = W.project({ pkg: null });
+  const r = spawnSync(process.execPath, [TOOL, dir, '--quiet'], { encoding: 'utf8', env: w.env, timeout: 120000 });
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.ok(/is installed in /.test(flat(r.stdout)), r.stdout);
+  assert.strictEqual(O.observe(dir, null, w.env).reg.state, 'same');
+});
+test('flags · --save → regular dependency (npm --save, bucket `dependencies`, prose without "dev"); default → dev + the O5 note', async () => {
+  const f = bFreshReg();
+  const p = await run(f, ['--plan', '--save']);
+  const items = parsePlan(p.out);
+  assert.ok(/^Add claude-tpm to package\.json as a dependency, /.test(items.items[0].prose), items.items[0].prose);
+  assert.ok(!items.extras.some((e) => /dev dependency/.test(e)));
+  assert.ok(/ --save --no-fund/.test(items.items[0].cmds[0]) && !/--save-dev/.test(items.items[0].cmds[0]), items.items[0].cmds[0]);
+  const r = await run(f, ['--quiet', '--save']);
+  assert.strictEqual(r.code, 0, r.text);
+  const pj = JSON.parse(fs.readFileSync(path.join(f.dir, 'package.json'), 'utf8'));
+  assert.ok(pj.dependencies && pj.dependencies['@codercowboy/claude-tpm'] && !(pj.devDependencies && pj.devDependencies['@codercowboy/claude-tpm']));
+  const g = bFreshReg();
+  const q = await run(g, ['--plan']);
+  assert.ok(parsePlan(q.out).extras.some((e) => /recorded as a dev dependency; pass --save for a regular one/.test(e)));
+  assert.ok(/ --save-dev /.test(parsePlan(q.out).items[0].cmds[0]));
+});
+test('flags · --from <spec> is used verbatim for the dependency', async () => {
+  const f = bFreshReg(); const custom = path.join(path.dirname(f.dir), 'custom-source'); fs.mkdirSync(custom);
+  const r = await run(f, ['--quiet', '--from', 'file:../custom-source']);
+  assert.strictEqual(r.code, 0, r.text);
+  assert.deepStrictEqual(r.npm, ['install file:../custom-source --save-dev --no-fund --no-audit']);
+  assert.strictEqual(O.observe(f.dir, f.self, f.w.env).dep.linksTo, fs.realpathSync(custom));
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+// §13.5 / concern #2 — the strict never-print check, and it is itself tested
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════
+test('never-print · the STRICT check is strictly stricter than voice\'s (banned prose hidden in a `claude …` span)', () => {
+  const planted = 'Some prose with `claude cache is stale` inside a command-looking span.';
+  assert.deepStrictEqual(V.findNeverPrint(planted), [], 'voice\'s own check is blind to it (the documented exemption)');
+  assert.ok(strictNeverPrint(planted).some((o) => o.word === 'cache'), 'the strict check sees it');
+  assert.deepStrictEqual(strictNeverPrint('run `npx tpm doctor .` then `tpm install . --repoint` or `claude plugin marketplace add ~/x`'), []);
+  assert.deepStrictEqual(strictNeverPrint('  $ claude plugin marketplace add /x'), [], '$ command lines are exempt');
+  assert.ok(strictNeverPrint('The marketplace is gone').length === 1);
+  assert.deepStrictEqual(strictNeverPrint('  ✗ registered `claude plugin marketplace` exited 1:\n                        Marketplace not found'), [], 'child stderr under a ✗ is verbatim and exempt');
+  assert.ok(strictNeverPrint('  ✗ registered `claude plugin marketplace` exited 1:\n  Marketplace not found').length === 1, 'but only when indented as the child block');
+});
+
+// ── run ───────────────────────────────────────────────────────────────────────────────────────────────
+(async () => {
+  process.stdout.write('tpm-consumer-install.test.js — the state reconciler\n');
+  for (const [name, fn] of tests) {
+    try { await fn(); process.stdout.write(`  ✓ ${name}\n`); pass += 1; }
+    catch (e) { process.stdout.write(`  ✗ ${name}\n      ${String(e.message).split('\n').join('\n      ')}\n`); fail += 1; }
+  }
   try {
-    const a = runInstallStateful(dir, ['--quiet'], { marketplaces: rcRow(w.copy) });
-    assert.strictEqual(a.status, 1, a.out); assert.ok(/couldn't compare/.test(a.out), a.out); assert.ok(!/TypeError|at Object/.test(a.out), 'no stack trace');
-    const b = runInstallStateful(makeInstalledConsumer(), [], { input: '3\ny\n', marketplaces: rcRow(w.copy) });
-    assert.strictEqual(b.status, 1, b.out); assert.ok(/type exactly "share different copy"/.test(b.out), b.out);
-  } finally { fs.chmodSync(locked, 0o755); }
-});
-
-check('5.2 NOT this case: a symlink in another project that resolves to OUR canonical folder is the healthy "same" row — no warning, no prompt, no mutation of the row', () => {
-  const dir = makeInstalledConsumer(); const other = mkTmp();
-  const link = path.join(other, 'node_modules', '@codercowboy', 'claude-tpm'); fs.mkdirSync(path.dirname(link), { recursive: true }); fs.symlinkSync(REAL_BUNDLE, link);
-  const r = runInstallStateful(dir, ['--quiet'], { marketplaces: rcRow(link) });
-  assert.strictEqual(r.status, 0, r.out);
-  assert.strictEqual(marketCalls(r).length, 0);
-  assert.ok(!/already installed on this machine from/.test(r.out), r.out);
-});
-
-check('5.2 NOT this case: a row at some other CENTRAL folder (not in node_modules) keeps the generic wording (DIFFERENT folder, re-point offer), not the real-copy message', () => {
-  const dir = makeInstalledConsumer(); const decoy = decoyBundle();
-  const q = runInstallStateful(dir, ['--quiet'], { marketplaces: rcRow(decoy) });
-  assert.strictEqual(q.status, 1); assert.ok(/DIFFERENT folder/.test(q.err) && /--repoint/.test(q.err));
-  assert.ok(!/already installed on this machine from/.test(q.out) && !/this project will run that copy/.test(q.out));
-});
-
-check('5.2 --quiet --repoint on a real-copy row is still an explicit re-point (the pre-existing flag keeps working): remove then add, exit 0', () => {
-  const dir = makeInstalledConsumer(); const w = otherProjectWithCopy('small');
-  const r = runInstallStateful(dir, ['--quiet', '--repoint'], { marketplaces: rcRow(w.copy) });
-  assert.strictEqual(r.status, 0, r.out);
-  assert.deepStrictEqual(marketCalls(r).map((c) => c.argv.slice(2).join(' ')), ['remove ' + inst.MARKETPLACE_NAME, 'add ' + REAL_BUNDLE]);
-});
-
-check('5.2/R9 doctor (--check): a real-copy row is a WARN naming the other copy + identical/differs verdict (alongside the R9 source-row WARN, exit 0); central-folder row has no such WARN', () => {
-  const dir = makeInstalledConsumer(); const w = otherProjectWithCopy('identical');
-  fs.mkdirSync(path.join(dir, '.claude', 'claude-tpm'), { recursive: true }); // R9: an enabled plugin needs the project marker
-  const recs = (p) => [{ id: PLUGIN_ID, scope: 'project', enabled: true, installPath: p, projectPath: dir }];
-  const a = runInstallStateful(dir, ['--check'], { marketplaces: rcRow(w.copy), records: recs(w.copy) });
-  assert.strictEqual(a.status, 0, 'R9: a row resolving to another folder is a source-row WARN: ' + a.out);
-  const warn = a.out.split('\n').find((l) => /⚠ real copy in another project/.test(l));
-  assert.ok(warn && warn.indexOf(w.copy) >= 0 && /same version, identical files/.test(warn), a.out);
-  const w2 = otherProjectWithCopy('differs');
-  const b = runInstallStateful(dir, ['--check'], { marketplaces: rcRow(w2.copy), records: recs(w2.copy) });
-  assert.ok(/⚠ real copy in another project.*files differ \(2 files\)/.test(b.out), b.out);
-  const decoy = decoyBundle();
-  const c = runInstallStateful(dir, ['--check'], { marketplaces: rcRow(decoy), records: recs(decoy) });
-  assert.ok(!/⚠ real copy in another project/.test(c.out), c.out);
-});
-
-check('5.2 --help documents the real-copy handling and --force', () => {
-  const r = spawnSync('node', [TOOL, '--help'], { encoding: 'utf8' });
-  assert.ok(/real copy/i.test(r.stdout) && /--force/.test(r.stdout) && /node_modules/.test(r.stdout));
-});
-
-
-cleanup();
-process.stdout.write(`\n${pass} passed, ${fail} failed\n`);
-process.exit(fail ? 1 : 0);
+    assert.deepStrictEqual(OFFENCES, [], 'never-print offences in install output: ' + JSON.stringify(OFFENCES.slice(0, 3)));
+    process.stdout.write(`  ✓ never-print · STRICT check over the output of every run above (${tests.length} tests): zero offences\n`); pass += 1;
+  } catch (e) { process.stdout.write(`  ✗ never-print\n      ${e.message}\n`); fail += 1; }
+  process.stdout.write(`\n${pass} passed, ${fail} failed\n`);
+  process.exit(fail ? 1 : 0);
+})();

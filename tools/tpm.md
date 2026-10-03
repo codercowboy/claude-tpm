@@ -46,7 +46,7 @@ verbs exist for the harness to invoke, not for a human to type.
 |---|---|
 | `tpm install [dir] [options]` | `tools/consumer/tpm-consumer-install.js` |
 | `tpm uninstall [dir] [options]` | `tools/consumer/tpm-consumer-uninstall.js` |
-| `tpm doctor [dir]` | `tools/consumer/tpm-consumer-install.js` (with `--check` appended: `doctor` *is* `install --check`) |
+| `tpm doctor [dir]` | `tools/consumer/tpm-consumer-doctor.js` (its own script; `--check` remains a compat alias inside `install`) |
 
 These are the human porcelain for adoption (`npx tpm install .` — human terminal, before the plugin's bin is on `PATH`), so they stay top-level rather than
 under a `consumer` suite.

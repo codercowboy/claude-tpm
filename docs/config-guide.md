@@ -214,11 +214,32 @@ Drift sweeps + living-document upkeep (`tpm-hygiene`).
 
 ```jsonc
 "hygiene": {
-  "enabled": true
-  // cadence + check selection — still being finalized
+  "enabled": true,
+  "healthCheck": { "enabled": true }   // the SessionStart health note (below); default on
+  // cadence + check selection for the sweeps — still being finalized
 }
 ```
-*(Full shape lands when the hygiene module is built.)*
+*(The sweep settings land when the hygiene module is built. `healthCheck` ships today.)*
+
+### `hygiene.healthCheck.enabled` — the session-start health note
+
+At every session start (startup, resume, `/clear`, compact) the SessionStart hook runs a light, file-only
+check of the project: it reads `package.json`, `node_modules`, the project's settings files and
+`.claude/claude-tpm/`. It never runs `claude`, so it cannot see a plugin that failed to load; `npx tpm doctor .`
+from a terminal can. When nothing is wrong it prints nothing and costs no context. When something is wrong it adds
+one `[claude-tpm]` line to Claude's context naming up to three problems, telling Claude to report them to you,
+to suggest `npx tpm install .` from a terminal, and not to edit files to fix them. The problems it looks for:
+
+- `package.json` points at a different claude-tpm version than the running plugin (so `npx tpm` runs the old one).
+- A second claude-tpm version is also turned on in the project.
+- `.claude/claude-tpm/` is missing.
+- `.claude/claude-tpm/config.json` is not valid JSON.
+
+| Key | Default | Effect |
+|---|---|---|
+| `hygiene.healthCheck.enabled` | `true` | `false` silences the note. Only an explicit `false` turns it off; an absent key, a missing config, or an unreadable one leaves it on. |
+
+There is no setting that makes the hook run the full doctor. A project without a `package.json` gets no note.
 
 ---
 
@@ -234,7 +255,7 @@ uses to decide which modules load and which `tpm-*` commands the open MOTD lists
 top-level `<module>.enabled` booleans (each defaulting `true`), so it stays a cross-cutting *read*, not
 a resolver of any one module's full config. It is **lenient**: an absent or malformed
 config resolves to "all enabled" (a warning, never a crash) so a bad config can't wedge boot.
-Validating a malformed config is the doctor's job (`npx tpm install --check`), not boot's.
+Validating a malformed config is the doctor's job (`npx tpm doctor .`), not boot's.
 
 ---
 

@@ -58,16 +58,14 @@
  *                    `claude … --json` probe, and each step decision. Also enabled by TPM_DEBUG=1.
  *                    Diagnostic ONLY — changes no uninstall behavior; the abnormal-exit signal name and
  *                    the spawn errno are surfaced even without it.
- *     --check        read-only: run every state check, print a PASS/FAIL checklist (PASS = cleanly
- *                    removed), change nothing. Exits non-zero if anything claude-tpm added is still
- *                    present.
+ *     --check        retired: exits 2 pointing at `tpm doctor` (the read-only state report).
  *     -h, --help
  *
  *   Examples:
  *     npx tpm uninstall ../proj              # interactive: asks project-only vs whole-system
  *     npx tpm uninstall ../proj --project    # this project only (non-interactive scope)
  *     npx tpm uninstall ../proj --system -y  # whole machine, no prompts
- *     npx tpm uninstall --check              # read-only: is it cleanly removed?
+ *     npx tpm doctor ../proj                 # read-only: what is still set up there?
  *
  * CONVENTIONS: zero runtime deps (Node built-ins only), portable (`node …/tpm-consumer-uninstall.js`),
  *   also a module (module.exports) so tests can drive the pure helpers directly. See
@@ -77,50 +75,25 @@
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const readline = require('readline');
 const { spawnSync } = require('child_process');
 
-const TPM_PKG_NAME = '@codercowboy/claude-tpm';
+// Detection comes from the ONE shared observer (tpm-consumer-observe.js) — the same 5-layer snapshot `tpm install`
+// and `tpm doctor` read. Uninstall keeps no private copy of any detector; it only consumes State and re-reads a
+// layer (reobserveLayer) after a step. The marketplace + plugin identity are READ from this bundle's own
+// .claude-plugin/marketplace.json (version-scoped, e.g. "claude-tpm-market-0.2.0"), so uninstall removes the SAME
+// row install registered and a bare-named 0.1.0 bundle never clobbers a scoped 0.2.0 one.
+const O = require('./tpm-consumer-observe');
 
-// Self-location + version-scoped identity — MUST mirror tpm-consumer-install.js so uninstall targets
-// the SAME marketplace name install registered. The name is READ from this bundle's own
-// .claude-plugin/marketplace.json (version-scoped there, e.g. "claude-tpm-market-0.2.0"), not
-// hardcoded, so a bare-named 0.1.0 bundle and a scoped 0.2.0 bundle each remove their OWN registry
-// citizen instead of one version clobbering the other's global singleton. findBundleRoot walks up
-// for the bundle's own package.json (name === TPM_PKG_NAME) — the neutral marker that survives
-// packaging. Kept self-contained (zero shared imports across tools) per tool-conventions.md.
-function findBundleRoot(startDir) {
-  let dir = path.resolve(startDir);
-  for (;;) {
-    const pkgPath = path.join(dir, 'package.json');
-    if (fs.existsSync(pkgPath)) {
-      try {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-        if (pkg && pkg.name === TPM_PKG_NAME) return dir;
-      } catch (_e) { /* not our marker — keep walking up */ }
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
-}
-function readBundleIdentity() {
-  const fallback = { marketplace: 'claude-tpm-market', plugin: 'claude-tpm' };
-  const bundleRoot = findBundleRoot(__dirname);
-  if (!bundleRoot) return fallback;
-  try {
-    const mp = JSON.parse(fs.readFileSync(path.join(bundleRoot, '.claude-plugin', 'marketplace.json'), 'utf8'));
-    const marketplace = (mp && typeof mp.name === 'string' && mp.name) ? mp.name : fallback.marketplace;
-    const plugin = (mp && Array.isArray(mp.plugins) && mp.plugins[0] && typeof mp.plugins[0].name === 'string' && mp.plugins[0].name)
-      ? mp.plugins[0].name : fallback.plugin;
-    return { marketplace, plugin };
-  } catch (_e) { return fallback; }
-}
+const TPM_PKG_NAME = O.TPM_PKG_NAME;
+const findBundleRoot = O.findBundleRoot;
+const _bundleRoot = O.findBundleRoot(__dirname);
+function readBundleIdentity() { return O.readBundleIdentity(_bundleRoot); }
 const _ident = readBundleIdentity();
 const MARKETPLACE_NAME = _ident.marketplace;
 const PLUGIN_NAME = _ident.plugin;
 const PLUGIN_ID = `${PLUGIN_NAME}@${MARKETPLACE_NAME}`;
+const realOrResolved = O.realOrResolved;
 
 // ── operation-trace (--debug / TPM_DEBUG) + honest spawn-error model ────────────────────────────────
 // Lifted VERBATIM from tpm-consumer-install.js (only the prefix / env var differ per package). A
@@ -179,118 +152,44 @@ function preflightMessage(bin, cls, installHint) {
   return `\`${bin}\` is on PATH but \`${bin} --version\` exited ${cls.status} — check the install.`;
 }
 
-// ── package.json helpers ─────────────────────────────────────────────────────────────────────────
-
-function readPackageJson(dir) {
-  const p = path.join(dir, 'package.json');
-  if (!fs.existsSync(p)) return { exists: false, value: null, error: null };
-  try { return { exists: true, value: JSON.parse(fs.readFileSync(p, 'utf8')), error: null }; }
-  catch (e) { return { exists: true, value: null, error: e.message }; }
-}
-
-function hasTpmDependency(pkg) {
-  if (!pkg) return false;
-  return ['dependencies', 'devDependencies', 'optionalDependencies']
-    .some((bucket) => pkg[bucket] && Object.prototype.hasOwnProperty.call(pkg[bucket], TPM_PKG_NAME));
-}
-
-// ── `claude` state checks (read-only; defensive about JSON shape — see tpm-consumer-install.js for
-// the same caveat: this machine has no installed plugin to sample the real shape from) ─────────────
-
-// Availability = the probe actually RAN and exited 0 (classifySpawn.ok) — NOT merely "the error wasn't
-// ENOENT". That one rule catches an absent bin (ENOENT), a directory / non-exec file shadowing it on PATH
-// (EACCES), AND a broken bin that errors, all at once. Returns the RICHER classifySpawn verdict (not a
-// bare boolean any more) so callers read `.ok` for availability and `.errorCode` for the reason.
-function claudeCliAvailable() {
-  return classifySpawn(spawnSync('claude', ['--version'], { encoding: 'utf8' }));
-}
-
-// `cwd` MATTERS: `claude plugin list --json` reports each plugin's `enabled` state RELATIVE TO the
-// project context of the cwd it runs in (verified live). So project-scoped probes MUST run from the
-// TARGET project dir or they misread enablement. Callers pass targetDir; defaults to process.cwd().
-function runClaudeJson(argv, cwd) {
-  const r = spawnSync('claude', argv, { encoding: 'utf8', cwd: cwd || process.cwd() });
-  _dbg('probe:', 'claude ' + argv.join(' '), '(cwd=' + (cwd || process.cwd()) + ')',
+// ── detection: ONE observe() per run, plus re-reads of the layer a step touched ───────────────────────────
+// State fields used: env.claudeOnPath/claudeError (preflight) · en.record.present (this project's plugin install
+// record) · reg.state/storedPath/realPath (the shared marketplace row) · dep.declared + target.pkg (package.json).
+// `--debug` narrates each probe through the injected exec so the trace is unchanged.
+function tracedExec(bin, argv, cwd, env) {
+  const r = spawnSync(bin, argv, { encoding: 'utf8', cwd, env, timeout: 30000 });
+  _dbg('probe:', bin + ' ' + argv.join(' '), '(cwd=' + cwd + ')',
     '→ status=' + r.status + ' signal=' + (r.signal || 'none') + (r.error ? ' error=' + r.error.code : '') +
     ' json=' + (!r.error && r.status === 0 && r.stdout ? 'parsed' : 'null'));
-  if (r.error || r.status !== 0 || !r.stdout) return null;
-  try { return JSON.parse(r.stdout); } catch (_e) { return null; }
+  return r;
 }
+function observeNow(targetDir) { return O.observe(targetDir, null, process.env, { exec: tracedExec }); }
 
-function marketplaceRegistered(cwd) {
-  const list = runClaudeJson(['plugin', 'marketplace', 'list', '--json'], cwd);
-  return Array.isArray(list) && list.some((m) => m && m.name === MARKETPLACE_NAME);
+// Pure: State → the classifySpawn-shaped verdict for `claude` (callers read .ok/.errorCode/.status).
+function claudeVerdict(state) {
+  const e = state.env || {};
+  if (e.claudeOnPath === true) return { ok: true, ran: true, status: 0, signal: null, errorCode: null };
+  const ce = e.claudeError || null;
+  const exited = /^exited (\d+)$/.exec(ce || '');
+  if (exited) return { ok: false, ran: true, status: Number(exited[1]), signal: null, errorCode: null };
+  return { ok: false, ran: false, status: null, signal: null, errorCode: ce || 'ESPAWN' };
 }
-
-// Parse `claude plugin list --json` — an array of installed-plugin objects, each shaped like
-//   { "id": "claude-tpm@claude-tpm-market", "scope": "project", "enabled": true, … }
-// Find OUR entry by id (project scope, mirroring the --scope project install always uses) and read
-// `.enabled`. No entry → not installed. Defensive against schema drift: if the output isn't an array of
-// objects carrying the expected keys, warn and fall back conservatively (assume not installed).
-// Pure JSON→state mapping (spun out of pluginState so it's unit-testable without spawning `claude`).
-// `list` is the ALREADY-PARSED JSON value returned by runClaudeJson (or null when the CLI was
-// unavailable / emitted non-JSON). Behavior is identical to the logic that previously lived inline in
-// pluginState — this extraction is purely so tests can drive the mapping directly.
-// realpath, falling back to a plain resolve for a missing path (mirrors tpm-consumer-install.js).
-function realOrResolved(p) {
-  try { return fs.realpathSync(p); } catch (_e) { return path.resolve(p); }
-}
-// THIS project's project-scope record (see tpm-consumer-install.js): `targetDir` narrows by projectPath.
-function recordMatches(e, targetDir) {
-  if (!e || typeof e !== 'object' || e.id !== PLUGIN_ID) return false;
-  if (!(e.scope === undefined || e.scope === 'project')) return false;
-  if (targetDir && typeof e.projectPath === 'string' && e.projectPath) {
-    return realOrResolved(e.projectPath) === realOrResolved(targetDir);
-  }
-  return true;
-}
-
-function parsePluginList(list, targetDir) {
-  if (list === null) return { installed: false, enabled: false }; // CLI unavailable / non-JSON output
-  if (!Array.isArray(list)) {
-    process.stderr.write('warning: `claude plugin list --json` did not return a JSON array (schema drift?) — assuming plugin not installed.\n');
-    return { installed: false, enabled: false };
-  }
-  if (list.length > 0 && !list.some((e) => e && typeof e === 'object' && typeof e.id === 'string')) {
-    process.stderr.write('warning: `claude plugin list --json` entries lack the expected `id` field (schema drift?) — assuming plugin not installed.\n');
-    return { installed: false, enabled: false };
-  }
-  const entry = list.find((e) => recordMatches(e, targetDir));
-  if (!entry) return { installed: false, enabled: false };
-  if (typeof entry.enabled !== 'boolean') {
-    process.stderr.write(`warning: plugin entry ${PLUGIN_ID} has no boolean "enabled" field (schema drift?) — assuming enabled.\n`);
-    return { installed: true, enabled: true };
-  }
-  return { installed: true, enabled: entry.enabled };
-}
-
-function pluginState(cwd) {
-  return parsePluginList(runClaudeJson(['plugin', 'list', '--json'], cwd), cwd);
-}
-
-// ── marketplace SOURCE health — needed to detect the "shared marketplace points at THIS project" landmine
-// before removing the dependency here. (Mirrors install.js's helper; the consumer suite keeps each tool
-// self-contained per tool-conventions.md §2, so it carries its own copy rather than cross-importing.) ──
-function parseMarketplaceList(list) {
-  if (!Array.isArray(list)) return { registered: false, source: null, path: null };
-  const m = list.find((e) => e && typeof e === 'object' && e.name === MARKETPLACE_NAME);
-  if (!m) return { registered: false, source: null, path: null };
-  return { registered: true, source: typeof m.source === 'string' ? m.source : null,
-    path: typeof m.path === 'string' ? m.path : null };
-}
+// Pure: is the plugin installed for THIS project (the project-scope record), and the shared row registered?
+function pluginInstalled(state) { return !!(state.en && state.en.record && state.en.record.present); }
+function rowRegistered(state) { return state.reg.state !== 'absent' && state.reg.state !== 'unknown'; }
+function depDeclared(state) { return !!state.dep.declared; }
 // Does the shared marketplace's row point INTO this project's node_modules? If so, removing the dependency
 // here orphans that source for every OTHER project still using the row — which triggers the guard/consent
 // below. A row stored as the node_modules symlink path counts (string match); so does a row that resolves to
 // a REAL copy living there. A row that merely resolves (through a link) to a central folder does NOT — that
 // folder survives `npm uninstall`.
-function marketplacePointsAt(targetDir) {
-  const parsed = parseMarketplaceList(runClaudeJson(['plugin', 'marketplace', 'list', '--json'], targetDir));
-  if (!parsed.registered || !parsed.path) return false;
+function rowPointsInside(state, targetDir) {
+  if (!rowRegistered(state) || !state.reg.storedPath) return false;
   const nm = path.resolve(targetDir, 'node_modules', TPM_PKG_NAME);
-  if (path.resolve(parsed.path) === nm) return true;
+  if (path.resolve(state.reg.storedPath) === nm) return true;
   let nmIsLink = true;
   try { nmIsLink = fs.lstatSync(nm).isSymbolicLink(); } catch (_e) { return false; }
-  return !nmIsLink && realOrResolved(parsed.path) === realOrResolved(nm);
+  return !nmIsLink && realOrResolved(state.reg.storedPath) === realOrResolved(nm);
 }
 
 // ── the MIRROR RULE: which OTHER projects still have an install record for this plugin id? ──────────────
@@ -298,7 +197,7 @@ function marketplacePointsAt(targetDir) {
 // see a record twice than miss one): `claude plugin list --json` (machine-wide records, one per project) and
 // the machine's installed_plugins.json (v2: { plugins: { "<id>": [ {scope, projectPath, installPath…} ] } }).
 // The file lives under $CLAUDE_CONFIG_DIR (tests point it at a scratch dir) else ~/.claude.
-function claudeConfigDir() { return process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'); }
+function claudeConfigDir() { return O.claudeConfigDir(process.env); }
 
 // Pure: flatten a parsed installed_plugins.json (v2 map-of-arrays; also tolerates a plain array of records
 // or a v1 map-of-objects) into [{id, scope, projectPath, installPath}] — only records for `id`.
@@ -335,8 +234,10 @@ function otherUsersOf(records, targetDir) {
   }
   return out.sort();
 }
-function otherProjectsUsing(targetDir) {
-  const list = runClaudeJson(['plugin', 'list', '--json'], targetDir);
+// The machine-wide `plugin list` was already probed by observe (memoized) — reuse that answer, don't re-ask.
+function otherProjectsUsing(state, targetDir) {
+  const p = state._ctx && state._ctx.probes ? state._ctx.probes.pluginList() : null;
+  const list = p && p.ok ? p.json : null;
   const cli = Array.isArray(list) ? list.filter((e) => e && typeof e === 'object') : [];
   return otherUsersOf(cli.concat(readInstalledPluginsFile(PLUGIN_ID)), targetDir);
 }
@@ -438,59 +339,24 @@ async function doStep(opts, step) {
   return { ok: true };
 }
 
-// ── --check mode (read-only doctor; PASS means "cleanly removed") ───────────────────────────────────
-
-function runCheck(targetDir) {
-  // Same one-line-per-row layout as the install doctor: ✓ cleanly removed · ✗ still there (with a fix) · summary.
-  // Labels name WHAT is checked; the mark + message carry the verdict.
-  const rows = [];
-  const claudeOk = claudeCliAvailable().ok;
-  const NO_CLAUDE = 'cannot verify — the `claude` CLI is not on PATH';
-  const UNINSTALL_FIX = 'run `npx tpm uninstall .` in this project (add --system to remove the marketplace row too)';
-
-  const pstate = claudeOk ? pluginState(targetDir) : { installed: false, enabled: false };
-  rows.push({ label: 'plugin install record', pass: !pstate.installed,
-    note: !claudeOk ? NO_CLAUDE : pstate.installed ? `${PLUGIN_ID} is still installed here` : 'removed', fix: UNINSTALL_FIX });
-
-  const marketOk = claudeOk && marketplaceRegistered(targetDir);
-  rows.push({ label: 'marketplace', pass: !marketOk,
-    note: !claudeOk ? NO_CLAUDE : marketOk ? `"${MARKETPLACE_NAME}" is still registered` : 'not registered',
-    fix: 'run `npx tpm uninstall . --system` (this removes the shared row for every project on this version)' });
-
-  const pkgRead = readPackageJson(targetDir);
-  const depPresent = pkgRead.exists && !pkgRead.error && hasTpmDependency(pkgRead.value);
-  rows.push({ label: 'claude-tpm dependency', pass: !depPresent,
-    note: !pkgRead.exists ? 'no package.json — nothing to remove' : pkgRead.error ? `invalid JSON: ${pkgRead.error}` : depPresent ? `${TPM_PKG_NAME} is still in package.json` : 'removed',
-    fix: UNINSTALL_FIX });
-
-  let fails = 0;
-  const w = rows.reduce((m, r) => Math.max(m, r.label.length), 0);
-  for (const row of rows) {
-    process.stdout.write(`  ${row.pass ? '✓' : '✗'} ${row.label.padEnd(w)}  ${row.note}\n`);
-    if (!row.pass) { fails += 1; process.stdout.write(`      fix: ${row.fix}\n`); }
-  }
-  process.stdout.write(`  Summary: ${rows.length - fails} ok · ${fails} ${fails === 1 ? 'problem' : 'problems'}\n`);
-  return fails === 0 ? 0 : 1;
-}
-
 // ── the uninstall run (default / --quiet / --force) ──────────────────────────────────────────────────
 
 // Shared step: remove the claude-tpm dependency from THIS project's package.json + node_modules. Returns
 // the doStep result, or null when package.json is present-but-invalid (a hard error the caller surfaces).
-async function removeDependencyStep(opts, targetDir, stepLabel) {
-  const pkgRead = readPackageJson(targetDir);
-  if (pkgRead.error) {
-    process.stderr.write(`error: ${path.join(targetDir, 'package.json')} is not valid JSON: ${pkgRead.error}\n`);
+async function removeDependencyStep(opts, targetDir, stepLabel, state0) {
+  const state = state0 || observeNow(targetDir);
+  if (state.target.pkg.exists && !state.target.pkg.valid) {
+    process.stderr.write(`error: ${path.join(targetDir, 'package.json')} is not valid JSON: ${state.target.pkg.err}\n`);
     return null;
   }
-  const depPresent = pkgRead.exists && hasTpmDependency(pkgRead.value);
+  const depPresent = state.target.pkg.exists && depDeclared(state);
   return doStep(opts, {
     already: !depPresent,
     describe: `Step ${stepLabel} · Remove the claude-tpm dependency`,
     command: displayCommand('npm', ['uninstall', TPM_PKG_NAME]),
     what: `Removes ${TPM_PKG_NAME} from package.json and node_modules; nothing else in the project is touched.`,
     bin: 'npm', argv: ['uninstall', TPM_PKG_NAME], cwd: targetDir,
-    verify: () => !hasTpmDependency(readPackageJson(targetDir).value),
+    verify: () => !depDeclared(O.reobserveLayer(state, 'dep')),
   });
 }
 
@@ -504,7 +370,8 @@ async function runUninstall(opts) {
   // Preflight — the `claude` CLI must be RUNNABLE (ran && exit 0), not merely "the error wasn't ENOENT".
   // Honest per-reason message: ENOENT (absent) vs EACCES (a dir / non-exec file shadowing it on PATH) vs
   // any other errno — instead of the old ENOENT-only check that let a non-runnable `claude` slip through.
-  const claudeProbe = claudeCliAvailable();
+  let state = observeNow(targetDir);
+  const claudeProbe = claudeVerdict(state);
   _dbg('preflight: claude ok=' + claudeProbe.ok + ' errorCode=' + claudeProbe.errorCode + ' status=' + claudeProbe.status);
   if (!claudeProbe.ok) {
     process.stderr.write('error: ' + preflightMessage('claude', claudeProbe, 'install Claude Code first.') + '\n');
@@ -533,17 +400,17 @@ async function runUninstall(opts) {
   _dbg('scope: system=' + system + ' (from ' + (opts.system ? '--system' : opts.project ? '--project' : opts.quiet ? '--quiet default' : 'interactive prompt') + ')');
 
   // The mirror rule's input: who ELSE has an install record for this plugin id (CLI list ∪ installed_plugins.json).
-  const others = otherProjectsUsing(targetDir);
-  const rowRegistered = marketplaceRegistered(targetDir);
-  const removeRow = rowRegistered && (system || others.length === 0);
-  _dbg('mirror rule: otherProjects=' + JSON.stringify(others) + ' rowRegistered=' + rowRegistered + ' → removeRow=' + removeRow);
+  const others = otherProjectsUsing(state, targetDir);
+  const rowThere = rowRegistered(state);
+  const removeRow = rowThere && (system || others.length === 0);
+  _dbg('mirror rule: otherProjects=' + JSON.stringify(others) + ' rowRegistered=' + rowThere + ' → removeRow=' + removeRow);
   const othersText = others.map((o) => `      - ${o}`).join('\n');
   const REMOVE_NOTE = `Removing the row uninstalls the plugin for every project on "${MARKETPLACE_NAME}": it deletes their install records + plugin data (re-adding restores loading).\n`;
 
   // Landmine: only when the row is LEFT behind — does it point INTO this project's node_modules? If so,
   // removing the dependency here orphans that source for the projects still using the row.
-  const pointsHere = !system && rowRegistered && !removeRow && marketplacePointsAt(targetDir);
-  _dbg('landmine: marketplacePointsAt(targetDir)=' + pointsHere);
+  const pointsHere = !system && rowThere && !removeRow && rowPointsInside(state, targetDir);
+  _dbg('landmine: rowPointsInside(targetDir)=' + pointsHere);
 
   // ── secondary consent gates ──
   if (system) {
@@ -571,7 +438,7 @@ async function runUninstall(opts) {
 
   // ── STEPS ── (both scopes: plugin uninstall at PROJECT scope → marketplace row decision → dep)
   const total = removeRow ? 3 : 2;
-  const s1installed = pluginState(targetDir).installed;
+  const s1installed = pluginInstalled(state);
   _dbg(`step 1/${total}: installed=` + s1installed + ' → already=' + !s1installed);
   const r1 = await doStep(opts, {
     already: !s1installed,
@@ -579,7 +446,7 @@ async function runUninstall(opts) {
     command: displayCommand('claude', ['plugin', 'uninstall', PLUGIN_ID, '--scope', 'project'].concat(opts.quiet ? ['-y'] : [])),
     what: `Removes ${PLUGIN_ID}'s install record and enablement for this project only.`,
     bin: 'claude', argv: ['plugin', 'uninstall', PLUGIN_ID, '--scope', 'project'].concat(opts.quiet ? ['-y'] : []), cwd: targetDir,
-    verify: () => !pluginState(targetDir).installed,
+    verify: () => !pluginInstalled(O.reobserveLayer(state, 'enablement')),
     benign: /not installed|is not installed|not found|no such/i,
   });
   if (!r1.ok) return 1;
@@ -597,19 +464,19 @@ async function runUninstall(opts) {
         ? `Removes the "${MARKETPLACE_NAME}" row for the whole machine; ${others.length} other project${others.length === 1 ? '' : 's'} lose${others.length === 1 ? 's' : ''} it (listed above).`
         : `Removes the "${MARKETPLACE_NAME}" row; no other project has the plugin installed.`,
       bin: 'claude', argv: ['plugin', 'marketplace', 'remove', MARKETPLACE_NAME], cwd: targetDir,
-      verify: () => !marketplaceRegistered(targetDir),
+      verify: () => !rowRegistered(O.reobserveLayer(state, 'registration')),
       benign: /not declared|not registered|not found|no such marketplace/i,
     });
     if (!r2.ok) return 1;
     nextLabel = '3/3';
-  } else if (rowRegistered) {
+  } else if (rowThere) {
     process.stdout.write(`\n✓ Marketplace row "${MARKETPLACE_NAME}" left in place — ${others.length === 1 ? '1 other project still uses' : others.length + ' other projects still use'} it:\n${othersText}\n` +
       '  Removing the row would uninstall it for them (it deletes every project\'s install record + plugin data).\n');
   } else {
     process.stdout.write(`\n✓ Marketplace "${MARKETPLACE_NAME}" is not registered — nothing to remove.\n`);
   }
 
-  const r3 = await removeDependencyStep(opts, targetDir, nextLabel);
+  const r3 = await removeDependencyStep(opts, targetDir, nextLabel, state);
   if (r3 === null || !r3.ok) return 1;
 
   process.stdout.write(`\n✓ claude-tpm removed from ${system ? 'the whole system' : 'this project'} (${targetDir}).\n`);
@@ -631,7 +498,7 @@ function parseArgs(argv) {
     if (x === '-h' || x === '--help') a.help = true;
     else if (x === '--quiet') a.quiet = true;
     else if (x === '--force') a.force = true;
-    else if (x === '--check') a.check = true;
+    else if (x === '--check') a.check = true; // retired: main() points at `tpm doctor` and exits 2
     else if (x === '--debug') a.debug = true;
     else if (x === '--system') a.system = true;   // remove the plugin + marketplace for the WHOLE machine
     else if (x === '--project') a.project = true; // remove from THIS project only (leave it for others)
@@ -654,8 +521,10 @@ async function main() {
   const opts = parseArgs(process.argv.slice(2));
   _dbg = makeDbg(debugEnabled(opts)); // enable the operation trace before any spawn/probe happens
   if (opts.help) { printHelp(); process.exit(0); }
-  const targetDir = path.resolve(opts.dir);
-  if (opts.check) { process.exit(runCheck(targetDir)); }
+  if (opts.check) {
+    process.stderr.write('error: `uninstall --check` is retired. Run `tpm doctor` to see what is still set up here, or `tpm uninstall` to remove it.\n');
+    process.exit(2);
+  }
   process.exit(await runUninstall(opts));
 }
 
@@ -664,11 +533,11 @@ if (require.main === module) {
 }
 
 module.exports = {
-  shellQuote, displayCommand, main, runUninstall, runCheck, parseArgs, removeDependencyStep,
+  shellQuote, displayCommand, main, runUninstall, parseArgs, removeDependencyStep,
   makeDbg, debugEnabled, formatChildExit, classifySpawn, spawnErrorReason, preflightMessage,
-  readPackageJson, hasTpmDependency, claudeCliAvailable, marketplaceRegistered, pluginState, parsePluginList,
-  parseMarketplaceList, marketplacePointsAt, otherUsersOf, otherProjectsUsing, flattenInstalledPlugins,
-  readInstalledPluginsFile, claudeConfigDir, realOrResolved, recordMatches,
+  observeNow, claudeVerdict, pluginInstalled, rowRegistered, depDeclared, rowPointsInside,
+  otherUsersOf, otherProjectsUsing, flattenInstalledPlugins,
+  readInstalledPluginsFile, claudeConfigDir, realOrResolved,
   findBundleRoot, readBundleIdentity,
   TPM_PKG_NAME, MARKETPLACE_NAME, PLUGIN_NAME, PLUGIN_ID,
 };

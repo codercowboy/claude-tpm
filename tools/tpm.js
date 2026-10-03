@@ -25,7 +25,7 @@
  *   tpm plugin  <verb> [args…]      # plugin install/uninstall/doctor → plugin/tpm-plugin-router.js
  *   tpm install [dir] [options]     # graft claude-tpm onto an existing project
  *   tpm uninstall [dir] [options]   # reverse it (scope-aware: this project vs the whole system)
- *   tpm doctor [dir]                # read-only health check (= `install --check`)
+ *   tpm doctor [dir]                # read-only health check (own script; `--check` accepted)
  *   tpm resolve-home                # print the absolute bundle root — its output IS %TPM_HOME% (bypass-safe)
  *   tpm home                        # alias of resolve-home (self-located, bypass-safe)
  *   tpm reading-list <role>         # emit a role's reading chain in anchor form (orchestrator | subagent)
@@ -57,18 +57,16 @@ const SUITES = {
 const ALIASES = {
   install: 'consumer/tpm-consumer-install.js',
   uninstall: 'consumer/tpm-consumer-uninstall.js',
-  doctor: 'consumer/tpm-consumer-install.js', // read-only health check = `install --check`
+  doctor: 'consumer/tpm-consumer-doctor.js',   // read-only health check (its own script; `--check` stays a compat alias)
   home: 'tpm-home.js',                         // print the absolute bundle root (self-located)
   'resolve-home': 'tpm-home.js',               // self-documenting alias of `home` (anchor-first doctrine)
   'reading-list': 'tpm-reading-list.js',       // emit a role's reading chain in anchor form (self-located)
   doc: 'tpm-doc.js',                           // print a bundle doc with ${TPM_HOME}/%TPM_HOME% resolved
 };
 
-// Fixed trailing args a porcelain alias injects — `doctor` IS `install --check`, so the dispatcher
-// appends --check after whatever the user passed (e.g. `tpm doctor ../proj` → `install ../proj --check`).
-const ALIAS_EXTRA = {
-  doctor: ['--check'],
-};
+// Fixed trailing args a porcelain alias injects. None today: `doctor` has its own script (phase 03); `--check`
+// is still accepted by it (and by `install`) as a compatibility alias. Kept as an exported hook for future aliases.
+const ALIAS_EXTRA = {};
 
 function help() {
   console.log(`tpm — claude-tpm command dispatcher
@@ -86,7 +84,7 @@ Suites:
 Consumer adoption:
   install [dir] [options]     graft claude-tpm onto an existing project
   uninstall [dir] [options]   reverse it (asks: this project only, or the whole system)
-  doctor [dir]                read-only health check (= install --check)
+  doctor [dir]                read-only health check (--verbose for every row)
 
 Bundle primitives (self-locating; work in every permission mode):
   resolve-home                print the absolute bundle root — its output IS %TPM_HOME%
@@ -121,7 +119,7 @@ function main(argv) {
   }
 
   // Dumb forward: hand the suite router (or aliased script) EVERYTHING after the suite/alias token,
-  // plus any fixed trailing args a porcelain alias injects (e.g. doctor → install … --check).
+  // plus any fixed trailing args a porcelain alias injects.
   const tool = path.join(__dirname, rel);
   const extra = ALIAS_EXTRA[cmd] || [];
   const r = spawnSync('node', [tool, ...args.slice(1), ...extra], { stdio: 'inherit' });

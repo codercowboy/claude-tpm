@@ -6,9 +6,9 @@
  * os.tmpdir(), cleaned up.
  *
  * Covers, over uninstall's exported surface:
- *   - parsePluginList (fix b) — the JSON→state mapping spun out of pluginState
+ *   - the State readers over the shared observer (claudeVerdict / pluginInstalled / rowRegistered / depDeclared)
  *   - parseArgs flag-guard (fix c) — --dir rejects a missing value or a "-"-leading value (exit 2)
- *   - hasTpmDependency, readPackageJson
+ *   - the end-to-end mirror rule / scopes / landmine through the stateful fake claude
  *
  * Usage: node tools/consumer/tests/tpm-consumer-uninstall/test.js   → exit 0 all pass, 1 otherwise.
  */
@@ -25,6 +25,7 @@ const { mkScratch } = require('../../../tests/lib/scratch'); // shared: <bundle>
 const TOOL = path.resolve(__dirname, '..', '..', 'tpm-consumer-uninstall.js');
 const uninst = require(TOOL);
 const { PLUGIN_ID, TPM_PKG_NAME } = uninst;
+const MK = uninst.MARKETPLACE_NAME;
 
 let pass = 0; let fail = 0;
 function check(name, fn) {
@@ -47,51 +48,6 @@ function cleanup() { /* no-op: per-run scratch persists for inspection; tmp/ is 
 function writePkg(dir, obj) { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(obj)); }
 
 process.stdout.write('tpm-consumer-uninstall.test.js\n');
-
-// ── parsePluginList (fix b) — same mapping contract as install ──────────────────────────────────────
-check('parsePluginList: enabled:true entry → {installed:true, enabled:true}', () => {
-  assert.deepStrictEqual(uninst.parsePluginList([{ id: PLUGIN_ID, scope: 'project', enabled: true }]),
-    { installed: true, enabled: true });
-});
-check('parsePluginList: enabled:false entry → {installed:true, enabled:false}', () => {
-  assert.deepStrictEqual(uninst.parsePluginList([{ id: PLUGIN_ID, enabled: false }]),
-    { installed: true, enabled: false });
-});
-check('parsePluginList: no matching entry → not installed', () => {
-  assert.deepStrictEqual(uninst.parsePluginList([{ id: 'other@market', enabled: true }]),
-    { installed: false, enabled: false });
-});
-check('parsePluginList: empty array → not installed', () => {
-  assert.deepStrictEqual(uninst.parsePluginList([]), { installed: false, enabled: false });
-});
-check('parsePluginList: null → not installed, no warn', () => {
-  const { ret, warned } = captureStderr(() => uninst.parsePluginList(null));
-  assert.deepStrictEqual(ret, { installed: false, enabled: false });
-  assert.strictEqual(warned, '');
-});
-check('parsePluginList: non-array → warn + fallback not-installed', () => {
-  const { ret, warned } = captureStderr(() => uninst.parsePluginList('nope'));
-  assert.deepStrictEqual(ret, { installed: false, enabled: false });
-  assert.ok(/JSON array/i.test(warned));
-});
-check('parsePluginList: entries missing `id` → warn + fallback not-installed', () => {
-  const { ret, warned } = captureStderr(() => uninst.parsePluginList([{ enabled: true }]));
-  assert.deepStrictEqual(ret, { installed: false, enabled: false });
-  assert.ok(/id/i.test(warned));
-});
-check('parsePluginList: matched entry missing boolean enabled → installed+enabled + warn', () => {
-  const { ret, warned } = captureStderr(() => uninst.parsePluginList([{ id: PLUGIN_ID }]));
-  assert.deepStrictEqual(ret, { installed: true, enabled: true });
-  assert.ok(/enabled/i.test(warned));
-});
-check('parsePluginList: only user-scoped entry → not installed', () => {
-  assert.deepStrictEqual(uninst.parsePluginList([{ id: PLUGIN_ID, scope: 'user', enabled: true }]),
-    { installed: false, enabled: false });
-});
-check('parsePluginList: scope absent → still matched', () => {
-  assert.deepStrictEqual(uninst.parsePluginList([{ id: PLUGIN_ID, enabled: false }]),
-    { installed: true, enabled: false });
-});
 
 // ── parseArgs — positional <dir> + --dir flag + flag-guards (mirrors install) ───────────────────────
 function runTool(args) {
@@ -129,57 +85,6 @@ check('parseArgs: --project sets project, leaves system false', () => {
 check('parseArgs: neither scope flag → both false (interactive fork / --quiet default)', () => {
   const a = uninst.parseArgs(['../p']);
   assert.strictEqual(a.system, false); assert.strictEqual(a.project, false);
-});
-
-// ── parseMarketplaceList — landmine detection (shared marketplace source) ─────────────────────────────
-const MK = uninst.MARKETPLACE_NAME;
-check('parseMarketplaceList: directory-source entry → {registered, source, path}', () => {
-  assert.deepStrictEqual(
-    uninst.parseMarketplaceList([{ name: MK, source: 'directory', path: '/some/dir' }]),
-    { registered: true, source: 'directory', path: '/some/dir' });
-});
-check('parseMarketplaceList: our market absent → not registered', () => {
-  assert.deepStrictEqual(
-    uninst.parseMarketplaceList([{ name: 'other-market', source: 'github' }]),
-    { registered: false, source: null, path: null });
-});
-check('parseMarketplaceList: null / non-array → not registered', () => {
-  assert.deepStrictEqual(uninst.parseMarketplaceList(null), { registered: false, source: null, path: null });
-});
-
-// ── hasTpmDependency ────────────────────────────────────────────────────────────────────────────────
-check('hasTpmDependency: dependencies → true', () => {
-  assert.strictEqual(uninst.hasTpmDependency({ dependencies: { [TPM_PKG_NAME]: '1.0.0' } }), true);
-});
-check('hasTpmDependency: optionalDependencies → true', () => {
-  assert.strictEqual(uninst.hasTpmDependency({ optionalDependencies: { [TPM_PKG_NAME]: 'file:x' } }), true);
-});
-check('hasTpmDependency: absent → false', () => {
-  assert.strictEqual(uninst.hasTpmDependency({ dependencies: { lodash: '^4' } }), false);
-});
-check('hasTpmDependency: null pkg → false', () => {
-  assert.strictEqual(uninst.hasTpmDependency(null), false);
-});
-
-// ── readPackageJson ─────────────────────────────────────────────────────────────────────────────────
-check('readPackageJson: exists + valid', () => {
-  const dir = mkTmp();
-  writePkg(dir, { name: 'consumer', version: '9.9.9' });
-  const r = uninst.readPackageJson(dir);
-  assert.strictEqual(r.exists, true);
-  assert.strictEqual(r.error, null);
-  assert.strictEqual(r.value.version, '9.9.9');
-});
-check('readPackageJson: exists + invalid JSON → error string, null value', () => {
-  const dir = mkTmp();
-  fs.writeFileSync(path.join(dir, 'package.json'), 'not json');
-  const r = uninst.readPackageJson(dir);
-  assert.strictEqual(r.exists, true);
-  assert.strictEqual(r.value, null);
-  assert.ok(typeof r.error === 'string' && r.error.length > 0);
-});
-check('readPackageJson: absent → {exists:false, value:null, error:null}', () => {
-  assert.deepStrictEqual(uninst.readPackageJson(mkTmp()), { exists: false, value: null, error: null });
 });
 
 // ── classifySpawn / EACCES-blind-spot fix — PARITY with the install tool (lifted verbatim). The bug: a
@@ -240,16 +145,30 @@ check('preflightMessage: EACCES → "found but not executable" + host-vs-VM hint
   const m = uninst.preflightMessage('claude', uninst.classifySpawn({ error: { code: 'EACCES' } }), 'install Claude Code first.');
   assert.ok(/not executable \(EACCES\)/.test(m) && /THIS host/.test(m) && /VM/.test(m));
 });
-check('claudeCliAvailable: returns a classifySpawn verdict object (callers read .ok/.errorCode)', () => {
-  // Guard (fb2): never probe the AMBIENT `claude` — put a fake first (and ONLY) on PATH for this call.
-  const fakeBin = path.join(mkTmp(), 'bin'); fs.mkdirSync(fakeBin, { recursive: true });
-  fs.writeFileSync(path.join(fakeBin, 'claude'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-  const savedPath = process.env.PATH;
-  let v;
-  try { process.env.PATH = fakeBin; v = uninst.claudeCliAvailable(); } finally { process.env.PATH = savedPath; }
-  assert.strictEqual(typeof v, 'object');
-  assert.ok('ok' in v && 'ran' in v && 'errorCode' in v);
-  assert.strictEqual(v.ok, true, 'the fake claude on PATH answered (proves the probe used it, not a real one)');
+// ── detection comes from the shared observer: pure State → verdict mappings (the layer parsing itself is
+//    pinned in tpm-consumer-observe/test.js; here only uninstall's thin readers over a State) ──────────────
+check('claudeVerdict: State → classifySpawn-shaped verdict (ok / spawn errno / non-zero exit)', () => {
+  assert.deepStrictEqual(uninst.claudeVerdict({ env: { claudeOnPath: true } }), { ok: true, ran: true, status: 0, signal: null, errorCode: null });
+  const enoent = uninst.claudeVerdict({ env: { claudeOnPath: false, claudeError: 'ENOENT' } });
+  assert.ok(!enoent.ok && !enoent.ran && enoent.errorCode === 'ENOENT');
+  const bad = uninst.claudeVerdict({ env: { claudeOnPath: false, claudeError: 'exited 3' } });
+  assert.ok(!bad.ok && bad.ran && bad.status === 3 && bad.errorCode === null);
+});
+check('pluginInstalled / rowRegistered / depDeclared read the State layers', () => {
+  assert.strictEqual(uninst.pluginInstalled({ en: { record: { present: true } } }), true);
+  assert.strictEqual(uninst.pluginInstalled({ en: { record: { present: false } } }), false);
+  assert.strictEqual(uninst.pluginInstalled({ en: { record: 'unknown' } }), false);
+  assert.strictEqual(uninst.rowRegistered({ reg: { state: 'absent' } }), false);
+  assert.strictEqual(uninst.rowRegistered({ reg: { state: 'unknown' } }), false);
+  assert.strictEqual(uninst.rowRegistered({ reg: { state: 'elsewhere' } }), true);
+  assert.strictEqual(uninst.depDeclared({ dep: { declared: { bucket: 'dependencies', spec: '1' } } }), true);
+  assert.strictEqual(uninst.depDeclared({ dep: { declared: null } }), false);
+});
+check('no private detectors left: the retired helpers are not exported, observe is required', () => {
+  for (const k of ['parsePluginList', 'parseMarketplaceList', 'marketplaceRegistered', 'pluginState', 'marketplacePointsAt', 'claudeCliAvailable', 'readPackageJson', 'hasTpmDependency', 'runCheck']) {
+    assert.strictEqual(uninst[k], undefined, k);
+  }
+  assert.ok(/require\('\.\/tpm-consumer-observe'\)/.test(fs.readFileSync(TOOL, 'utf8')));
 });
 
 // ── --debug operation-trace flag (parity: --debug / TPM_DEBUG / [tpm-debug] prefix) ──
@@ -368,12 +287,6 @@ check('5.3 pure: otherUsersOf excludes THIS project (even via a symlink), names 
   assert.strictEqual(uninst.otherUsersOf([{ id: PLUGIN_ID, scope: 'project' }], me).length, 1, 'no projectPath → can\'t prove it is ours → counts');
   assert.deepStrictEqual(uninst.otherUsersOf([{ id: 'unrelated@m', projectPath: other }], me), []);
 });
-check('5.3 pure: parsePluginList(list, target) matches only THIS project\'s record', () => {
-  const me = mkTmp(); const other = mkTmp();
-  assert.deepStrictEqual(uninst.parsePluginList([{ id: PLUGIN_ID, scope: 'project', enabled: true, projectPath: other }], me), { installed: false, enabled: false });
-  assert.deepStrictEqual(uninst.parsePluginList([{ id: PLUGIN_ID, scope: 'project', enabled: false, projectPath: me }], me), { installed: true, enabled: false });
-});
-
 check('5.3 mirror rule: LAST project → plugin uninstalled at project scope (cwd=target), marketplace row removed (resolved name, no --scope), dep step skipped', () => {
   const dir = consumerDir();
   const r = runUninstStateful(dir, ['--quiet'], { marketplaces: rowSame(), records: [rec(dir)] });
@@ -456,19 +369,12 @@ check('5.6 uninstall --system output names the registry edit once and the whole-
   assert.ok(/^Step 2\/3 · Remove the marketplace row \(whole system\)$/m.test(r.out), r.out);
   assert.ok(/\(changes: this machine's Claude Code marketplace registry, user scope\)/.test(r.out), r.out);
 });
-check('5.6 uninstall --check: one line per row (✓ removed / ✗ still there + fix:), neutral labels, summary line, exit code unchanged', () => {
+check('5.6 uninstall --check is retired: exit 2 + points at `tpm doctor`, nothing mutated', () => {
   const dir = consumerDir();
-  const bad = runUninstStateful(dir, ['--check'], { marketplaces: rowSame(), records: [rec(dir)] });
-  assert.strictEqual(bad.status, 1, bad.out);
-  assert.ok(/^\s+✗ plugin install record\s+.*still installed here/m.test(bad.out) && /^\s+✗ marketplace\s+.*still registered/m.test(bad.out), bad.out);
-  const lines = bad.out.split('\n');
-  lines.forEach((l, i) => { if (/^\s+✗ /.test(l)) assert.ok(/^\s+fix: \S/.test(lines[i + 1] || ''), l); });
-  assert.ok(/Summary: \d ok · \d problems?/.test(bad.out), bad.out);
-  assert.ok(!/is NOT/.test(bad.out), 'labels do not state the passing condition: ' + bad.out);
-  const clean = runUninstStateful(dir, ['--check'], { marketplaces: [], records: [] });
-  const depLeft = /✗ claude-tpm dependency/.test(clean.out);
-  assert.strictEqual(clean.status, depLeft ? 1 : 0, clean.out);
-  assert.ok(/^\s+✓ plugin install record\s+removed/m.test(clean.out) && /^\s+✓ marketplace\s+not registered/m.test(clean.out), clean.out);
+  const r = runUninstStateful(dir, ['--check'], { marketplaces: rowSame(), records: [rec(dir)] });
+  assert.strictEqual(r.status, 2, r.out);
+  assert.ok(/retired/.test(r.out) && /tpm doctor/.test(r.out), r.out);
+  assert.deepStrictEqual(mutLines(r), []);
 });
 
 check('5.3 help describes the mirror rule and the resolved name', () => {

@@ -23,10 +23,13 @@ const { ensureRunSlug } = require('../../tests/lib/scratch');
 
 const SUITES = [
   'tpm-consumer-install/test.js',
+  'tpm-consumer-install/test-legacy-helpers.js',
   'tpm-consumer-doctor/test.js',
   'tpm-consumer-uninstall/test.js',
   'tpm-consumer-lint-skill-refs/test.js',
   'tpm-consumer-run-all/test.js',
+  'tpm-consumer-observe/test.js',
+  'tpm-consumer-voice/test.js',
   // expand-hook/{unit,content-unit}.js retired in #1126 — the %TPM_HOME% resolution hooks they tested
   // were removed (anchor-first resolution via `npx tpm resolve-home` replaced them).
 ];

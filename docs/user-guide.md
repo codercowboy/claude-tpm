@@ -65,33 +65,29 @@ To confirm the wiring is healthy, run the read-only health check from your proje
 npx tpm doctor .
 ```
 
-A healthy project prints one line per check and ends with a count. The command exits 0 when nothing is
-broken:
+A healthy project prints one summary line and exits 0:
 
 ```
-  ✓ package.json
-  ✓ claude-tpm dependency       @codercowboy/claude-tpm
-  ✓ marketplace                 "claude-tpm-market-0.2.0-dev" is registered
-  ✓ marketplace source          this bundle's folder
-  ✓ plugin install record       claude-tpm@claude-tpm-market-0.2.0-dev
-  ✓ plugin enablement           enabled for this project
-  ✓ enabled claude-tpm plugins  claude-tpm@claude-tpm-market-0.2.0-dev
-  ✓ project folder              .claude/claude-tpm/ present
-  · install-record path         present (informational — the cache is not what runs)
-  ✓ plugin hooks                session-start + gate-spawn
-  ✓ bundle version              0.2.0-dev, plugin and node_modules copy agree
-  ✓ config.json                 valid JSON
-  · tpm on PATH                 skipped — only checked inside a Claude Code Bash call (TPM_PROJECT_ROOT / TPM_HOME not set here)
-  Summary: 12 ok · 0 warnings · 0 problems · 1 skipped
+claude-tpm 0.2.0-dev → ~/proj (from ~/claude-tpm/claude-tpm-0.2.0-dev)
+
+✓ 6 checks ok.
 ```
 
-`✓` is fine, `⚠` works but deserves a look, `✗` is broken, and `·` was skipped. Every `⚠` and `✗` row is
-followed by a `fix:` line. The doctor changes nothing. If a check fails, run `npx tpm install .` to repair,
-and see [INSTALL.md](INSTALL.md) for what each row means.
+By default the doctor prints only the rows that need attention, each followed by a `fix:` line. Add
+`--verbose` to see every row (`package.json`, `registered`, `turned on`, `project folder`, `claude-tpm folder`,
+`claude`; inside a Claude session also `tpm on PATH` and `TPM_HOME`). `✓` is fine, `⚠` works but deserves a
+look, and `✗` is broken and makes the command exit 1. The doctor changes nothing and asks nothing. If a check
+fails, run `npx tpm install .` to repair; it shows its plan first and asks once. See
+[INSTALL.md](INSTALL.md#check-it-with-the-doctor) for what each row means.
 
-> One gotcha: `npx tpm doctor .` run *inside the claude-tpm folder itself* reports `✗` rows and exits 1,
-> because the folder is not its own consumer (it doesn't declare itself as a dependency or enable its own
-> plugin). That is expected. The clean output above is what a project you installed it into looks like.
+You usually will not need to run it by hand. Every session start does a quicker, file-only version of the same
+check. If it finds a problem it adds a one-line `[claude-tpm]` note for Claude, which tells you about it and
+suggests the fix. When all is well it says nothing. You can turn it off with `hygiene.healthCheck.enabled`
+(see [config-guide.md](config-guide.md#4-hygiene-config)).
+
+> One gotcha: `npx tpm doctor .` run *inside the claude-tpm folder itself* refuses
+> (`error: not checking — this is the claude-tpm folder, not a project.`) and exits 1, because the folder is not
+> its own consumer. Run it in a project you installed claude-tpm into.
 
 Slash commands work in two forms — the short `/tpm-session` and the namespaced
 `/claude-tpm:tpm-session`. Use whichever you like; this guide uses the short form.
@@ -777,7 +773,7 @@ Suites:
 Consumer adoption:
   install [dir] [options]     graft claude-tpm onto an existing project
   uninstall [dir] [options]   reverse it (asks: this project only, or the whole system)
-  doctor [dir]                read-only health check (= install --check)
+  doctor [dir]                read-only health check (--verbose for every row)
 
 Bundle primitives (self-locating; work in every permission mode):
   resolve-home                print the absolute bundle root — its output IS %TPM_HOME%
@@ -811,13 +807,16 @@ Five suites plus three flat consumer aliases and a few bundle primitives:
   verb tables are in [technical.md](technical.md).
 
 - **`hooks`** are harness-invoked hooks the plugin delivers: `session-start` (a SessionStart hook that
-  tells every tool which project it is running in) and `gate-spawn` (a `PreToolUse` hook that enforces the
+  tells every tool which project it is running in, and adds a one-line health note for Claude when the
+  install looks wrong) and `gate-spawn` (a `PreToolUse` hook that enforces the
   kickoff gate). You do not wire or run them by hand. See [technical.md](technical.md#how-it-fits-together).
 
 - **`plugin`** routes `install`, `uninstall` and `doctor` to the consumer scripts. The flat aliases below
   do the same thing.
 
 - **`install` / `uninstall` / `doctor`** are the consumer lifecycle aliases; see [INSTALL.md](INSTALL.md).
+  `install` looks at the project, shows a plan (`--plan` shows it without asking), and asks once. `doctor`
+  reports only what needs attention unless you add `--verbose`.
 
 In a project shell you type `npx tpm …`. Inside a Claude session the same commands are bare `tpm …`.
 

@@ -185,12 +185,12 @@ The skills are the brains; the `tpm` command-line tool is the hands. It's a Node
    flat consumer aliases (NOT suites — they map straight to a script):
           ├── install    → tools/consumer/tpm-consumer-install.js
           ├── uninstall  → tools/consumer/tpm-consumer-uninstall.js
-          └── doctor     → tpm-consumer-install.js  (with --check appended: doctor IS install --check)
+          └── doctor     → tools/consumer/tpm-consumer-doctor.js  (own script; `install --check` is a kept alias)
 ```
 
 Dispatch happens by **child process** (`spawnSync('node', …, {stdio:'inherit'})`) with faithful argv/stdio pass-through, and the child's exit code is propagated up. Unknown command → exit 2 plus the menu; bare `tpm` or `--help` → menu, exit 0.
 
-The five suites are `session`, `task`, `workflow`, `hooks`, and `plugin`. On top of those sit three flat, human-facing porcelain aliases (`install`, `uninstall`, `doctor`) because "graft this onto my project" and "check my install" are things a *person* types, not a suite/verb pair. `doctor` is literally `install --check` with the flag injected by the dispatcher.
+The five suites are `session`, `task`, `workflow`, `hooks`, and `plugin`. On top of those sit three flat, human-facing porcelain aliases (`install`, `uninstall`, `doctor`) because "graft this onto my project" and "check my install" are things a *person* types, not a suite/verb pair. `doctor` is its own script (`tpm-consumer-doctor.js`), a renderer over the same observer the installer uses; `install --check` still works as an alias.
 
 > **A doc-map note:** there are two tool docs in the tree. `tools/README.md` is the self-titled canonical tool ledger - the exhaustive index of every tool that ships. `tools/tpm.md` is the narrower reference for the `tpm` dispatcher itself (the two-level model, the suite/verb tables, exit codes). Both cover the five suites (`session` / `task` / `workflow` / `hooks` / `plugin`) plus the `install` / `uninstall` / `doctor` aliases; **if they ever disagree, `tools/README.md` wins.**
 
@@ -306,21 +306,41 @@ claude-tpm installs as a Claude Code plugin, and `tpm install` wires up the chai
 - **Scopes.** The marketplace is registered at user scope and the plugin is installed at project scope. The
   project's checked-in settings end up holding only the `enabledPlugins` line, with no machine-specific path.
 
-The installer (`tools/consumer/tpm-consumer-install.js`) runs a check-then-act, idempotent, 5-step flow:
+The installer (`tools/consumer/tpm-consumer-install.js`) is a state reconciler, not a fixed list of steps. Three
+files share the work: `tpm-consumer-observe.js` reads the machine and project into one plain-data state,
+`tpm-consumer-voice.js` builds every string the user reads, and the installer, the doctor
+(`tpm-consumer-doctor.js`) and the uninstaller all consume the observer instead of re-detecting anything.
 
 ```mermaid
 flowchart LR
-  A["1 · preflight<br/>npm + package.json + claude CLI<br/>(writes nothing)"] --> B["2 · dependency<br/>file: dev-dependency<br/>npm install"]
-  B --> C["3 · marketplace<br/>claude plugin marketplace add<br/>(the real claude-tpm folder, user scope)"]
-  C --> D["4 · plugin install<br/>claude plugin install<br/>claude-tpm@claude-tpm-market-version --scope project"]
-  D --> E["5 · enable<br/>if installed-but-disabled"]
-  E --> F["final check<br/>doctor"]
+  A["observe<br/>5 layers + env<br/>(reads only)"] --> B["refuse?<br/>npm/claude, package.json,<br/>stamp, wrong copy, non-TTY"]
+  B --> C["diagnose<br/>one of 7 labels"]
+  C --> D["decide<br/>only if registered<br/>from another folder"]
+  D --> E["plan<br/>the diff, in order"]
+  E --> F["Proceed? [y/N]<br/>--plan stops here"]
+  F --> G["apply<br/>run, re-observe the layer,<br/>check it"]
+  G --> H["observe again<br/>closing line + Next:"]
 ```
 
-Step 3 compares the registered folder with the installer's own (both resolved): same folder leaves the row
-alone, a gone folder is re-pointed, a live different folder is never re-pointed without an explicit yes, and
-a real copy inside another project's `node_modules` gets its own warning. [INSTALL.md](INSTALL.md) has the
-user-facing version.
+The five layers it observes are: the dependency in `package.json`/`node_modules` (written by npm), the
+machine-wide marketplace registration, the project's plugin record and enablement, the project's
+`.claude/claude-tpm/` marker, and the installer's own folder. The plan is the difference between that state and the
+target, in a fixed order: re-point, register, dependency, plugin install, plugin enable, turn off older versions,
+write config. Registration comes before the dependency so a run that stops halfway never leaves the plugin on with
+`npx tpm` broken. Each action is idempotent and verified after it runs, so re-running plans exactly what is left.
+There is no `--force`: an action runs only when the observer said it was missing, so an "already exists" from a
+child command is a real disagreement and stops the run.
+
+Which folder becomes canonical depends on where the installer runs: from a standalone folder it links the project to
+it; from a copy in the project's own `node_modules` it registers that copy; from another project's copy it refuses.
+If this version is already registered from a different live folder, the one question the installer asks is
+use / re-point / quit (`--share` and `--repoint` pre-answer it); a registration whose folder is gone is simply
+re-pointed in the plan. [INSTALL.md](INSTALL.md) has the user-facing version;
+`tools/consumer/tpm-consumer-install.md` has the maintainer version, with the scenario table.
+
+`tpm doctor` is `observe` plus a renderer: it prints the ⚠/✗ rows with a `fix:` line and one summary (all rows under
+`--verbose`), exits 1 only on ✗, and never changes anything. The SessionStart hook runs the same observer in its
+file-only light mode (no `claude` spawn) and turns what it finds into at most one line for Claude; see Hooks below.
 
 The installer never authors your project files and never edits `settings.json` itself. It writes
 `.claude/claude-tpm/config.json` with the default folders if none exists.
@@ -328,7 +348,8 @@ The installer never authors your project files and never edits `settings.json` i
 `tpm uninstall` mirrors it and is scope-aware, because one marketplace row serves every project on that
 version. *This project only* uninstalls the plugin here, drops the dependency, and removes the marketplace
 row only if no other project still has the plugin installed. *The whole system* removes the row too, which
-uninstalls it for every project on that version. It never deletes your files.
+uninstalls it for every project on that version. It never deletes your files. It reads the project and the
+machine through the same observer as the installer and the doctor (its `--check` flag is retired; use `tpm doctor`).
 
 ---
 
@@ -343,8 +364,14 @@ stdout and exit code through unchanged.
   `$CLAUDE_PROJECT_DIR`) and `export TPM_HOME=…` (the real path of `$CLAUDE_PLUGIN_ROOT`) to
   `$CLAUDE_ENV_FILE`. Those variables then reach every Bash call, subagents included. It skips a variable
   that is already set (so a `.claude/settings.local.json` override wins), skips lines already in the file
-  (SessionStart fires again on `/compact`, `/clear` and resume), prints nothing on success, and always
+  (SessionStart fires again on `/compact`, `/clear` and resume), prints nothing from this part, and always
   exits 0. `TPM_HOME` is informational. It never touches PATH: Claude Code adds the plugin's `bin/` itself.
+  After the exports it runs the **light health check**: the observer in file-only mode (no `claude` spawn, no full
+  doctor). A healthy project prints nothing. An unhealthy one prints one `[claude-tpm]` line (at most three
+  problems) that tells Claude to report them and not to repair anything. It is gated by
+  `hygiene.healthCheck.enabled` in `.claude/claude-tpm/config.json` (default on; only an explicit `false` silences
+  it), fires on every session `source`, is isolated from the exports so a failure in one never costs the other, and
+  stays silent for a folder with no `package.json`. See [config-guide.md](config-guide.md#4-hygiene-config).
 - **`gate-spawn`** (PreToolUse, matches `Agent|Task`). The spawn gate: it blocks a marked subagent spawn that
   fails the sign-off check. This is the enforcement behind "you can't fire off a formal round without the
   recorded two-token sign-off". It reads the sign-off ledger (`tpm-workflow-signoff.js`). Script:
