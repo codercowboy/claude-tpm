@@ -69,6 +69,10 @@ const fs = require('fs');
 const path = require('path');
 // #1133 — shared root resolver (deliberate cross-suite exception; see findProjectRoot below).
 const { findRoot } = require('../lib/paths');
+// #1152 — the shared layered-config overlay: getDefaults() sources defaults.json (then re-absolutizes
+// each subagentConfigs[].charterFile against bundleRoot()), and the USER layer
+// ($CLAUDE_TPM_USER_CONFIG) is folded onto the project `workflow` section before the whitelist.
+const overlay = require('../lib/tpm-config-overlay');
 
 const SUPPORTED_VERSION = 1;
 
@@ -122,58 +126,18 @@ function charterHome(stem) {
 }
 
 function getDefaults() {
-  return {
-    enabled: true,
-    planTemplateFile: '',
-    // Consumer extension hook (tightening fix #3): a project-level env template the
-    // scaffolder copies into each phase's tmp/subagent.env instead of the built-in
-    // comment-only stub. '' → the scaffolder falls back to the conventional path
-    // `.claude/claude-tpm/subagent.env.template` if present, else its built-in stub.
-    subagentEnvTemplate: '',
-    // 7 TPM-shipped personas (design doc §"Persona / team / loop model — EXPANDED &
-    // RESOLVED"). All default `opus`; each role→charter points at its promoted home
-    // (fix #1 — was charterFile "" → placeholder no-op). retryCount is the per-agent
-    // bail-retry budget: builder + bug-fixer get 5 (delivery/fix work often needs a few
-    // tries); everyone else 1. (mvp opt-down DROPPED 2026-08-30 — a lower bar is an
-    // ad-hoc edit to the round's copied charter, not a shipped registry entry.)
-    subagentConfigs: [
-      { name: 'planning', defaultModel: 'opus', charterFile: charterHome('planning'), retryCount: 1 },
-      { name: 'builder', defaultModel: 'opus', charterFile: charterHome('shipping'), retryCount: 5 },
-      { name: 'test-writer', defaultModel: 'opus', charterFile: charterHome('test-writer'), retryCount: 1 },
-      { name: 'documentarian', defaultModel: 'opus', charterFile: charterHome('documentarian'), retryCount: 1 },
-      { name: 'verifier', defaultModel: 'opus', charterFile: charterHome('verifier'), retryCount: 1 },
-      { name: 'bug-fixer', defaultModel: 'opus', charterFile: charterHome('bug-fixer'), retryCount: 5 },
-      { name: 'researcher', defaultModel: 'opus', charterFile: charterHome('research'), retryCount: 1 },
-    ],
-    // Teams (6). ARRAY ORDER = RUN ORDER: delivery agents each run ONCE, in roster order, then the
-    // verifier checks; the verify↔bug-fixer loop is the only thing that repeats (see verifier.loopFixer).
-    teams: [
-      {
-        name: 'full',
-        subagents: [
-          { name: 'planning' },
-          { name: 'builder' },
-          { name: 'test-writer' },
-          { name: 'documentarian' },
-          { name: 'verifier' },
-        ],
-      },
-      { name: 'ship', subagents: [{ name: 'builder' }, { name: 'verifier' }] },
-      { name: 'test', subagents: [{ name: 'test-writer' }, { name: 'verifier' }] },
-      { name: 'docs', subagents: [{ name: 'documentarian' }, { name: 'verifier' }] },
-      { name: 'research', subagents: [{ name: 'researcher' }] },
-      { name: 'build', subagents: [{ name: 'builder' }] },
-    ],
-    defaultParallelism: 'serial',
-    verifyLoopCap: 5,
-    deliverables: { tldr: true, toolFeedback: true, wiki: true },
-    charterVariants: {},
-    // loopFixer: the persona the orchestrator spawns to make targeted fixes when a verifier kicks
-    // back. Convention = the `bug-fixer` persona; a child can point the loop at a different fixer.
-    verifier: { requireAllPass: true, multiCountMode: 'blind-pair', loopFixer: 'bug-fixer' },
-    costLedger: { epicPath: '00-epic-plan/cost-ledger.md' },
-    blockedFilenamePatterns: ['report', 'summary', 'analysis', 'findings'],
-  };
+  // #1152: sourced from the shipped tools/config/defaults.json via the overlay lib (comment keys
+  // stripped). The one domain-specific transform stays HERE (not in the generic lib): each
+  // subagentConfigs[].charterFile is stored BUNDLE-RELATIVE in defaults.json and re-absolutized against
+  // bundleRoot() (honoring $TPM_BUNDLE_ROOT) so this reproduces the former charterHome() absolute paths
+  // byte-for-byte — pinned by the config-resolver + scaffold-subagent tests.
+  const resolved = overlay.loadDefaults().workflow;
+  for (const sc of resolved.subagentConfigs || []) {
+    if (sc && typeof sc.charterFile === 'string' && sc.charterFile && !path.isAbsolute(sc.charterFile)) {
+      sc.charterFile = path.join(bundleRoot(), sc.charterFile);
+    }
+  }
+  return resolved;
 }
 
 function deepClone(v) {
@@ -285,8 +249,10 @@ function resolveConfig(configPathArg, opts = {}) {
       err.code = 'ENOENT_CONFIG';
       throw err;
     }
-    // Default location absent -> normal "no config yet" case -> defaults, no error.
-    return { resolved: getDefaults(), projectRoot, configPath, usedDefaultLocation, configExists: false };
+    // Default location absent -> normal "no config yet" case. #1152: still fold the USER layer in (DoD C).
+    // No user layer => undefined => mergeWorkflowConfig(undefined) === getDefaults().
+    const rawMergedNoProject = overlay.overlayUserOnto(undefined, 'workflow', { warn: opts.warn, env: opts.env });
+    return { resolved: mergeWorkflowConfig(rawMergedNoProject), projectRoot, configPath, usedDefaultLocation, configExists: false };
   }
 
   let parsed;
@@ -307,7 +273,9 @@ function resolveConfig(configPathArg, opts = {}) {
     );
   }
 
-  const resolved = mergeWorkflowConfig(parsed.workflow);
+  // #1152: deep-merge the USER layer over the project `workflow` section (user wins) before the whitelist.
+  const rawMerged = overlay.overlayUserOnto(parsed.workflow, 'workflow', { warn: opts.warn, env: opts.env });
+  const resolved = mergeWorkflowConfig(rawMerged);
   return { resolved, projectRoot, configPath, usedDefaultLocation, configExists: true };
 }
 

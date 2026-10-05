@@ -38,6 +38,10 @@ const fs = require('fs');
 const path = require('path');
 const base = require('./lib/base');
 const { findRoot } = base.paths;
+// #1152 — the shared layered-config overlay (required DIRECTLY, not via base.js's MODULES map, so the
+// base-load audit is untouched): getDefaults() sources defaults.json, and the USER layer
+// ($CLAUDE_TPM_USER_CONFIG) is folded onto the project section before the whitelist.
+const overlay = require('../lib/tpm-config-overlay');
 
 // The project-root MARKER: the `.claude/claude-tpm/` install-footprint DIRECTORY (created by the
 // installer's ensureConsumerConfig). REPLACED the earlier CLAUDE.md marker (#02-marker-scope) so a
@@ -45,22 +49,9 @@ const { findRoot } = base.paths;
 const PROJECT_MARKER = path.join('.claude', 'claude-tpm');
 
 function getDefaults() {
-  return {
-    enabled: true,
-    tasksDir: '.claude/claude-tpm/tasks',
-    startId: 1000,
-    bucketSize: 1000,
-    defaultOrder: 'newest',
-    defaultListState: ['open', 'in-progress'],
-    timezone: 'local',
-    exportDir: 'tmp',
-    allowHardDelete: false,   // #1086: OFF/safe by default — `remove --hard` refuses unless opt-in true.
-    maxOpenWarn: 50,
-    autoConfirm: { finish: false, drop: false },
-    minimalTasks: false,
-    subtaskStyle: 'letters',
-    history: { enabled: true },   // #1109 history gate — ON by default (P06)
-  };
+  // #1152: sourced from the shipped tools/config/defaults.json via the overlay lib (comment keys
+  // stripped). Byte-identical to the former inline literal — pinned by the task test suite.
+  return overlay.loadDefaults().tasks;
 }
 
 function deepClone(v) {
@@ -132,7 +123,10 @@ function resolveTasksConfig(configPathArg, opts) {
       err.code = 'ENOENT_CONFIG';
       throw err;
     }
-    return { resolved: getDefaults(), projectRoot, configPath, configExists: false, warning: null };
+    // #1152: no project config — still fold the USER layer in (DoD C). No user layer => undefined =>
+    // mergeTasksConfig(undefined) === getDefaults().
+    const rawMerged = overlay.overlayUserOnto(undefined, 'tasks', { warn: options.warn, env: options.env });
+    return { resolved: mergeTasksConfig(rawMerged), projectRoot, configPath, configExists: false, warning: null };
   }
 
   let parsed;
@@ -140,11 +134,15 @@ function resolveTasksConfig(configPathArg, opts) {
   try {
     parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   } catch (err) {
+    // Lenient project-layer contract PRESERVED: malformed project config => defaults + warning (never a
+    // crash); the user layer is not consulted in this error path (matches pre-#1152 behavior).
     warning = `could not parse ${configPath} as JSON (${err.message}); using built-in defaults.`;
     return { resolved: getDefaults(), projectRoot, configPath, configExists: true, warning };
   }
 
-  const resolved = mergeTasksConfig(parsed.tasks);
+  // #1152: deep-merge the USER layer over the project `tasks` section (user wins) before the whitelist.
+  const rawMerged = overlay.overlayUserOnto(parsed.tasks, 'tasks', { warn: options.warn, env: options.env });
+  const resolved = mergeTasksConfig(rawMerged);
   return { resolved, projectRoot, configPath, configExists: true, warning };
 }
 

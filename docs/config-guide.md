@@ -21,6 +21,38 @@ exit 1) rather than silently at spawn time. How a tool finds the project, and ho
 
 ---
 
+## Where the defaults live, and how layers combine
+
+The built-in defaults for every section are shipped in one file inside the plugin bundle,
+`tools/config/defaults.json` (a JSONC-style file: inline notes ride along as `_comment` keys, which are
+stripped from the resolved values and never reach a tool). That file is the **bottom layer**. A project's
+`.claude/claude-tpm/config.json` layers over it, and a machine-local user file layers over that:
+
+| # | Layer | Where | Precedence |
+|---|-------|-------|------------|
+| 1 | **Shipped defaults** | `tools/config/defaults.json` (in the bundle) | lowest |
+| 2 | **Project config** | `<project>/.claude/claude-tpm/config.json` | middle |
+| 3 | **User config** | the file named by `$CLAUDE_TPM_USER_CONFIG` | highest |
+
+A later layer wins **per value**. Plain objects deep-merge key by key; scalars, objects, and arrays
+REPLACE wholesale (so a project or user array fully replaces the one below it). The one exception is
+`session.proseInjections` and `session.readingList`, which STACK: the layers concatenate and duplicates are dropped.
+Any layer may be absent: no project config and no `CLAUDE_TPM_USER_CONFIG` means "use the defaults." A
+missing user file is skipped; a user file that is present but **not valid JSON** prints one stderr warning
+and is ignored (never fatal). An invalid *project* config is still surfaced loudly by the resolver /
+`npx tpm doctor .`, as before.
+
+**Per-value flag/env still win on top of all three layers.** `--sessions-dir`, `--tasks-dir`,
+`TPM_SESSIONS_DIR`, `TPM_TASKS_DIR` and friends override the overlaid config value for that one key — see
+[Which project a tool works on](#which-project-a-tool-works-on). The layering described here resolves the
+"config" rung; the flag/env rungs sit above it.
+
+`$CLAUDE_TPM_USER_CONFIG` is a full config file of the same shape (a subset is fine — only the keys you
+want to override). You normally set nothing; it exists for an operator who wants personal overrides that
+are not checked into a project.
+
+---
+
 ## 1. Session config
 
 Controls the session lifecycle (`tpm-session open`/`close`/`save`/`info`) and, when the `notes`
@@ -36,9 +68,14 @@ behavior is on, where notes live and what the boot/close messages say.
   "showTPMOpenMessage":  true,      // show TPM's built-in open MOTD = the menu of ENABLED tpm-* commands
   "showTPMCloseMessage": true,      // show TPM's built-in close sign-off (what happened + notes-saved pointer)
   "additionalOpenMessage":  "",     // path to a consumer .md/.txt shown AFTER TPM's open message ("" = none)
-  "additionalCloseMessage": ""      // path to a consumer .md/.txt shown AFTER TPM's close message ("" = none)
+  "additionalCloseMessage": "",     // path to a consumer .md/.txt shown AFTER TPM's close message ("" = none)
+  "proseInjections": [],            // [{ "mode": "open|save|close", "file": "<path>", "location": "before|after" }] - STACKS across layers
+  "templates": { "open": "", "save": "", "close": "" },  // path to a template replacing the shipped one ("" = shipped); does NOT suppress proseInjections
+  "readingList": []                 // [{ "audience": "orchestrator|subagent|all", "file": "<path>" }] - extra open-time reading pointers; STACKS across layers
 }
 ```
+- `proseInjections` and `templates` are authored with the template engine; see
+  `claude-context/methodology/template-engine.md` for the directives, the three injection tiers and the precedence ladder.
 - The **open** message invites work (a command menu); the **close** message is a sign-off, never a menu.
 - **Two independently gateable flags, not one overloaded boolean:**
   - `session.enabled` gates the WHOLE `tpm-session` skill (rare to disable - you'd have no session
@@ -240,6 +277,35 @@ to suggest `npx tpm install .` from a terminal, and not to edit files to fix the
 | `hygiene.healthCheck.enabled` | `true` | `false` silences the note. Only an explicit `false` turns it off; an absent key, a missing config, or an unreadable one leaves it on. |
 
 There is no setting that makes the hook run the full doctor. A project without a `package.json` gets no note.
+
+---
+
+## Reading and writing config: `tpm config`
+
+The `config` suite reads the resolved config and writes a single value into a chosen layer, so you (or a
+skill) never hand-edit JSON. It calls the same overlay the resolvers use. Full reference:
+`tools/config/tpm-config-router.md`.
+
+- **`tpm config get <path> [--layer defaults|project|user]`** — print one value as JSON. Without `--layer`,
+  the overlaid value across all three layers; with `--layer`, that one layer's value. `<path>` is dotted and
+  may index arrays: `tpm config get workflow.subagentConfigs[1].name`.
+- **`tpm config set <path> <value> [--user | --default]`** — write `<value>` (JSON-coerced) into a layer's
+  raw file, creating it if absent. No flag writes the **project** `config.json`; `--user` writes
+  `$CLAUDE_TPM_USER_CONFIG`; `--default` writes the shipped `tools/config/defaults.json`. `<path>` supports
+  `name[i]` (set element i) and `name[+]` (append). Comment keys and sibling sections round-trip untouched.
+- **`tpm config list`** — print the whole resolved config as JSON.
+
+```
+tpm config get session.notes.sessionsDir
+tpm config set tasks.maxOpenWarn 100
+tpm config set tasks.defaultListState[+] done --user
+tpm config list
+```
+
+> **⚠ `--default` edits the install-global shipped defaults file.** It changes
+> `tools/config/defaults.json` inside the bundle, so it affects **every project** that uses this claude-tpm
+> install and can clobber a shipped default. To change one project, set it in that project's
+> `.claude/claude-tpm/config.json` (the default layer for `set`); for a personal override, use `--user`.
 
 ---
 

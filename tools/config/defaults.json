@@ -1,0 +1,114 @@
+{
+  "_comment": [
+    "claude-tpm consolidated built-in defaults (#1152). This is the shipped bottom layer of the",
+    "three-layer config overlay: defaults.json -> project .claude/claude-tpm/config.json -> $CLAUDE_TPM_USER_CONFIG.",
+    "Read through tools/lib/tpm-config-overlay.js (loadDefaults strips every _comment/$comment key from the",
+    "RESOLVED output; `tpm config set` edits the raw file and round-trips comments). Each section below must stay",
+    "byte-identical to the matching per-suite getDefaults() — see docs/config-guide.md and tools/config/tpm-config-router.md.",
+    "subagentConfigs[].charterFile is stored BUNDLE-RELATIVE and re-absolutized against bundleRoot() by the workflow resolver."
+  ],
+  "version": 1,
+  "session": {
+    "_comment": "Session lifecycle + notes (config-guide §1). notes.enabled gates ONLY the notes-writing behavior.",
+    "enabled": true,
+    "notes": {
+      "enabled": true,
+      "sessionsDir": ".claude/claude-tpm/sessions"
+    },
+    "showTPMOpenMessage": true,
+    "showTPMCloseMessage": true,
+    "additionalOpenMessage": "",
+    "additionalCloseMessage": "",
+    "proseInjections": [],
+    "templates": {
+      "_comment": "Per-mode template override paths (project-root-relative or absolute). Empty = the shipped tools/session/templates/<mode>.md. A tpm:inject prose marker in the active template places proseInjections; else before/after wraps.",
+      "open": "",
+      "save": "",
+      "close": ""
+    },
+    "readingList": []
+  },
+  "tasks": {
+    "_comment": "tpm-task ledger (config-guide §3). allowHardDelete OFF by default (#1086); history gate ON (#1109).",
+    "enabled": true,
+    "tasksDir": ".claude/claude-tpm/tasks",
+    "startId": 1000,
+    "bucketSize": 1000,
+    "defaultOrder": "newest",
+    "defaultListState": ["open", "in-progress"],
+    "timezone": "local",
+    "exportDir": "tmp",
+    "allowHardDelete": false,
+    "maxOpenWarn": 50,
+    "autoConfirm": {
+      "finish": false,
+      "drop": false
+    },
+    "minimalTasks": false,
+    "subtaskStyle": "letters",
+    "history": {
+      "enabled": true
+    }
+  },
+  "workflow": {
+    "_comment": [
+      "Multi-agent round engine (config-guide §2). subagentConfigs[].charterFile is stored BUNDLE-RELATIVE here",
+      "(claude-context/methodology/workflow-setup/charters/<stem>-charter.md) and re-absolutized on load against",
+      "bundleRoot() so getDefaults() stays byte-identical to the live absolute paths. NOTE the charter STEMs differ",
+      "from role names: builder -> shipping-charter.md, researcher -> research-charter.md; the other five match."
+    ],
+    "enabled": true,
+    "planTemplateFile": "",
+    "subagentEnvTemplate": "",
+    "subagentConfigs": [
+      { "name": "planning", "defaultModel": "opus", "charterFile": "claude-context/methodology/workflow-setup/charters/planning-charter.md", "retryCount": 1 },
+      { "name": "builder", "defaultModel": "opus", "charterFile": "claude-context/methodology/workflow-setup/charters/shipping-charter.md", "retryCount": 5 },
+      { "name": "test-writer", "defaultModel": "opus", "charterFile": "claude-context/methodology/workflow-setup/charters/test-writer-charter.md", "retryCount": 1 },
+      { "name": "documentarian", "defaultModel": "opus", "charterFile": "claude-context/methodology/workflow-setup/charters/documentarian-charter.md", "retryCount": 1 },
+      { "name": "verifier", "defaultModel": "opus", "charterFile": "claude-context/methodology/workflow-setup/charters/verifier-charter.md", "retryCount": 1 },
+      { "name": "bug-fixer", "defaultModel": "opus", "charterFile": "claude-context/methodology/workflow-setup/charters/bug-fixer-charter.md", "retryCount": 5 },
+      { "name": "researcher", "defaultModel": "opus", "charterFile": "claude-context/methodology/workflow-setup/charters/research-charter.md", "retryCount": 1 }
+    ],
+    "teams": [
+      {
+        "name": "full",
+        "subagents": [
+          { "name": "planning" },
+          { "name": "builder" },
+          { "name": "test-writer" },
+          { "name": "documentarian" },
+          { "name": "verifier" }
+        ]
+      },
+      { "name": "ship", "subagents": [{ "name": "builder" }, { "name": "verifier" }] },
+      { "name": "test", "subagents": [{ "name": "test-writer" }, { "name": "verifier" }] },
+      { "name": "docs", "subagents": [{ "name": "documentarian" }, { "name": "verifier" }] },
+      { "name": "research", "subagents": [{ "name": "researcher" }] },
+      { "name": "build", "subagents": [{ "name": "builder" }] }
+    ],
+    "defaultParallelism": "serial",
+    "verifyLoopCap": 5,
+    "deliverables": {
+      "tldr": true,
+      "toolFeedback": true,
+      "wiki": true
+    },
+    "charterVariants": {},
+    "verifier": {
+      "requireAllPass": true,
+      "multiCountMode": "blind-pair",
+      "loopFixer": "bug-fixer"
+    },
+    "costLedger": {
+      "epicPath": "00-epic-plan/cost-ledger.md"
+    },
+    "blockedFilenamePatterns": ["report", "summary", "analysis", "findings"]
+  },
+  "hygiene": {
+    "_comment": "Drift sweeps + the SessionStart health note (config-guide §4). healthCheck.enabled default ON; only explicit false silences it.",
+    "enabled": true,
+    "healthCheck": {
+      "enabled": true
+    }
+  }
+}

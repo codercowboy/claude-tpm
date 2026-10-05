@@ -137,4 +137,33 @@ test('CLI --help exits 0', () => {
   assert.ok(/Usage:/.test(r.stdout));
 });
 
+test('#1155: proseInjections / templates / readingList defaults + whitelist merge KEEP the new keys (not dropped)', () => {
+  const d = cfg.getDefaults();
+  assert.deepStrictEqual(d.proseInjections, []);
+  assert.deepStrictEqual(d.templates, { open: '', save: '', close: '' });
+  assert.deepStrictEqual(d.readingList, []);
+  const inj = [{ mode: 'open', file: 'x.md', location: 'before' }];
+  const r = cfg.mergeSessionConfig({ proseInjections: inj, readingList: [{ audience: 'all', file: 'r.md' }],
+    templates: { open: 'my-open.md', bogus: 'x', save: 5 } });
+  assert.deepStrictEqual(r.proseInjections, inj);
+  assert.deepStrictEqual(r.readingList, [{ audience: 'all', file: 'r.md' }]);
+  assert.deepStrictEqual(r.templates, { open: 'my-open.md', save: '', close: '' }, 'only string open/save/close accepted');
+  assert.deepStrictEqual(cfg.mergeSessionConfig({ proseInjections: 'nope' }).proseInjections, [], 'non-array ignored');
+});
+
+test('#1155: both config views agree — resolveSessionConfig (whitelist) and resolveLayers (full) see the same new keys, user layer STACKING', () => {
+  const overlay = require('../../lib/tpm-config-overlay');
+  const dir = tmpDir('tpm-session-cfg-stack-');
+  fs.mkdirSync(path.join(dir, '.claude', 'claude-tpm'), { recursive: true });
+  const pInj = { mode: 'save', file: 'p.md', location: 'after' };
+  const uInj = { mode: 'save', file: 'u.md', location: 'before' };
+  fs.writeFileSync(path.join(dir, '.claude', 'claude-tpm', 'config.json'), JSON.stringify({ session: { proseInjections: [pInj] } }));
+  const user = path.join(dir, 'user.json'); fs.writeFileSync(user, JSON.stringify({ session: { proseInjections: [uInj] } }));
+  const env = { CLAUDE_TPM_USER_CONFIG: user };
+  const a = cfg.resolveSessionConfig(undefined, { startDir: dir, env }).resolved.proseInjections;
+  const b = overlay.resolveLayers({ projectRoot: dir, env }).session.proseInjections;
+  assert.deepStrictEqual(a, [pInj, uInj]);
+  assert.deepStrictEqual(a, b);
+});
+
 done('session-config.test');

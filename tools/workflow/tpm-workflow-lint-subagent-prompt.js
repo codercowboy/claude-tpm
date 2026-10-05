@@ -112,7 +112,7 @@ const { findRoot } = require('../lib/paths');
 const { isBlockedFilename } = require('./tpm-workflow-check-filename.js');
 
 // The library include-token must byte-match the token consumer manifests write
-// (`<!-- include: claude-tpm -->` — see tpm-session/modes-open.md + methodology/overview.md).
+// (`<!-- include: claude-tpm -->` — see tpm-session/SKILL.md + tools/session/templates/open.md + methodology/overview.md).
 const LIBRARY_INCLUDE_TOKEN = 'claude-tpm';
 const INCLUDE_RE = new RegExp('<!--\\s*include:\\s*' + LIBRARY_INCLUDE_TOKEN + '\\s*-->');
 

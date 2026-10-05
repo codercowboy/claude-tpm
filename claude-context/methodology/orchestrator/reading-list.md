@@ -35,8 +35,8 @@ The small set you read at every session open, regardless of which modules are en
 
 > **No boot self-quiz.** An earlier Tier-1 #4 pointed at a `session-open-questions.md` self-quiz gate.
 > That gate was **relocated out of boot** to the workflow module's pre-flight (fires before
-> spawn/plan/scaffold, not at open — see [`../../../.claude/skills/tpm-session/modes-open.md`] "What
-> this step does NOT do" and `orchestrator/pre-task-questions.md`). The doc was never ported and the
+> spawn/plan/scaffold, not at open — see [`../../../tools/session/templates/open.md`] and
+> `orchestrator/pre-task-questions.md`). The doc was never ported and the
 > item is retired here rather than restored — boot no longer runs a self-quiz. (boot-redesign, session 014)
 
 Then the project-state reads outside `methodology/` — the task ledger under the `tasks` module store

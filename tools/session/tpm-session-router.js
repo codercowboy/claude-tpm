@@ -24,7 +24,7 @@
  *
  * USAGE
  *   tpm session <open|save|note|punchlist|close|import-handoff|import-log|import-punchlist> [args…]
- *   tpm session <export|review|migrate|doctor|config|current|boot-read> [args…]
+ *   tpm session <export|review|migrate|doctor|config|current|boot-read|compose> [args…]
  *   tpm session --help | -h
  *
  * Zero third-party deps; Node built-ins only.
@@ -53,6 +53,7 @@ const VERBS = {
   config: 'tpm-session-config.js',    // #1123 restored: session config resolver (--json/--get/--sessions-dir/--modules)
   current: 'tpm-session-current.js',  // #1123 restored: current-session pointer (--state/--open/--seal/--next-number)
   'boot-read': 'tpm-session-boot-read.js', // #1123 reworked: JSON-first boot pickup emitter (always exit 0)
+  compose: 'tpm-session-compose.js',  // #1155 the tpm-session composer: --mode open|save|close|info (read-only, always exit 0)
 };
 
 // The promoted ops sub-verbs (flatten): the router injects the matched verb as argv[0] to the ops tool
@@ -86,6 +87,7 @@ Other verbs:
   config     session config resolver (--json / --get <k> / --sessions-dir / --modules)
   current    current-session pointer (--state / --open / --seal / --next-number · --sessions-dir)
   boot-read  JSON-first boot pickup emitter — prior handoff + open punchlist (always exits 0)
+  compose    compose the tpm-session procedure for a mode (--mode open|save|close|info|auto; read-only, always exits 0)
 
 Session numbers are ALWAYS 4-digit zero-padded (--session 1 ≡ --session 0001; folder + meta agree).
 Remaining args pass straight through, e.g.:

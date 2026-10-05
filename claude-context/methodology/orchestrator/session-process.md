@@ -15,7 +15,7 @@ around it.
 
 ## On start (boot)
 
-`tpm-session open` (see `.claude/skills/tpm-session/modes-open.md`):
+`tpm-session open` (composed by `tpm session compose --mode open` from `tools/session/templates/open.md`):
 1. Allocates or confirms the current session via `tpm session current --open`
    (idempotent — reuses the current session's number if one is already open this session; it manages the
    `.current-session.json` pointer, not the folder, which `ops open` creates on first write).
@@ -87,7 +87,7 @@ session, not every `save`/`close` within one).
 
 ## Wrap-up
 
-`tpm-session close` (see `.claude/skills/tpm-session/modes-close.md`) runs the reap ritual, delegates to
+`tpm-session close` (composed by `tpm session compose --mode close` from `tools/session/templates/close.md`) runs the reap ritual, delegates to
 the gated `save` for the final checkpoint (reconcile punchlist → append ledger lines → write the handoff
 via `ops import-handoff`, honoring exit codes — a refused `import-handoff` wrote nothing, so fix and
 re-run before sealing), seals the record via `ops close` (the close-guard REFUSES unless a handoff AND a

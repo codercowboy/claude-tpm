@@ -34,6 +34,7 @@ Every doc in this folder, by role. The reading lists say *when* to read them; th
 | [`tool-conventions.md`](./tool-conventions.md) | Copy-then-modify pattern, `tool-updates.md` / `tool-feedback.md` formats, no-hardcoded-paths directive. |
 | [`troubleshooting.md`](./troubleshooting.md) | What to try when stuck; disaster recovery. |
 | [`verification.md`](./verification.md) | Verifier ground rules (HARD RULE — verifiers never touch the live system under test), on-disk-only inspection, PASS/FAIL evidence format, reproducibility bar, decision logging. |
+| [`template-engine.md`](./template-engine.md) | Authoring guide for the skill template engine: the frozen `tpm:` directives, the three prose-injection tiers and precedence ladder, `tpm session compose`, and why the skill runs the compose command as its primary path. |
 
 **⚠️ Orchestrator — never referenced in a spawn prompt**
 

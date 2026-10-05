@@ -79,13 +79,19 @@ function run(env) {
 
 // ── the light health check ────────────────────────────────────────────────────────────────────────────────
 
-/** `hygiene.healthCheck.enabled` from the project's config.json: default ON; only an explicit `false` turns it off. */
+/**
+ * `hygiene.healthCheck.enabled` for the project: default ON; only an explicit `false` turns it off.
+ * #1152 (E′): read via the hygiene resolver / shared overlay (defaults.json -> project config -> user)
+ * instead of the former inline raw read, so the gate sees the same layered view every other section does.
+ * FAIL-OPEN preserved: any error (absent/unparseable config, a lib throw) => the default (ON).
+ */
 function healthCheckEnabled(projectDir) {
   try {
-    const cfg = JSON.parse(fs.readFileSync(path.join(projectDir, '.claude', 'claude-tpm', 'config.json'), 'utf8'));
-    const hc = cfg && cfg.hygiene && cfg.hygiene.healthCheck;
+    const { resolveHygieneConfig } = require('../config/tpm-hygiene-config');
+    const hygiene = resolveHygieneConfig(projectDir);
+    const hc = hygiene && hygiene.healthCheck;
     return !(hc && hc.enabled === false);
-  } catch (_e) { return true; } // absent / unparseable config => the default (on)
+  } catch (_e) { return true; } // absent / unparseable config / any error => the default (on)
 }
 
 /**

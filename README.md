@@ -88,9 +88,9 @@ claude
 
 When you invoke the session open skill, claude will show you what it's doing:
 
-> I'll boot the session. First, let me load the open mode body and confirm the config/wiring in parallel.
+> I'll boot the session — running `tpm session compose --mode open` for the boot context and confirming the config/wiring in parallel.
 > 
-> Read modes-open.md, ran a command
+> Ran 2 commands
 > 
 > Config confirms session.enabled and notes.enabled. Proceeding with the boot sequence — allocate/confirm session and read the module map.
 > 

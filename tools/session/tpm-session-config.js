@@ -24,7 +24,10 @@
  *     showTPMOpenMessage: true,
  *     showTPMCloseMessage: true,
  *     additionalOpenMessage: "",
- *     additionalCloseMessage: ""
+ *     additionalCloseMessage: "",
+ *     proseInjections: [],                       // #1153 [{ mode, file, location }] (STACKS across layers)
+ *     templates: { open: "", save: "", close: "" },  // per-mode template override paths
+ *     readingList: []                            // #1154 [{ audience, file }] (STACKS across layers)
  *   }
  *   NOTE — `notes.enabled` (nested) does not exist in the LIVE config-guide.md §1 yet; it is
  *   part of this build's staged fix (task E1, out/promote/config-guide-section1.md). This
@@ -68,6 +71,9 @@
 const fs = require('fs');
 const path = require('path');
 const { findRoot } = require('./tpm-session-paths');
+// #1152 — the shared layered-config overlay: getDefaults() sources the shipped defaults.json, and
+// the USER layer ($CLAUDE_TPM_USER_CONFIG) is folded onto the project section before the whitelist.
+const overlay = require('../lib/tpm-config-overlay');
 
 // The project-root MARKER: the `.claude/claude-tpm/` install-footprint DIRECTORY (created by the
 // installer's ensureConsumerConfig). REPLACED the earlier CLAUDE.md marker (#02-marker-scope) so a
@@ -80,14 +86,9 @@ const PROJECT_MARKER = path.join('.claude', 'claude-tpm');
 const KNOWN_MODULES = ['session', 'workflow', 'tasks', 'hygiene'];
 
 function getDefaults() {
-  return {
-    enabled: true,
-    notes: { enabled: true, sessionsDir: '.claude/claude-tpm/sessions' },
-    showTPMOpenMessage: true,
-    showTPMCloseMessage: true,
-    additionalOpenMessage: '',
-    additionalCloseMessage: '',
-  };
+  // #1152: sourced from the shipped tools/config/defaults.json via the overlay lib (comment keys
+  // stripped). Byte-identical to the former inline literal — pinned by session-config.test.js.
+  return overlay.loadDefaults().session;
 }
 
 function deepClone(v) {
@@ -117,6 +118,20 @@ function mergeSessionConfig(rawSession) {
   }
   if (typeof rawSession.additionalCloseMessage === 'string') {
     resolved.additionalCloseMessage = rawSession.additionalCloseMessage;
+  }
+
+  // #1155 — prose injections (#1153), per-mode template overrides, reading-list pointers (#1154).
+  // Arrays are kept whole (the composer validates/warns per entry); `templates` keeps only string values.
+  if (Array.isArray(rawSession.proseInjections)) {
+    resolved.proseInjections = deepClone(rawSession.proseInjections);
+  }
+  if (Array.isArray(rawSession.readingList)) {
+    resolved.readingList = deepClone(rawSession.readingList);
+  }
+  if (isPlainObject(rawSession.templates)) {
+    for (const m of ['open', 'save', 'close']) {
+      if (typeof rawSession.templates[m] === 'string') resolved.templates[m] = rawSession.templates[m];
+    }
   }
 
   // Back-compat: a legacy/flat `sessionsDir` sitting directly on `session` (pre-nesting) is
@@ -160,7 +175,10 @@ function resolveSessionConfig(configPathArg, opts = {}) {
       err.code = 'ENOENT_CONFIG';
       throw err;
     }
-    return { resolved: getDefaults(), projectRoot, configPath, configExists: false };
+    // #1152: no project config — still fold the USER layer in (DoD C). With no user layer,
+    // overlayUserOnto returns undefined and mergeSessionConfig(undefined) === getDefaults().
+    const rawMerged = overlay.overlayUserOnto(undefined, 'session', { warn: opts.warn, env: opts.env });
+    return { resolved: mergeSessionConfig(rawMerged), projectRoot, configPath, configExists: false };
   }
 
   let parsed;
@@ -172,13 +190,16 @@ function resolveSessionConfig(configPathArg, opts = {}) {
     throw wrapped;
   }
 
-  const resolved = mergeSessionConfig(parsed.session);
+  // #1152: deep-merge the USER layer over the project `session` section (user wins) before the
+  // existing whitelist merge. Per-value flag/env rungs (resolveSessionsDir) still win on top.
+  const rawMerged = overlay.overlayUserOnto(parsed.session, 'session', { warn: opts.warn, env: opts.env });
+  const resolved = mergeSessionConfig(rawMerged);
   return { resolved, projectRoot, configPath, configExists: true };
 }
 
 /**
  * Report which claude-tpm modules are ENABLED — the map the boot MOTD needs so it lists only
- * the enabled `tpm-*` modules (modes-open.md steps 2 + 5). Reads ONLY the top-level
+ * the enabled `tpm-*` modules (the boot MOTD). Reads ONLY the top-level
  * `<module>.enabled` booleans (defaulting `true`); it does not resolve any other suite's full
  * config or `require()` another resolver, so it stays suite-local (tool-conventions I§2).
  *

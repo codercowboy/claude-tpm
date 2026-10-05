@@ -30,6 +30,7 @@
  *   tpm home                        # alias of resolve-home (self-located, bypass-safe)
  *   tpm reading-list <role>         # emit a role's reading chain in anchor form (orchestrator | subagent)
  *   tpm doc <bundle-relative-path>  # print a bundle doc with ${TPM_HOME}/%TPM_HOME% resolved
+ *   tpm render <template> [--explain|--list-flags|--lint]  # compose a skill template against resolved config
  *   tpm --help | -h
  *
  *   e.g.  tpm task list
@@ -49,6 +50,7 @@ const SUITES = {
   workflow: 'workflow/tpm-workflow-router.js',
   hooks: 'hooks/tpm-hooks-router.js',
   plugin: 'plugin/tpm-plugin-router.js',
+  config: 'config/tpm-config-router.js',
 };
 
 // flat top-level verbs — NOT suites; they map straight to a script. Two groups: consumer-adoption
@@ -62,6 +64,7 @@ const ALIASES = {
   'resolve-home': 'tpm-home.js',               // self-documenting alias of `home` (anchor-first doctrine)
   'reading-list': 'tpm-reading-list.js',       // emit a role's reading chain in anchor form (self-located)
   doc: 'tpm-doc.js',                           // print a bundle doc with ${TPM_HOME}/%TPM_HOME% resolved
+  render: 'tpm-render.js',                     // compose a skill template against the resolved config
 };
 
 // Fixed trailing args a porcelain alias injects. None today: `doctor` has its own script (phase 03); `--check`
@@ -91,6 +94,7 @@ Bundle primitives (self-locating; work in every permission mode):
   home                        alias of resolve-home
   reading-list <role>         emit a role's reading chain in anchor form (orchestrator | subagent)
   doc <bundle-relative-path> print a bundle doc with \${TPM_HOME}/%TPM_HOME% resolved
+  render <template> [--explain|--list-flags|--lint]  compose a skill template against resolved config
 
   tpm <suite> --help          list that suite's verbs
   tpm --help, -h              show this message
