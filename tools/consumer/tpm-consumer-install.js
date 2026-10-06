@@ -27,7 +27,10 @@
  *
  * FLAGS:  [dir] | --dir <path> · --plan · --quiet · --save · --from <spec> · --repoint · --share · --debug
  *         (TPM_DEBUG=1) · -h/--help · --check (compat alias of `tpm doctor`, now tpm-consumer-doctor.js)
- *         · --verbose (doctor). `--force` and `-y` are gone: an unknown token exits 2.
+ *         · --verbose (doctor) · --fix-version-mismatch (re-derive this bundle's version labels from its
+ *         package.json via tools/build/stamp-manifests.js when the `stamp` precondition would refuse, then
+ *         continue — the ONLY path on which the installer writes to its own folder; see runInstall).
+ *         `--force` and `-y` are gone: an unknown token exits 2.
  *
  * USER-FACING WORDS: every string the user reads is built by tpm-consumer-voice.js. The only strings authored
  * here are the `comparing the two copies …` line and the "Claude Code did not report its state" refusal; both
@@ -53,6 +56,7 @@ const readline = require('readline');
 
 const O = require('./tpm-consumer-observe');
 const V = require('./tpm-consumer-voice');
+const STAMP = require('../build/stamp-manifests'); // shared re-stamp op for the --fix-version-mismatch escape hatch
 
 // ── identity: READ from this bundle's own .claude-plugin/marketplace.json via the shared observer (so the installer
 // and the manifest can never disagree; the marketplace name is version-scoped there, e.g. claude-tpm-market-0.2.0).
@@ -384,7 +388,14 @@ function plan(state, opts) {
       else depTarget = mode === 'linked' ? s.root : null; // other-project-copy: never link into another project's node_modules
     }
   }
-  const repointing = reg.state === 'dead' || choice === 'repoint';
+  // A registration classified `same-via-link` resolves back to THIS repo, but its STORED path is an
+  // indirection. When that stored path lives inside a node_modules (an old installer registered a client's
+  // vendored copy/symlink of us), the literal registry path is a project's node_modules, not the canonical
+  // repo — so running from the repo must re-point it to the real folder, not treat it as a no-op. Scoped to
+  // node_modules so an intentional symlink elsewhere is left alone; vendored mode (direct node_modules, state
+  // `same`) never trips this. (session 0036: the same-via-link blind spot.)
+  const staleNodeModulesLink = reg.state === 'same-via-link' && !!reg.storedPath && !!O.insideNodeModules(path.resolve(reg.storedPath));
+  const repointing = reg.state === 'dead' || choice === 'repoint' || staleNodeModulesLink;
   const registering = reg.state === 'absent' && !repointing;
   const record = en.record;
   const installNeeded = !(record && record.present) || record.installPathExists === false || repointing; // a re-point wipes the install note (probe #11a)
@@ -395,6 +406,7 @@ function plan(state, opts) {
 
   if (repointing) {
     actions.push({ id: 'repoint', folder: s.root, newVersion: s.version, layer: 'registration', machineWide: true,
+      variant: staleNodeModulesLink ? 'relink' : undefined,
       commands: [V.displayCommand('claude', ['plugin', 'marketplace', 'remove', s.name]), V.displayCommand('claude', ['plugin', 'marketplace', 'add', showPath(s.root)])],
       run: [{ bin: 'claude', argv: ['plugin', 'marketplace', 'remove', s.name], cwd: target }, { bin: 'claude', argv: ['plugin', 'marketplace', 'add', s.root], cwd: target }],
       verify: (st) => st.reg.state === 'same' || st.reg.state === 'same-via-link' });
@@ -497,6 +509,27 @@ function apply(state, actions, io, exec) {
   return { state: st, done, failedAt: null, child: null };
 }
 
+// ── --fix-version-mismatch (the one sanctioned write to our OWN folder) ────────────────────────────────
+
+/**
+ * applyVersionFix(state, dbg) → { ok, text }. The `--fix-version-mismatch` escape hatch for the `stamp`
+ * refusal: re-derive THIS claude-tpm folder's version labels from its own package.json (package.json is the
+ * single source of truth) via the shared stamp-manifests op, so the mislabelled registration name / plugin
+ * version come back into agreement. This is the ONLY path on which the installer writes to its own bundle —
+ * it NEVER touches the consumer project. Idempotent: a folder already in sync reports so and changes nothing.
+ */
+function applyVersionFix(state, dbg) {
+  const root = (state.self && state.self.root) || BUNDLE_ROOT;
+  if (!root) return { ok: false, text: V.stampFixFailed('its folder could not be located') };
+  try {
+    (dbg || (() => {}))('fix-version-mismatch: re-deriving version labels in', root);
+    const r = STAMP.stamp(root);
+    return { ok: true, text: V.stampFixed(r) };
+  } catch (e) {
+    return { ok: false, text: V.stampFixFailed(e && e.message ? e.message : String(e)) };
+  }
+}
+
 // ── the run ──────────────────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -513,7 +546,16 @@ async function runInstall(opts, ioIn) {
   // observe → preconditions (nothing written; --plan needs no terminal because it never prompts)
   let state = O.observe(targetDir, io.self, io.env, { exec });
   dbg('observed:', 'label-inputs reg=' + state.reg.state + ' dep=' + state.dep.onDisk + ' record=' + JSON.stringify(state.en.record) + ' canonical=' + state.canonical.mode);
-  const ref = O.preconditions(state, { quiet: !!(opts.quiet || opts.plan), stdinIsTTY: io.stdinIsTTY });
+  let ref = O.preconditions(state, { quiet: !!(opts.quiet || opts.plan), stdinIsTTY: io.stdinIsTTY });
+  // --fix-version-mismatch: the sanctioned write to our OWN folder — re-derive the version labels from
+  // package.json, re-observe, then re-check. Scoped to the `stamp` refusal; every other refusal still stops.
+  if (ref && ref.id === 'stamp' && opts.fixVersionMismatch) {
+    const fix = applyVersionFix(state, dbg);
+    if (!fix.ok) { io.err(fix.text); return 1; }
+    io.out(fix.text);
+    state = O.observe(targetDir, io.self, io.env, { exec });
+    ref = O.preconditions(state, { quiet: !!(opts.quiet || opts.plan), stdinIsTTY: io.stdinIsTTY });
+  }
   if (ref) { io.err(V.refusal(ref, state)); return ref.exit; }
   if (state.self.root && state.target.real === state.self.root) { io.err(V.refusal({ id: 'self-folder', exit: 1, detail: {} }, state)); return 1; }
   if (state.reg.state === 'unknown' || state.en.record === 'unknown') { io.err(UNKNOWN_STATE_REFUSAL); return 1; }
@@ -592,7 +634,7 @@ function printHelp() { process.stdout.write(V.help()); }
 function usage(msg) { process.stderr.write(msg); process.exit(2); }
 
 function parseArgs(argv) {
-  const a = { dir: null, from: null, quiet: false, plan: false, save: false, repoint: false, share: false, check: false, verbose: false, debug: false, help: false };
+  const a = { dir: null, from: null, quiet: false, plan: false, save: false, repoint: false, share: false, check: false, verbose: false, debug: false, help: false, fixVersionMismatch: false };
   const needValue = (i, x) => {
     const v = argv[i + 1];
     if (v === undefined || v.startsWith('-')) usage(`error: ${x} requires a value (got ${v === undefined ? 'nothing' : `'${v}'`}).\n`);
@@ -609,6 +651,7 @@ function parseArgs(argv) {
     else if (x === '--check') a.check = true;
     else if (x === '--verbose') a.verbose = true;
     else if (x === '--debug') a.debug = true;
+    else if (x === '--fix-version-mismatch') a.fixVersionMismatch = true;
     else if (x === '--from') { a.from = needValue(i, x); i += 1; }
     else if (x === '--dir') { a.dir = needValue(i, x); i += 1; }
     else if (!x.startsWith('-') && a.dir === null) a.dir = x; // positional target dir: `install <dir>`
@@ -639,7 +682,7 @@ if (require.main === module) {
 
 module.exports = {
   // the reconciler (phase 02)
-  main, runInstall, parseArgs, diagnose, decide, plan, apply, renderPlan, compareLine, layerRows, nothingHere, isBroken,
+  main, runInstall, parseArgs, diagnose, decide, plan, apply, applyVersionFix, renderPlan, compareLine, layerRows, nothingHere, isBroken,
   ACTION_ORDER, LABELS, UNKNOWN_STATE_REFUSAL, closePrompter,
   // retained helpers (the doctor, the legacy-helpers suite and the install tests import these)
   findBundleRoot, shellQuote, displayCommand, makeDbg, debugEnabled, compareCopies, hashTree, realOrResolved,

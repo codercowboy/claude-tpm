@@ -357,6 +357,23 @@ test('row 5 · L, target met, reg same-via-link → healthy-with-warnings · ⚠
   assert.ok(/fix: register the real folder: `tpm install \. --repoint`/.test(r.out), r.out);
 });
 
+// 5b ─ same-via-link whose stored path is INSIDE node_modules → re-point to the canonical repo (session 0036)
+test('row 5b · L, reg same-via-link stored INSIDE node_modules → partial · repoint:relink + plugin-install, registry flips to canonical', async () => {
+  await scenarioPath({
+    build: () => bGood({ regPath: (S) => { const nm = path.join(W.mk('reglink'), 'node_modules', '@codercowboy'); fs.mkdirSync(nm, { recursive: true }); const L = path.join(nm, 'claude-tpm'); fs.symlinkSync(S, L); return L; } }),
+    label: 'partial', ids: ['repoint', 'plugin-install'], argv: Q, planFlags: Q,
+    prose: () => ['Re-point claude-tpm 0.2.0-dev at ', P.installAgain],
+    mut: [`plugin marketplace remove ${NAME}`, 'plugin marketplace add <S>', INSTALL_Q], npm: 0,
+    planHas: [/registered through a node_modules link/],
+    post: async (f) => {
+      const st = O.observe(f.dir, f.self, f.w.env);
+      ok(st); // reg.state === 'same' now (literal canonical), plugin enabled, config valid
+      assert.strictEqual(st.reg.storedPath, f.S, 'the machine registry now names the canonical repo, not a node_modules path');
+      await converged(f);
+    },
+  });
+});
+
 // 6, 7 ─ upgrades
 test('row 6 · L, 0.1.0 project → upgrade · dep, plugin-install, disable-old, config-seed + Not touched (exit 0, was exit 1)', async () => {
   await scenarioPath({

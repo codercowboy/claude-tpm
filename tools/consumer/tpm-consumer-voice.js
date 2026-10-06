@@ -164,7 +164,7 @@ function rowProjectFolder(state) {
 function rowClaudeTpmFolder(state) {
   const label = 'claude-tpm folder'; const s = state.self;
   if (!s.root) return { label, mark: 'fail', text: 'could not locate the claude-tpm folder', fix: 'reinstall claude-tpm' };
-  if (!s.stampOk) return { label, mark: 'fail', text: `mislabelled — its version (${s.version}) and its registration name (${s.name}) disagree; a packaging problem in claude-tpm`, fix: 'reinstall claude-tpm from a clean source' };
+  if (!s.stampOk) return { label, mark: 'fail', text: `mislabelled — its version (${s.version}) and its registration name (${s.name}) disagree; a packaging problem in claude-tpm`, fix: 'run `tpm install --fix-version-mismatch` from this folder, or reinstall from a clean source' };
   if (!s.complete) return { label, mark: 'fail', text: s.hooks && s.hooks.err ? 'incomplete — hooks/hooks.json is not valid JSON' : 'incomplete — missing hooks/hooks.json', fix: 'reinstall claude-tpm; this checkout is broken' };
   return { label, mark: 'pass', text: `complete (${s.version})` };
 }
@@ -224,7 +224,7 @@ function refusal(ref, state) {
     case 'tool-missing': msg = toolMissingReason(d.bin, d.errorCode); break;
     case 'no-package-json': msg = `${projectName(state)} has no package.json. Run \`npm init -y\` there first.`; break;
     case 'bad-package-json': msg = `${projectName(state)}/package.json is not valid JSON (${d.err}). Fix it first.`; break;
-    case 'stamp': msg = `this claude-tpm folder is mislabelled (its version ${d.version} and its registration name ${d.actual} disagree) — a packaging problem in claude-tpm, not in your project.`; break;
+    case 'stamp': msg = `this claude-tpm folder is mislabelled (its version ${d.version} and its registration name ${d.actual} disagree) — a packaging problem in claude-tpm, not in your project.\n  Re-run with \`--fix-version-mismatch\` to bring its version labels back in sync from package.json (its version, ${d.version}, wins).`; break;
     case 'other-project-copy': msg = `this claude-tpm is ${tilde(d.owner)}'s copy (${tilde(state.self.root)}).\n  Run the install from a standalone folder, or from inside ${projectName(state)} after npm-installing it there.`; break;
     case 'no-self': msg = 'could not locate the claude-tpm folder this installer belongs to.'; break;
     case 'incomplete': msg = `this claude-tpm folder is incomplete (${d.hooks && d.hooks.err ? 'hooks/hooks.json is not valid JSON' : 'missing hooks/hooks.json'}) — a broken checkout. Re-fetch claude-tpm.`; break;
@@ -233,6 +233,18 @@ function refusal(ref, state) {
     default: msg = 'cannot continue.';
   }
   return `${fit(`error: not installing — ${msg}`)}\n${NOTHING_CHANGED}\n`;
+}
+
+/** `--fix-version-mismatch` succeeded: one clean line; the normal plan/apply that follows narrates the rest.
+ * `result` is the stamp-manifests tool's return ({ changed, version }); printed, then the run re-observes. */
+function stampFixed(result) {
+  if (result && result.changed) return `  Fixed the version mismatch — this claude-tpm folder now reports ${result.version} consistently.\n`;
+  return `  Version labels were already in sync at ${result && result.version}; nothing to change.\n`;
+}
+
+/** `--fix-version-mismatch` could not run (no folder located, or the fix threw). */
+function stampFixFailed(detail) {
+  return `${fit(`error: not installing — could not fix the version mismatch for this claude-tpm folder (${detail}).`)}\n${NOTHING_CHANGED}\n`;
 }
 
 /** `--quiet` with a would-be menu and no pre-answer (voice §4.6). */
@@ -277,6 +289,9 @@ function planProse(a, state) {
   const v = a.newVersion || (state && state.self.version);
   switch (a.id) {
     case 'repoint':
+      if (a.variant === 'relink')
+        return `Re-point ${ver(v)} at ${folder} — it is registered through a node_modules link, so the\n` +
+          "   stored path is a project's copy, not this repo. This rewrites it to the real folder.";
       return `Re-point ${ver(v)} at this folder (register ${folder} instead).\n` +
         '   Other projects on ' + v + ' start working again as soon as this runs; each should re-run\n' +
         '   `tpm install .` once to restore its own settings.';
@@ -419,6 +434,7 @@ function help() {
     '  --repoint      if claude-tpm is already registered from another folder, register this one instead',
     '  --share        if claude-tpm is already registered from another folder, use that one',
     '  --from <spec>  use this npm spec for the dependency instead of this folder',
+    '  --fix-version-mismatch  re-derive this folder\'s version labels from package.json, then install',
     '  --debug        trace every command (also TPM_DEBUG=1)',
     '  -h, --help',
     '',
@@ -507,7 +523,7 @@ module.exports = {
   header, checking, diagnosisSentence, checkingBlock,
   rowPackageJson, rowRegistered, rowTurnedOn, rowProjectFolder, rowClaudeTpmFolder, rowClaude, rowTpmOnPath, rowTpmHome,
   doctorRows, renderRow, doctorSummary,
-  refusal, quietMenuRefusal, decisionMenu,
+  refusal, stampFixed, stampFixFailed, quietMenuRefusal, decisionMenu,
   planProse, planLine, planBlock, ALREADY_REGISTERED, notTouched, fragilityWarning, twoTreesWarning,
   applyOk, applyFail, stoppedAfter, declined, closing, nextLine,
   lightProblems, hookMessage, help, findNeverPrint, sampleAll,
